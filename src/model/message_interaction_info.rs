@@ -1,9 +1,13 @@
 use std::cell::Cell;
+use std::cell::OnceCell;
 
 use glib::Properties;
+use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+
+use crate::model;
 
 mod imp {
     use super::*;
@@ -13,6 +17,7 @@ mod imp {
     pub(crate) struct MessageInteractionInfo {
         #[property(get)]
         pub(super) reply_count: Cell<u32>,
+        pub(super) reactions: OnceCell<gio::ListStore>,
     }
 
     #[glib::object_subclass]
@@ -40,14 +45,41 @@ impl From<Option<tdlib::types::MessageInteractionInfo>> for MessageInteractionIn
         let obj: Self = glib::Object::new();
         obj.imp()
             .reply_count
-            .set(extract_reply_count(interaction_info));
+            .set(extract_reply_count(interaction_info.as_ref()));
+        obj.set_reactions_from(interaction_info.as_ref());
         obj
     }
 }
 
 impl MessageInteractionInfo {
     pub(crate) fn update(&self, interaction_info: Option<tdlib::types::MessageInteractionInfo>) {
-        self.set_reply_count(extract_reply_count(interaction_info));
+        self.set_reply_count(extract_reply_count(interaction_info.as_ref()));
+        self.set_reactions_from(interaction_info.as_ref());
+    }
+
+    /// The message's reactions as a `gio::ListStore` of `model::MessageReaction`,
+    /// suitable for binding to a widget via `bind_model`.
+    pub(crate) fn reactions(&self) -> gio::ListStore {
+        self.imp()
+            .reactions
+            .get_or_init(gio::ListStore::new::<model::MessageReaction>)
+            .clone()
+    }
+
+    fn set_reactions_from(&self, interaction_info: Option<&tdlib::types::MessageInteractionInfo>) {
+        let reactions = self.reactions();
+        let new: Vec<model::MessageReaction> = interaction_info
+            .and_then(|info| info.reactions.as_ref())
+            .map(|r| {
+                r.reactions
+                    .iter()
+                    .map(model::MessageReaction::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Reactions change wholesale, so replace the contents in one splice.
+        reactions.splice(0, reactions.n_items(), &new);
     }
 
     fn set_reply_count(&self, reply_count: u32) {
@@ -59,9 +91,9 @@ impl MessageInteractionInfo {
     }
 }
 
-fn extract_reply_count(interaction_info: Option<tdlib::types::MessageInteractionInfo>) -> u32 {
+fn extract_reply_count(interaction_info: Option<&tdlib::types::MessageInteractionInfo>) -> u32 {
     interaction_info
-        .and_then(|interaction_info| interaction_info.reply_info)
+        .and_then(|interaction_info| interaction_info.reply_info.as_ref())
         .map(|reply_info| reply_info.reply_count)
         .unwrap_or(0) as u32
 }

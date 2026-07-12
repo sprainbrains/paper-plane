@@ -23,6 +23,7 @@ mod country_list;
 mod message;
 mod message_forward_info;
 mod message_interaction_info;
+mod message_reaction;
 mod secret_chat;
 mod sponsored_message;
 mod supergroup;
@@ -80,11 +81,16 @@ pub(crate) use self::message::MessageSender;
 pub(crate) use self::message_forward_info::MessageForwardInfo;
 pub(crate) use self::message_forward_info::MessageForwardOrigin;
 pub(crate) use self::message_interaction_info::MessageInteractionInfo;
+pub(crate) use self::message_reaction::MessageReaction;
 pub(crate) use self::secret_chat::SecretChat;
 pub(crate) use self::secret_chat::SecretChatState;
 pub(crate) use self::sponsored_message::SponsoredMessage;
 pub(crate) use self::supergroup::Supergroup;
 pub(crate) use self::user::User;
+
+#[derive(Clone, Debug, PartialEq, glib::Boxed)]
+#[boxed_type(name = "BoxedReactionType")]
+pub(crate) struct BoxedReactionType(pub(crate) tdlib::enums::ReactionType);
 
 #[derive(Clone, Debug, glib::Boxed)]
 #[boxed_type(name = "BoxedChatListType")]

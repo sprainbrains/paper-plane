@@ -1,0 +1,18 @@
+using Gtk 4.0;
+
+template $PaplMessageReactions: Widget {
+  layout-manager: BinLayout {};
+
+  visible: false;
+
+  FlowBox flow_box {
+    selection-mode: none;
+    column-spacing: 4;
+    row-spacing: 4;
+    max-children-per-line: 20;
+
+    styles [
+      "message-reactions",
+    ]
+  }
+}

@@ -48,6 +48,7 @@ pub(crate) use self::session::MessageIndicators;
 pub(crate) use self::session::MessageLabel;
 pub(crate) use self::session::MessageLocation;
 pub(crate) use self::session::MessagePhoto;
+pub(crate) use self::session::MessageReactions;
 pub(crate) use self::session::MessageReply;
 pub(crate) use self::session::MessageRow;
 pub(crate) use self::session::MessageSticker;
@@ -114,6 +115,7 @@ pub(crate) fn init() {
     MessageLabel::static_type();
     MessageLocation::static_type();
     MessagePhoto::static_type();
+    MessageReactions::static_type();
     MessageReply::static_type();
     MessageRow::static_type();
     MessageSticker::static_type();

@@ -427,6 +427,23 @@ messagesticker {
   border-radius: 9999px;
 }
 
+.message-reactions {
+  margin-top: 4px;
+}
+
+.reaction-chip {
+  min-height: 0;
+  min-width: 0;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: smaller;
+}
+
+.reaction-chip.chosen {
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
+}
+
 .sender-text-red {
   color: #c03d33;
 }
