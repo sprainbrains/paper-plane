@@ -69,6 +69,7 @@
             "config-opts": [
                 "-Dvulkan=disabled",
                 "-Dintrospection=disabled",
+                "-Dbroadway-backend=true",
                 "-Dbuild-demos=false",
                 "-Dbuild-testsuite=false",
                 "-Dbuild-examples=false",

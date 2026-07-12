@@ -60,10 +60,14 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
     run-headless)
         # Start a headless broadway display and launch the Devel app on it.
+        # Requires GTK built with -Dbroadway-backend=true (see the manifest).
         broadwayd :5 &
         sleep 1
-        GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 \
-            flatpak run "$APP_ID" &
+        flatpak run \
+            --filesystem="$XDG_RUNTIME_DIR" \
+            --env=GDK_BACKEND=broadway \
+            --env=BROADWAY_DISPLAY=:5 \
+            "$APP_ID" &
         echo "app starting under broadway :5 (pid $!)"
         ;;
     screenshot)
