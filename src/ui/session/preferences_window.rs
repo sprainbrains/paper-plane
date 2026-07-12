@@ -25,6 +25,8 @@ mod imp {
         #[template_child]
         pub(super) dark_theme_switch: TemplateChild<gtk::Switch>,
         #[template_child]
+        pub(super) notifications_switch_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
         pub(super) cache_size_label: TemplateChild<gtk::Label>,
     }
 
@@ -126,6 +128,15 @@ impl PreferencesWindow {
 
     fn setup_bindings(&self) {
         let imp = self.imp();
+
+        // Notifications toggle, backed directly by the gsetting.
+        gio::Settings::new(config::APP_ID)
+            .bind(
+                "notifications-enabled",
+                &*imp.notifications_switch_row,
+                "active",
+            )
+            .build();
 
         // 'Follow system colors' switch state handling
         imp.follow_system_colors_switch

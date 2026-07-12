@@ -26,6 +26,15 @@ template $PaplPreferencesWindow : Adw.PreferencesDialog {
     }
 
     Adw.PreferencesGroup {
+      title: _("Notifications");
+
+      Adw.SwitchRow notifications_switch_row {
+        title: _("Enable Notifications");
+        subtitle: _("Show desktop notifications for new messages");
+      }
+    }
+
+    Adw.PreferencesGroup {
       title: _("Storage");
 
       Adw.ActionRow {

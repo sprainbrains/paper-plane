@@ -134,6 +134,11 @@ impl Window {
         notification_group: model::BoxedUpdateNotificationGroup,
         session: &model::ClientStateSession,
     ) {
+        // Respect the user's notifications preference.
+        if !gio::Settings::new(config::APP_ID).boolean("notifications-enabled") {
+            return;
+        }
+
         let app = self.application().unwrap();
 
         let chat = session.chat(notification_group.0.chat_id);

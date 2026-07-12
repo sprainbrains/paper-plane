@@ -21,6 +21,11 @@
       <summary>Last used session</summary>
       <description>The directory name of the last used session</description>
     </key>
+    <key name="notifications-enabled" type="b">
+      <default>true</default>
+      <summary>Enable notifications</summary>
+      <description>Whether to show desktop notifications for new messages</description>
+    </key>
     <key name="color-scheme" type="s">
       <choices>
         <choice value="default"/>
