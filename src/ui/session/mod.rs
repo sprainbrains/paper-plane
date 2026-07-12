@@ -41,6 +41,7 @@ pub(crate) use self::content::MessageSticker;
 pub(crate) use self::content::MessageText;
 pub(crate) use self::content::MessageVenue;
 pub(crate) use self::content::MessageVideo;
+pub(crate) use self::content::MessageVoiceNote;
 pub(crate) use self::content::SendMediaWindow;
 pub(crate) use self::preferences_window::PreferencesWindow;
 pub(crate) use self::row::Row;

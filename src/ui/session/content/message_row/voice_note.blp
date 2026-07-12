@@ -1,0 +1,34 @@
+using Gtk 4.0;
+
+template $PaplMessageVoiceNote: $PaplMessageBase {
+  layout-manager: BinLayout {};
+
+  $PaplMessageBubble message_bubble {
+    prefix: Box {
+      spacing: 8;
+
+      styles [
+        "voice-note",
+      ]
+
+      Button play_button {
+        valign: center;
+        icon-name: "media-playback-start-symbolic";
+
+        styles [
+          "circular",
+        ]
+      }
+
+      Label duration_label {
+        valign: center;
+        xalign: 0;
+
+        styles [
+          "numeric",
+          "caption",
+        ]
+      }
+    };
+  }
+}

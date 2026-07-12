@@ -12,6 +12,7 @@ mod sticker;
 mod text;
 mod venue;
 mod video;
+mod voice_note;
 
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -41,6 +42,7 @@ pub(crate) use self::sticker::MessageSticker;
 pub(crate) use self::text::MessageText;
 pub(crate) use self::venue::MessageVenue;
 pub(crate) use self::video::MessageVideo;
+pub(crate) use self::voice_note::MessageVoiceNote;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -468,6 +470,9 @@ impl Row {
                 }
                 MessageDocument(_) => {
                     self.update_specific_content::<_, ui::MessageDocument>(message_);
+                }
+                MessageVoiceNote(_) => {
+                    self.update_specific_content::<_, ui::MessageVoiceNote>(message_);
                 }
                 MessageVenue(_) => {
                     self.update_specific_content::<_, ui::MessageVenue>(message_);
