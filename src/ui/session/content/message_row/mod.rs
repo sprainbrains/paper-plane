@@ -87,6 +87,9 @@ mod imp {
             klass.install_action("message-row.forward", None, move |widget, _, _| {
                 widget.show_forward()
             });
+            klass.install_action("message-row.copy", None, move |widget, _, _| {
+                widget.copy_text()
+            });
             klass.install_action("message-row.edit", None, move |widget, _, _| widget.edit());
             klass.install_action("message-row.revoke-delete", None, move |widget, _, _| {
                 widget.show_delete_dialog(true)
@@ -173,6 +176,22 @@ impl Row {
             self.activate_action("chat-history.reply", Some(&message.id().to_variant()))
                 .unwrap();
         }
+    }
+
+    /// Copies the message's text (or media caption) to the clipboard.
+    fn copy_text(&self) {
+        if let Some(message) = self.message().downcast_ref::<model::Message>()
+            && let Some(text) = copyable_text(&message.content().0)
+        {
+            self.clipboard().set_text(&text);
+        }
+    }
+
+    fn can_copy_text(&self) -> bool {
+        self.message()
+            .downcast_ref::<model::Message>()
+            .and_then(|message| copyable_text(&message.content().0))
+            .is_some()
     }
 
     /// Opens a chat picker to forward this message to another chat.
@@ -440,6 +459,7 @@ impl Row {
     fn update_actions(&self) {
         self.action_set_enabled("message-row.reply", self.can_reply_to_message());
         self.action_set_enabled("message-row.edit", self.can_edit_message());
+        self.action_set_enabled("message-row.copy", self.can_copy_text());
 
         if let Some(message) = self.message().downcast_ref::<model::Message>() {
             self.action_set_enabled("message-row.delete", message.can_be_deleted_only_for_self());
@@ -586,4 +606,22 @@ fn can_send_messages_in_chat(chat: &model::Chat) -> bool {
             Banned(_) => false,
         })
         .unwrap_or(true)
+}
+
+/// The message's plain text or media caption, if non-empty (for the copy action).
+fn copyable_text(content: &tdlib::enums::MessageContent) -> Option<String> {
+    use tdlib::enums::MessageContent::*;
+
+    let text = match content {
+        MessageText(data) => &data.text.text,
+        MessagePhoto(data) => &data.caption.text,
+        MessageVideo(data) => &data.caption.text,
+        MessageAnimation(data) => &data.caption.text,
+        MessageDocument(data) => &data.caption.text,
+        MessageAudio(data) => &data.caption.text,
+        MessageVoiceNote(data) => &data.caption.text,
+        _ => return None,
+    };
+
+    (!text.is_empty()).then(|| text.clone())
 }
