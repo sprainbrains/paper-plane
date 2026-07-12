@@ -4,8 +4,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use glib::subclass::Signal;
 use glib::Properties;
+use glib::subclass::Signal;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;

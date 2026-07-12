@@ -1,5 +1,5 @@
-use tdlib::types::File;
 use FileStatus::*;
+use tdlib::types::File;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum FileStatus {

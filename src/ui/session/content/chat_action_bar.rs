@@ -6,11 +6,11 @@ use std::sync::OnceLock;
 use anyhow::anyhow;
 use gettextrs::gettext;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::expressions;
 use crate::i18n::gettext_f;
@@ -172,9 +172,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Chat>("chat")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Chat>("chat")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -202,8 +204,10 @@ mod imp {
                 .unwrap()
                 .set_orientation(gtk::Orientation::Vertical);
 
-            self.message_entry.connect_formatted_text_notify(
-                clone!(#[weak] obj, move |message_entry, _| {
+            self.message_entry.connect_formatted_text_notify(clone!(
+                #[weak]
+                obj,
+                move |message_entry, _| {
                     // Enable the send-message action only when the message entry contains
                     // at least one non-whitespace character
                     let should_enable = message_entry
@@ -213,30 +217,44 @@ mod imp {
                     obj.action_set_enabled("chat-action-bar.send-message", should_enable);
 
                     // Send typing action
-                    utils::spawn(clone!(#[weak] obj, async move {
-                        obj.send_chat_action(tdlib::enums::ChatAction::Typing).await;
-                    }));
-                }),
-            );
+                    utils::spawn(clone!(
+                        #[weak]
+                        obj,
+                        async move {
+                            obj.send_chat_action(tdlib::enums::ChatAction::Typing).await;
+                        }
+                    ));
+                }
+            ));
 
-            self.message_entry
-                .connect_paste_clipboard(clone!(#[weak] obj, move |_| {
+            self.message_entry.connect_paste_clipboard(clone!(
+                #[weak]
+                obj,
+                move |_| {
                     obj.handle_paste_action();
-                }));
+                }
+            ));
 
-            self.message_entry
-                .connect_emoji_button_press(clone!(#[weak] obj, move |_, button| {
+            self.message_entry.connect_emoji_button_press(clone!(
+                #[weak]
+                obj,
+                move |_, button| {
                     obj.show_emoji_chooser(&button);
-                }));
+                }
+            ));
 
             // The message entry is always empty at this point, so disable the
             // send-message action
             obj.action_set_enabled("chat-action-bar.send-message", false);
 
-            self.message_entry
-                .connect_activate(clone!(#[weak] obj, move |_| {
-                    obj.activate_action("chat-action-bar.send-message", None).unwrap()
-                }));
+            self.message_entry.connect_activate(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    obj.activate_action("chat-action-bar.send-message", None)
+                        .unwrap()
+                }
+            ));
 
             obj.create_signal_groups();
         }
@@ -276,24 +294,36 @@ impl ChatActionBar {
         let chat_signal_group = glib::SignalGroup::new::<model::Chat>();
         chat_signal_group.connect_notify_local(
             Some("notification-settings"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_stack_page();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_stack_page();
+                }
+            ),
         );
         chat_signal_group.connect_notify_local(
             Some("block-list"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_stack_page();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_stack_page();
+                }
+            ),
         );
         imp.chat_signal_group.set(chat_signal_group).unwrap();
 
         let basic_group_signal_group = glib::SignalGroup::new::<model::BasicGroup>();
         basic_group_signal_group.connect_notify_local(
             Some("status"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_stack_page();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_stack_page();
+                }
+            ),
         );
         imp.basic_group_signal_group
             .set(basic_group_signal_group)
@@ -302,9 +332,13 @@ impl ChatActionBar {
         let supergroup_signal_group = glib::SignalGroup::new::<model::Supergroup>();
         supergroup_signal_group.connect_notify_local(
             Some("status"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_stack_page();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_stack_page();
+                }
+            ),
         );
         imp.supergroup_signal_group
             .set(supergroup_signal_group)
@@ -468,12 +502,20 @@ impl ChatActionBar {
         if emoji_chooser.is_none() {
             let chooser = gtk::EmojiChooser::new();
             chooser.set_parent(parent);
-            chooser.connect_emoji_picked(clone!(#[weak(rename_to = obj)] self, move |_, emoji| {
-                obj.imp().message_entry.insert_at_cursor(emoji);
-            }));
-            chooser.connect_hide(clone!(#[weak(rename_to = obj)] self, move |_| {
-                obj.imp().message_entry.grab_focus();
-            }));
+            chooser.connect_emoji_picked(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, emoji| {
+                    obj.imp().message_entry.insert_at_cursor(emoji);
+                }
+            ));
+            chooser.connect_hide(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_| {
+                    obj.imp().message_entry.grab_focus();
+                }
+            ));
             *emoji_chooser = Some(chooser);
         }
         emoji_chooser.as_ref().unwrap().popup();
@@ -505,53 +547,52 @@ impl ChatActionBar {
     async fn edit_message(&self) {
         if let Some(chat) = self.chat()
             && let ChatActionBarState::Editing(message_id) = self.imp().state.get()
-                && let Some(message) = self.compose_text_message().await {
-                    let client_id = chat.session_().client_().id();
-                    let chat_id = chat.id();
+            && let Some(message) = self.compose_text_message().await
+        {
+            let client_id = chat.session_().client_().id();
+            let chat_id = chat.id();
 
-                    let result = tdlib::functions::edit_message_text(
-                        chat_id, message_id, message, client_id,
-                    )
-                    .await;
-                    if let Err(e) = result {
-                        log::warn!("Error editing a text message: {:?}", e);
-                    }
+            let result =
+                tdlib::functions::edit_message_text(chat_id, message_id, message, client_id).await;
+            if let Err(e) = result {
+                log::warn!("Error editing a text message: {:?}", e);
+            }
 
-                    self.cancel_action();
-                }
+            self.cancel_action();
+        }
     }
 
     async fn send_text_message(&self) {
         if let Some(chat) = self.chat()
-            && let Some(message) = self.compose_text_message().await {
-                let client_id = chat.session_().client_().id();
-                let chat_id = chat.id();
-                let message_id = match self.imp().state.get() {
-                    ChatActionBarState::Replying(id) => id,
-                    _ => 0,
-                };
-                let reply_to = if message_id != 0 {
-                    Some(tdlib::enums::InputMessageReplyTo::Message(
-                        tdlib::types::InputMessageReplyToMessage {
-                            message_id,
-                            ..Default::default()
-                        },
-                    ))
-                } else {
-                    None
-                };
+            && let Some(message) = self.compose_text_message().await
+        {
+            let client_id = chat.session_().client_().id();
+            let chat_id = chat.id();
+            let message_id = match self.imp().state.get() {
+                ChatActionBarState::Replying(id) => id,
+                _ => 0,
+            };
+            let reply_to = if message_id != 0 {
+                Some(tdlib::enums::InputMessageReplyTo::Message(
+                    tdlib::types::InputMessageReplyToMessage {
+                        message_id,
+                        ..Default::default()
+                    },
+                ))
+            } else {
+                None
+            };
 
-                // Send the message
-                let result = tdlib::functions::send_message(
-                    chat_id, None, reply_to, None, message, client_id,
-                )
-                .await;
-                if let Err(e) = result {
-                    log::warn!("Error sending a message: {:?}", e);
-                }
-
-                self.reset();
+            // Send the message
+            let result =
+                tdlib::functions::send_message(chat_id, None, reply_to, None, message, client_id)
+                    .await;
+            if let Err(e) = result {
+                log::warn!("Error sending a message: {:?}", e);
             }
+
+            self.reset();
+        }
     }
 
     fn is_chat_muted(&self) -> bool {
@@ -681,9 +722,13 @@ impl ChatActionBar {
             if result.is_ok() {
                 glib::timeout_add_seconds_local_once(
                     5,
-                    clone!(#[weak(rename_to = obj)] self, move || {
-                        obj.imp().chat_action_in_cooldown.set(false);
-                    }),
+                    clone!(
+                        #[weak(rename_to = obj)]
+                        self,
+                        move || {
+                            obj.imp().chat_action_in_cooldown.set(false);
+                        }
+                    ),
                 );
             } else {
                 imp.chat_action_in_cooldown.set(false);
@@ -693,11 +738,15 @@ impl ChatActionBar {
 
     pub(crate) fn handle_paste_action(&self) {
         if let Some(chat) = self.chat() {
-            utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-                if let Err(e) = obj.handle_image_clipboard(chat).await {
-                    log::warn!("Error on pasting an image: {:?}", e);
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    if let Err(e) = obj.handle_image_clipboard(chat).await {
+                        log::warn!("Error on pasting an image: {:?}", e);
+                    }
                 }
-            }));
+            ));
         }
     }
 
@@ -737,9 +786,13 @@ impl ChatActionBar {
             return;
         }
 
-        utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-            obj.save_message_as_draft().await;
-        }));
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                obj.save_message_as_draft().await;
+            }
+        ));
 
         let imp = self.imp();
         let mut bindings = imp.bindings.borrow_mut();

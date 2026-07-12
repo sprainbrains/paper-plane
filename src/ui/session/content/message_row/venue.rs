@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 use ui::MessageBaseExt;
 
 use crate::model;
@@ -55,9 +55,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Message>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Message>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -126,11 +128,14 @@ impl MessageBaseExt for MessageVenue {
         imp.message_bubble.add_message_label_class("dim-label");
 
         // Update the message.
-        let handler_id =
-            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
+        let handler_id = message.connect_content_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |message| {
                 obj.update_row(message);
                 obj.update_map_window(message);
-            }));
+            }
+        ));
         imp.handler_id.replace(Some(handler_id));
         self.update_row(message);
 

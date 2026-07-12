@@ -3,10 +3,10 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use gettextrs::gettext;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::ui;
 

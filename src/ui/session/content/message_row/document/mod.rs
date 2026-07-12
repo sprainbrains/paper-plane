@@ -6,12 +6,12 @@ use std::sync::OnceLock;
 
 use file_status::FileStatus;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::status_indicator::StatusIndicator;
 use crate::model;
@@ -64,9 +64,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<glib::Object>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<glib::Object>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -115,10 +117,13 @@ impl ui::MessageBaseExt for MessageDocument {
 
         imp.message_bubble.update_from_message(message, false);
 
-        let handler_id =
-            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
+        let handler_id = message.connect_content_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |message| {
                 obj.update_document(message);
-            }));
+            }
+        ));
         imp.handler_id.replace(Some(handler_id));
         self.update_document(message);
 
@@ -176,23 +181,43 @@ impl MessageDocument {
             }
             FileStatus::CanBeDownloaded => {
                 // Download file
-                click.connect_released(clone!(#[weak(rename_to = obj)] self, #[weak] session, move |click, _, _, _| {
-                    // TODO: Fix bug mentioned here
-                    // https://github.com/paper-plane-developers/paper-plane/pull/372#discussion_r968841370
-                    session.download_file_with_updates(file_id, clone!(#[weak] obj, #[weak] session, move |file| {
-                        obj.update_status(file, session);
-                    }));
+                click.connect_released(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    #[weak]
+                    session,
+                    move |click, _, _, _| {
+                        // TODO: Fix bug mentioned here
+                        // https://github.com/paper-plane-developers/paper-plane/pull/372#discussion_r968841370
+                        session.download_file_with_updates(
+                            file_id,
+                            clone!(
+                                #[weak]
+                                obj,
+                                #[weak]
+                                session,
+                                move |file| {
+                                    obj.update_status(file, session);
+                                }
+                            ),
+                        );
 
-                    let imp = obj.imp();
+                        let imp = obj.imp();
 
-                    imp.status_indicator.set_status(FileStatus::Downloading(0.0));
-                    let handler_id = click.connect_released(clone!(#[weak] session, move |_, _, _, _| {
-                        session.cancel_download_file(file_id);
-                    }));
-                    if let Some(handler_id) = imp.status_handler_id.replace(Some(handler_id)) {
-                        click.disconnect(handler_id);
+                        imp.status_indicator
+                            .set_status(FileStatus::Downloading(0.0));
+                        let handler_id = click.connect_released(clone!(
+                            #[weak]
+                            session,
+                            move |_, _, _, _| {
+                                session.cancel_download_file(file_id);
+                            }
+                        ));
+                        if let Some(handler_id) = imp.status_handler_id.replace(Some(handler_id)) {
+                            click.disconnect(handler_id);
+                        }
                     }
-                }))
+                ))
             }
             FileStatus::Downloaded => {
                 // Open file
@@ -253,14 +278,17 @@ impl MessageDocument {
                     }
 
                     let session = message.chat_().session_();
-                    utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-                        if let Ok(file) = session.download_file(thumbnail.file.id).await
-                        {
-                            obj.imp()
-                                .file_thumbnail_picture
-                                .set_filename(Some(&file.local.path));
+                    utils::spawn(clone!(
+                        #[weak(rename_to = obj)]
+                        self,
+                        async move {
+                            if let Ok(file) = session.download_file(thumbnail.file.id).await {
+                                obj.imp()
+                                    .file_thumbnail_picture
+                                    .set_filename(Some(&file.local.path));
+                            }
                         }
-                    }));
+                    ));
                 }
             } else {
                 imp.status_indicator.set_masked(true);

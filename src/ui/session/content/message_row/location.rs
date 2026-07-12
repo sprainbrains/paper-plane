@@ -3,11 +3,11 @@ use std::sync::OnceLock;
 
 use gettextrs::gettext;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 use ui::MessageBaseExt;
 
 use crate::i18n::gettext_f;
@@ -65,9 +65,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Message>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Message>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -134,11 +136,14 @@ impl MessageBaseExt for MessageLocation {
         imp.message_bubble.update_from_message(message, true);
 
         // Update the message.
-        let handler_id =
-            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
+        let handler_id = message.connect_content_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |message| {
                 obj.update_row(message);
                 obj.update_map_window(message);
-            }));
+            }
+        ));
         imp.handler_id.replace(Some(handler_id));
         self.update_row(message);
 
@@ -178,31 +183,38 @@ impl MessageLocation {
 
                     let source_id = glib::timeout_add_seconds_local(
                         1,
-                        clone!(#[weak(rename_to = obj)] self, #[upgrade_or] glib::ControlFlow::Break, move || {
-                            match obj.update_time(message_date, message_.live_period) {
-                                Some(now) => {
-                                    let minutes = now.difference(&last_update_date).as_minutes();
-                                    obj.imp().last_updated_label.set_label(&if minutes <= 1 {
-                                        gettext("updated just now")
-                                    } else if minutes < 60 {
-                                        gettext!("updated {} minutes ago", minutes)
-                                    } else if minutes == 60 {
-                                        gettext("updated an hour ago")
-                                    } else {
-                                        gettext_f(
-                                            "updated {hours} hours and {minutes} minutes ago",
-                                            &[
-                                                ("hours", &(minutes / 60).to_string()),
-                                                ("minutes", &(minutes % 60).to_string()),
-                                            ],
-                                        )
-                                    });
+                        clone!(
+                            #[weak(rename_to = obj)]
+                            self,
+                            #[upgrade_or]
+                            glib::ControlFlow::Break,
+                            move || {
+                                match obj.update_time(message_date, message_.live_period) {
+                                    Some(now) => {
+                                        let minutes =
+                                            now.difference(&last_update_date).as_minutes();
+                                        obj.imp().last_updated_label.set_label(&if minutes <= 1 {
+                                            gettext("updated just now")
+                                        } else if minutes < 60 {
+                                            gettext!("updated {} minutes ago", minutes)
+                                        } else if minutes == 60 {
+                                            gettext("updated an hour ago")
+                                        } else {
+                                            gettext_f(
+                                                "updated {hours} hours and {minutes} minutes ago",
+                                                &[
+                                                    ("hours", &(minutes / 60).to_string()),
+                                                    ("minutes", &(minutes % 60).to_string()),
+                                                ],
+                                            )
+                                        });
 
-                                    glib::ControlFlow::Continue
+                                        glib::ControlFlow::Continue
+                                    }
+                                    None => glib::ControlFlow::Break,
                                 }
-                                None => glib::ControlFlow::Break,
                             }
-                        }),
+                        ),
                     );
                     imp.expire_source_id.replace(Some(source_id));
 
@@ -235,24 +247,21 @@ impl MessageLocation {
         imp.progress_bar
             .set_percentage(expires_in as f64 / live_period as f64);
 
-        if expires_in > 0 {
-            Some(now)
-        } else {
-            None
-        }
+        if expires_in > 0 { Some(now) } else { None }
     }
 
     fn update_map_window(&self, message: &model::Message) {
         if let Some(map_window) = self.imp().map_window.upgrade()
-            && let tdlib::enums::MessageContent::MessageLocation(message_) = message.content().0 {
-                let map = map_window.map();
+            && let tdlib::enums::MessageContent::MessageLocation(message_) = message.content().0
+        {
+            let map = map_window.map();
 
-                if message_.live_period > 0 {
-                    map.set_custom_marker(Some(
-                        ui::AvatarMapMarker::from(message.sender().as_user().unwrap()).upcast(),
-                    ));
-                }
-                map.set_marker_position(message_.location.latitude, message_.location.longitude);
+            if message_.live_period > 0 {
+                map.set_custom_marker(Some(
+                    ui::AvatarMapMarker::from(message.sender().as_user().unwrap()).upcast(),
+                ));
             }
+            map.set_marker_position(message_.location.latitude, message_.location.longitude);
+        }
     }
 }

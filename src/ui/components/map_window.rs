@@ -4,10 +4,10 @@ use std::cell::RefMut;
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
-use gtk::CompositeTemplate;
 use shumate::prelude::*;
 
 use crate::ui;
@@ -69,16 +69,28 @@ mod imp {
             let obj = &*self.obj();
 
             let viewport = obj.map().viewport();
-            viewport.connect_zoom_level_notify(clone!(#[weak] obj, move |viewport| {
-                obj.update_zoom_actions(viewport);
-                obj.update_center_marker_animations_action(viewport);
-            }));
-            viewport.connect_latitude_notify(clone!(#[weak] obj, move |viewport| {
-                obj.update_center_marker_animations_action(viewport);
-            }));
-            viewport.connect_longitude_notify(clone!(#[weak] obj, move |viewport| {
-                obj.update_center_marker_animations_action(viewport);
-            }));
+            viewport.connect_zoom_level_notify(clone!(
+                #[weak]
+                obj,
+                move |viewport| {
+                    obj.update_zoom_actions(viewport);
+                    obj.update_center_marker_animations_action(viewport);
+                }
+            ));
+            viewport.connect_latitude_notify(clone!(
+                #[weak]
+                obj,
+                move |viewport| {
+                    obj.update_center_marker_animations_action(viewport);
+                }
+            ));
+            viewport.connect_longitude_notify(clone!(
+                #[weak]
+                obj,
+                move |viewport| {
+                    obj.update_center_marker_animations_action(viewport);
+                }
+            ));
             obj.update_zoom_actions(&viewport);
         }
     }
@@ -178,15 +190,33 @@ impl MapWindow {
             .value_to(lon)
             .build();
 
-        animation_zoom.connect_state_notify(clone!(#[weak(rename_to = obj)] self, move |_| {
-            obj.update_center_marker_animations(obj.imp().center_marker_animations[0].borrow_mut());
-        }));
-        animation_lat.connect_state_notify(clone!(#[weak(rename_to = obj)] self, move |_| {
-            obj.update_center_marker_animations(obj.imp().center_marker_animations[1].borrow_mut());
-        }));
-        animation_lon.connect_state_notify(clone!(#[weak(rename_to = obj)] self, move |_| {
-            obj.update_center_marker_animations(obj.imp().center_marker_animations[2].borrow_mut());
-        }));
+        animation_zoom.connect_state_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| {
+                obj.update_center_marker_animations(
+                    obj.imp().center_marker_animations[0].borrow_mut(),
+                );
+            }
+        ));
+        animation_lat.connect_state_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| {
+                obj.update_center_marker_animations(
+                    obj.imp().center_marker_animations[1].borrow_mut(),
+                );
+            }
+        ));
+        animation_lon.connect_state_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| {
+                obj.update_center_marker_animations(
+                    obj.imp().center_marker_animations[2].borrow_mut(),
+                );
+            }
+        ));
 
         map.set_interactive(false);
 

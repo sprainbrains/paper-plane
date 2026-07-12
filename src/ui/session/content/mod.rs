@@ -10,9 +10,9 @@ mod send_media_window;
 use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::background::Background;
 pub(crate) use self::chat_action_bar::ChatActionBar;
@@ -74,9 +74,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Chat>("chat")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Chat>("chat")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 

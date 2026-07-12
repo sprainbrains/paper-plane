@@ -1,13 +1,13 @@
 use std::cell::OnceCell;
 
 use gettextrs::gettext;
-use glib::closure;
 use glib::Properties;
+use glib::closure;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::i18n::gettext_f;
 use crate::model;

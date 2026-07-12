@@ -3,12 +3,12 @@ use std::sync::OnceLock;
 
 use glib::clone;
 use glib::closure;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::types::MessageId;
@@ -50,9 +50,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Message>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Message>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -130,10 +132,13 @@ impl ui::MessageBaseExt for MessagePhoto {
         imp.binding.replace(Some(caption_binding));
 
         // Load photo
-        let handler_id =
-            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
+        let handler_id = message.connect_content_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |message| {
                 obj.update_photo(message);
-            }));
+            }
+        ));
         imp.handler_id.replace(Some(handler_id));
         self.update_photo(message);
 
@@ -183,9 +188,15 @@ impl MessagePhoto {
 
                 let file_id = photo_size.photo.id;
                 let session = message.chat_().session_();
-                utils::spawn(clone!(#[weak(rename_to = obj)] self, #[weak] session, async move {
-                    obj.download_photo(file_id, &session).await;
-                }));
+                utils::spawn(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    #[weak]
+                    session,
+                    async move {
+                        obj.download_photo(file_id, &session).await;
+                    }
+                ));
             }
         }
     }
@@ -203,27 +214,31 @@ impl MessagePhoto {
 
     fn load_photo(&self, path: String) {
         if let Some(message_id) = self.message_id() {
-            utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-                let result = gio::spawn_blocking(move || utils::decode_image_from_path(&path))
-                    .await
-                    .unwrap();
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    let result = gio::spawn_blocking(move || utils::decode_image_from_path(&path))
+                        .await
+                        .unwrap();
 
-                // Check if the current message id is the same as the one at
-                // the time of the request. It may be changed because of the
-                // ListView recycling while decoding the image. It may also
-                // that the message has been already removed from the history
-                // and the WeakRef is None (after successful sent)
-                if obj.message_id().filter(|id| *id == message_id).is_some() {
-                    match result {
-                        Ok(texture) => {
-                            obj.imp().picture.set_paintable(Some(&texture));
-                        }
-                        Err(e) => {
-                            log::warn!("Error decoding a photo: {e:?}");
+                    // Check if the current message id is the same as the one at
+                    // the time of the request. It may be changed because of the
+                    // ListView recycling while decoding the image. It may also
+                    // that the message has been already removed from the history
+                    // and the WeakRef is None (after successful sent)
+                    if obj.message_id().filter(|id| *id == message_id).is_some() {
+                        match result {
+                            Ok(texture) => {
+                                obj.imp().picture.set_paintable(Some(&texture));
+                            }
+                            Err(e) => {
+                                log::warn!("Error decoding a photo: {e:?}");
+                            }
                         }
                     }
                 }
-            }));
+            ));
         }
     }
 }

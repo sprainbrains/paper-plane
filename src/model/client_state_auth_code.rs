@@ -1,10 +1,10 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 
+use glib::Properties;
 use glib::clone;
 use glib::prelude::*;
 use glib::subclass::prelude::*;
-use glib::Properties;
 use gtk::glib;
 
 use crate::model;
@@ -70,17 +70,23 @@ mod imp {
 
                 let source_id = glib::timeout_add_seconds_local(
                     1,
-                    clone!(#[weak] obj, #[upgrade_or] glib::ControlFlow::Break, move || {
-                        let imp = obj.imp();
+                    clone!(
+                        #[weak]
+                        obj,
+                        #[upgrade_or]
+                        glib::ControlFlow::Break,
+                        move || {
+                            let imp = obj.imp();
 
-                        imp.set_countdown(obj.countdown() - 1);
-                        glib::ControlFlow::from(if obj.countdown() == 0 {
-                            imp.stop_code_next_type_countdown();
-                            false
-                        } else {
-                            true
-                        })
-                    }),
+                            imp.set_countdown(obj.countdown() - 1);
+                            glib::ControlFlow::from(if obj.countdown() == 0 {
+                                imp.stop_code_next_type_countdown();
+                                false
+                            } else {
+                                true
+                            })
+                        }
+                    ),
                 );
                 self.countdown_source_id.replace(Some(source_id));
             }
@@ -127,7 +133,8 @@ impl ClientStateAuthCode {
     }
 
     pub(crate) async fn resend_auth_code(&self) -> Result<(), tdlib::types::Error> {
-        match tdlib::functions::resend_authentication_code(None, self.auth_().client_().id()).await {
+        match tdlib::functions::resend_authentication_code(None, self.auth_().client_().id()).await
+        {
             Ok(_) => Ok(()),
             Err(e) => {
                 log::error!("Failed to resend auth code: {e:?}");

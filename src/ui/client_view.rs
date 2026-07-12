@@ -1,10 +1,10 @@
+use glib::Properties;
 use glib::closure;
 use glib::subclass::InitializingObject;
-use glib::Properties;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;

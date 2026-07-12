@@ -1,8 +1,8 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 
-use glib::clone;
 use glib::Properties;
+use glib::clone;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
@@ -106,9 +106,13 @@ mod imp {
             self.disconnect_model_signal();
 
             let n_items = if let Some(ref model) = model {
-                let handler = model.connect_items_changed(clone!(#[weak] obj, move |_, p, r, a| {
-                    obj.imp().model_items_changed(p, r, a);
-                }));
+                let handler = model.connect_items_changed(clone!(
+                    #[weak]
+                    obj,
+                    move |_, p, r, a| {
+                        obj.imp().model_items_changed(p, r, a);
+                    }
+                ));
                 self.signal_handler.replace(Some(handler));
 
                 model.n_items()

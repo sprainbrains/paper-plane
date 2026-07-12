@@ -3,10 +3,10 @@ use std::sync::OnceLock;
 
 use gettextrs::gettext;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 
@@ -50,9 +50,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<glib::Object>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<glib::Object>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -105,9 +107,13 @@ impl MessageIndicators {
         let message_signal_group = glib::SignalGroup::new::<model::Message>();
         message_signal_group.connect_notify_local(
             Some("is-edited"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_message_info();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_message_info();
+                }
+            ),
         );
         imp.message_signal_group.set(message_signal_group).unwrap();
 
@@ -115,9 +121,13 @@ impl MessageIndicators {
             glib::SignalGroup::new::<model::MessageInteractionInfo>();
         interaction_info_signal_group.connect_notify_local(
             Some("reply-count"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_reply_count();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_reply_count();
+                }
+            ),
         );
         imp.interaction_info_signal_group
             .set(interaction_info_signal_group)
@@ -126,9 +136,13 @@ impl MessageIndicators {
         let chat_signal_group = glib::SignalGroup::new::<model::Chat>();
         chat_signal_group.connect_notify_local(
             Some("last-read-outbox-message-id"),
-            clone!(#[weak(rename_to = obj)] self, move |_, _| {
-                obj.update_sending_state();
-            }),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_sending_state();
+                }
+            ),
         );
         imp.chat_signal_group.set(chat_signal_group).unwrap();
     }

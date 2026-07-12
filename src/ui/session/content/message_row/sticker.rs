@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 
 use adw::prelude::*;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;
@@ -52,9 +52,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Message>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Message>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 

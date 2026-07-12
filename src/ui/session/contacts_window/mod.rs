@@ -6,10 +6,10 @@ use std::sync::OnceLock;
 use adw::subclass::prelude::*;
 use glib::clone;
 use glib::subclass::Signal;
+use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::row::Row;
 use crate::model;
@@ -50,9 +50,11 @@ mod imp {
         fn signals() -> &'static [Signal] {
             static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
             SIGNALS.get_or_init(|| {
-                vec![Signal::builder("contact-activated")
-                    .param_types([i64::static_type()])
-                    .build()]
+                vec![
+                    Signal::builder("contact-activated")
+                        .param_types([i64::static_type()])
+                        .build(),
+                ]
             })
         }
     }
@@ -98,9 +100,13 @@ impl ContactsWindow {
 
         obj.imp().session.set(session).unwrap();
 
-        utils::spawn(clone!(#[weak] obj, async move {
-            obj.fetch_contacts().await;
-        }));
+        utils::spawn(clone!(
+            #[weak]
+            obj,
+            async move {
+                obj.fetch_contacts().await;
+            }
+        ));
 
         obj
     }

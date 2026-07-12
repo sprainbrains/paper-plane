@@ -3,11 +3,11 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use glib::closure;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::gsk;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;

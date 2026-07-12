@@ -8,11 +8,11 @@ use std::sync::OnceLock;
 use gettextrs::gettext;
 use glib::clone;
 use glib::subclass::Signal;
+use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::item_row::ItemRow;
 pub(crate) use self::row::Row;
@@ -134,9 +134,13 @@ impl Search {
         let imp = self.imp();
         if imp.search_entry.text().is_empty() {
             // Update recently found chats
-            utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-                obj.search().await;
-            }));
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    obj.search().await;
+                }
+            ));
         } else {
             // Reset the search entry. This will also start the search
             // for getting the recently found chats.
@@ -167,13 +171,19 @@ impl Search {
         const MAX_KNOWN_CHATS: i32 = 50;
 
         imp.selection.set_model(Some(&list));
-        list.connect_items_changed(clone!(#[weak(rename_to = obj)] self, move |list, _, _, _| {
-            obj.imp().stack.set_visible_child_name(if list.n_items() > 0 {
-                "results"
-            } else {
-                "empty"
-            });
-        }));
+        list.connect_items_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |list, _, _, _| {
+                obj.imp()
+                    .stack
+                    .set_visible_child_name(if list.n_items() > 0 {
+                        "results"
+                    } else {
+                        "empty"
+                    });
+            }
+        ));
 
         // Show the results page prematurely, so that we don't show the empty page
         // before even starting the search.

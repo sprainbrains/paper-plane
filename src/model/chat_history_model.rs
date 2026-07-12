@@ -42,9 +42,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Chat>("chat")
-                    .read_only()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Chat>("chat")
+                        .read_only()
+                        .build(),
+                ]
             })
         }
 
@@ -88,12 +90,20 @@ impl ChatHistoryModel {
 
         obj.imp().chat.set(Some(chat));
 
-        chat.connect_new_message(clone!(#[weak] obj, move |_, message| {
-            obj.push_front(message);
-        }));
-        chat.connect_deleted_message(clone!(#[weak] obj, move |_, message| {
-            obj.remove(message);
-        }));
+        chat.connect_new_message(clone!(
+            #[weak]
+            obj,
+            move |_, message| {
+                obj.push_front(message);
+            }
+        ));
+        chat.connect_deleted_message(clone!(
+            #[weak]
+            obj,
+            move |_, message| {
+                obj.remove(message);
+            }
+        ));
 
         obj
     }

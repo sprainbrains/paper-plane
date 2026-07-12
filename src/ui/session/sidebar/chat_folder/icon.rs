@@ -1,13 +1,13 @@
 use std::cell::Cell;
 
-use glib::closure;
 use glib::Properties;
+use glib::closure;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
 use gtk::gsk;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::utils;

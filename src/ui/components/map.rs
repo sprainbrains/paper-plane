@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 
 use adw::prelude::*;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 use shumate::prelude::*;
 
 use crate::ui;

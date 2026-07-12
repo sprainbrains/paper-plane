@@ -32,10 +32,12 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecBoxed::builder::<ChatHistoryItemType>("type")
-                    .write_only()
-                    .construct_only()
-                    .build()]
+                vec![
+                    glib::ParamSpecBoxed::builder::<ChatHistoryItemType>("type")
+                        .write_only()
+                        .construct_only()
+                        .build(),
+                ]
             })
         }
 

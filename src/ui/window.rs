@@ -1,12 +1,13 @@
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
+use crate::Application;
 use crate::config;
 use crate::model;
 use crate::strings;
@@ -14,7 +15,6 @@ use crate::types::ChatId;
 use crate::types::ClientId;
 use crate::ui;
 use crate::utils;
-use crate::Application;
 
 mod imp {
     use super::*;
@@ -51,11 +51,13 @@ mod imp {
 
             obj.client_manager_view()
                 .client_manager()
-                .connect_update_notification_group(
-                    clone!(#[weak] obj, move |_, notification_group, session| {
+                .connect_update_notification_group(clone!(
+                    #[weak]
+                    obj,
+                    move |_, notification_group, session| {
                         obj.handle_notifications(notification_group, session);
-                    }),
-                );
+                    }
+                ));
 
             // Devel profile
             if config::PROFILE == "Devel" {
@@ -184,25 +186,29 @@ impl Window {
                         app.send_notification(Some(&notification_id.to_string()), &notification);
 
                         let file_id = avatar_file.id;
-                        utils::spawn(
-                            clone!(#[weak] session, #[weak] app, async move {
+                        utils::spawn(clone!(
+                            #[weak]
+                            session,
+                            #[weak]
+                            app,
+                            async move {
                                 match session.download_file(file_id).await {
                                     Ok(file) => {
-                                        let texture = gdk::Texture::from_filename(file.local.path)
-                                            .unwrap();
+                                        let texture =
+                                            gdk::Texture::from_filename(file.local.path).unwrap();
                                         notification.set_icon(&texture);
 
                                         app.send_notification(
                                             Some(&notification_id.to_string()),
-                                            &notification
+                                            &notification,
                                         );
                                     }
                                     Err(e) => {
                                         log::warn!("Failed to download an avatar: {e:?}");
                                     }
                                 }
-                            }),
-                        );
+                            }
+                        ));
                     }
                 }
             }

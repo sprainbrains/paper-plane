@@ -39,8 +39,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::OnceLock;
 
-use gettextrs::gettext;
 use gettextrs::LocaleCategory;
+use gettextrs::gettext;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;

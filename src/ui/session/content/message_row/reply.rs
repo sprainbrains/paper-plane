@@ -1,14 +1,14 @@
 use std::cell::RefCell;
 
 use gettextrs::gettext;
-use glib::clone;
 use glib::ParamSpec;
 use glib::Properties;
 use glib::Value;
+use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::strings;
@@ -70,9 +70,13 @@ mod imp {
             self.message_label.set_label(&gettext("Loading…"));
 
             let obj = self.obj();
-            utils::spawn(clone!(#[weak] obj, async move {
-                obj.load_replied_message().await;
-            }));
+            utils::spawn(clone!(
+                #[weak]
+                obj,
+                async move {
+                    obj.load_replied_message().await;
+                }
+            ));
         }
 
         fn dispose(&self) {

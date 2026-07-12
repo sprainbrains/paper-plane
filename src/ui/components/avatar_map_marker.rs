@@ -1,10 +1,10 @@
 use std::sync::OnceLock;
 
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;
@@ -39,10 +39,12 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::User>("user")
-                    .construct()
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::User>("user")
+                        .construct()
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -67,9 +69,13 @@ mod imp {
 
             self.avatar.connect_notify_local(
                 Some("item"),
-                clone!(#[weak] obj, move |_, _| {
-                    obj.notify("user");
-                }),
+                clone!(
+                    #[weak]
+                    obj,
+                    move |_, _| {
+                        obj.notify("user");
+                    }
+                ),
             );
         }
 

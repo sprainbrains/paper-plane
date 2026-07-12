@@ -2,9 +2,9 @@ use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
 use glib::subclass::*;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::ui;
 

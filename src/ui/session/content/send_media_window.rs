@@ -3,10 +3,10 @@ use std::cell::RefCell;
 
 use adw::subclass::prelude::*;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;
@@ -66,15 +66,22 @@ mod imp {
 
             let obj = self.obj();
 
-            self.caption_entry
-                .connect_activate(clone!(#[weak] obj, move |_| {
-                    obj.activate_action("send-media-window.send-message", None).unwrap()
-                }));
+            self.caption_entry.connect_activate(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    obj.activate_action("send-media-window.send-message", None)
+                        .unwrap()
+                }
+            ));
 
-            self.caption_entry
-                .connect_emoji_button_press(clone!(#[weak] obj, move |_, button| {
+            self.caption_entry.connect_emoji_button_press(clone!(
+                #[weak]
+                obj,
+                move |_, button| {
                     obj.show_emoji_chooser(&button);
-                }));
+                }
+            ));
         }
 
         fn dispose(&self) {
@@ -143,12 +150,20 @@ impl SendMediaWindow {
         if emoji_chooser.is_none() {
             let chooser = gtk::EmojiChooser::new();
             chooser.set_parent(parent);
-            chooser.connect_emoji_picked(clone!(#[weak(rename_to = obj)] self, move |_, emoji| {
-                obj.imp().caption_entry.insert_at_cursor(emoji);
-            }));
-            chooser.connect_hide(clone!(#[weak(rename_to = obj)] self, move |_| {
-                obj.imp().caption_entry.grab_focus();
-            }));
+            chooser.connect_emoji_picked(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, emoji| {
+                    obj.imp().caption_entry.insert_at_cursor(emoji);
+                }
+            ));
+            chooser.connect_hide(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_| {
+                    obj.imp().caption_entry.grab_focus();
+                }
+            ));
             *emoji_chooser = Some(chooser);
         }
         emoji_chooser.as_ref().unwrap().popup();
@@ -201,7 +216,8 @@ impl SendMediaWindow {
             None
         };
 
-        match tdlib::functions::send_message(chat_id, None, reply_to, None, content, client_id).await
+        match tdlib::functions::send_message(chat_id, None, reply_to, None, content, client_id)
+            .await
         {
             Ok(_) => self.close(),
             Err(e) => imp.toast_overlay.add_toast(

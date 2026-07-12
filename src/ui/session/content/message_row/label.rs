@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::pango;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::ui;
 

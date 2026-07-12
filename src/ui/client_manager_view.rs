@@ -1,18 +1,18 @@
 use std::cell::RefCell;
 
-use glib::clone;
 use glib::Properties;
+use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
+use crate::APPLICATION_OPTS;
 use crate::model;
 use crate::types::ChatId;
 use crate::types::ClientId;
 use crate::ui;
 use crate::utils;
-use crate::APPLICATION_OPTS;
 
 mod imp {
     use super::*;
@@ -65,12 +65,15 @@ mod imp {
 
             let obj = &*self.obj();
 
-            self.client_manager
-                .connect_client_removed(clone!(#[weak] obj, move |_, client| {
+            self.client_manager.connect_client_removed(clone!(
+                #[weak]
+                obj,
+                move |_, client| {
                     if Some(client) == obj.active_client().as_ref() {
                         obj.restore_last_session()
                     }
-                }));
+                }
+            ));
 
             obj.restore_last_session();
         }
@@ -116,9 +119,10 @@ mod imp {
                 && let Err(e) = self.settings.set_string(
                     "last-used-session",
                     &client.database_info().0.directory_base_name,
-                ) {
-                    log::warn!("Could not save setting 'last-used-session': {e}");
-                }
+                )
+            {
+                log::warn!("Could not save setting 'last-used-session': {e}");
+            }
 
             self.animated_bin.set_child(&ui::ClientView::from(&client));
         }
@@ -155,18 +159,22 @@ impl ClientManagerView {
     /// Sets the online status for the active logged in client. This will be called from the
     /// application `Window` when its active state has changed.
     pub(crate) fn set_active_client_online(&self) {
-        utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-            if let Some(client) = obj.active_client() {
-                client
-                    .set_online(
-                        obj.root()
-                            .and_downcast::<gtk::Window>()
-                            .unwrap()
-                            .is_active()
-                    )
-                    .await;
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                if let Some(client) = obj.active_client() {
+                    client
+                        .set_online(
+                            obj.root()
+                                .and_downcast::<gtk::Window>()
+                                .unwrap()
+                                .is_active(),
+                        )
+                        .await;
+                }
             }
-        }));
+        ));
     }
 
     pub(crate) fn select_chat(&self, client_id: ClientId, chat_id: ChatId) {

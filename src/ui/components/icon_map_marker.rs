@@ -1,7 +1,7 @@
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::utils;
 
@@ -37,10 +37,12 @@ mod imp {
             use std::sync::OnceLock;
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecString::builder("icon-name")
-                    .construct()
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecString::builder("icon-name")
+                        .construct()
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 

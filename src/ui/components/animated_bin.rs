@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 mod imp {
     use super::*;
@@ -35,9 +35,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<gtk::Widget>("child")
-                    .read_only()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<gtk::Widget>("child")
+                        .read_only()
+                        .build(),
+                ]
             })
         }
 

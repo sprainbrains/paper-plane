@@ -1,12 +1,12 @@
+use glib::Properties;
 use glib::clone;
 use glib::closure;
 use glib::subclass::InitializingObject;
-use glib::Properties;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;
@@ -93,11 +93,13 @@ mod imp {
                 let client_manager = model.auth_().client_().client_manager_();
 
                 obj.action_set_enabled("login.exit", !client_manager.sessions().is_empty());
-                client_manager.connect_items_changed(
-                    clone!(#[weak] obj, move |client_manager, _, _, _| {
+                client_manager.connect_items_changed(clone!(
+                    #[weak]
+                    obj,
+                    move |client_manager, _, _, _| {
                         obj.action_set_enabled("login.exit", !client_manager.sessions().is_empty());
-                    }),
-                );
+                    }
+                ));
             }
         }
     }

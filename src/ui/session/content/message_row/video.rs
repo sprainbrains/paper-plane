@@ -3,11 +3,11 @@ use std::cell::RefCell;
 use std::sync::OnceLock;
 
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::model;
 use crate::ui;
@@ -50,9 +50,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<model::Message>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<model::Message>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -101,10 +103,13 @@ impl ui::MessageBaseExt for MessageVideo {
 
         imp.message_bubble.update_from_message(message, true);
 
-        let handler_id =
-            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
+        let handler_id = message.connect_content_notify(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |message| {
                 obj.update_content(message.content().0, &message.chat_().session_());
-            }));
+            }
+        ));
         imp.handler_id.replace(Some(handler_id));
 
         self.update_content(message.content().0, &message.chat_().session_());
@@ -165,9 +170,15 @@ impl MessageVideo {
             );
 
             let file_id = file.id;
-            utils::spawn(clone!(#[weak(rename_to = obj)] self, #[weak] session, async move {
-                obj.download_video(file_id, &session).await;
-            }));
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[weak]
+                session,
+                async move {
+                    obj.download_video(file_id, &session).await;
+                }
+            ));
         }
     }
 
@@ -191,10 +202,14 @@ impl MessageVideo {
         media.play();
 
         if !imp.is_animation.get() {
-            media.connect_timestamp_notify(clone!(#[weak(rename_to = obj)] self, move |media| {
-                let time = (media.duration() - media.timestamp()) / i64::pow(10, 6);
-                obj.update_remaining_time(time);
-            }));
+            media.connect_timestamp_notify(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |media| {
+                    let time = (media.duration() - media.timestamp()) / i64::pow(10, 6);
+                    obj.update_remaining_time(time);
+                }
+            ));
         }
 
         imp.picture.set_paintable(Some(&media));

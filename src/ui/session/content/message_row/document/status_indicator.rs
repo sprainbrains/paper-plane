@@ -1,10 +1,10 @@
 use std::cell::Cell;
 
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::gsk;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use super::file_status::FileStatus;
 

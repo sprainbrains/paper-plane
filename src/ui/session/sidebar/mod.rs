@@ -9,13 +9,13 @@ mod selection;
 use std::cell::Cell;
 use std::cell::OnceCell;
 
+use glib::Properties;
 use glib::clone;
 use glib::closure;
-use glib::Properties;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::avatar::Avatar;
 pub(crate) use self::chat_folder::Bar as ChatFolderBar;
@@ -103,13 +103,15 @@ mod imp {
             }
 
             if let Some(session) = session {
-                session.archive_chat_list().connect_items_changed(
-                    clone!(#[weak] obj, move |chat_list, _, _, _| {
+                session.archive_chat_list().connect_items_changed(clone!(
+                    #[weak]
+                    obj,
+                    move |chat_list, _, _, _| {
                         if chat_list.n_items() == 0 {
                             obj.imp().navigation_view.pop_to_tag("chats");
                         }
-                    }),
-                );
+                    }
+                ));
             }
 
             self.session.set(session);

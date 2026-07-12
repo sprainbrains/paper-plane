@@ -1,9 +1,9 @@
 use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
 mod imp {
     use super::*;
