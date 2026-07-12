@@ -90,6 +90,9 @@ mod imp {
             klass.install_action("message-row.copy", None, move |widget, _, _| {
                 widget.copy_text()
             });
+            klass.install_action("message-row.copy-link", None, move |widget, _, _| {
+                widget.copy_link()
+            });
             klass.install_action("message-row.pin", None, move |widget, _, _| {
                 widget.pin_message()
             });
@@ -215,6 +218,36 @@ impl Row {
             .downcast_ref::<model::Message>()
             .and_then(|message| copyable_text(&message.content().0))
             .is_some()
+    }
+
+    /// Copies a public/shareable link to this message (supergroups and channels).
+    fn copy_link(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let chat = message.chat_();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+        let clipboard = self.clipboard();
+
+        utils::spawn(async move {
+            match tdlib::functions::get_message_link(
+                chat_id, message_id, 0, false, false, client_id,
+            )
+            .await
+            {
+                Ok(tdlib::enums::MessageLink::MessageLink(data)) => clipboard.set_text(&data.link),
+                Err(e) => log::warn!("Failed to get a message link: {e:?}"),
+            }
+        });
+    }
+
+    fn can_copy_link(&self) -> bool {
+        self.message()
+            .downcast_ref::<model::Message>()
+            .map(|message| matches!(message.chat_().chat_type(), model::ChatType::Supergroup(_)))
+            .unwrap_or(false)
     }
 
     /// Opens a chat picker to forward this message to another chat.
@@ -483,6 +516,7 @@ impl Row {
         self.action_set_enabled("message-row.reply", self.can_reply_to_message());
         self.action_set_enabled("message-row.edit", self.can_edit_message());
         self.action_set_enabled("message-row.copy", self.can_copy_text());
+        self.action_set_enabled("message-row.copy-link", self.can_copy_link());
 
         if let Some(message) = self.message().downcast_ref::<model::Message>() {
             self.action_set_enabled("message-row.delete", message.can_be_deleted_only_for_self());

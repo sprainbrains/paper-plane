@@ -27,6 +27,12 @@ menu model {
     }
 
     item {
+      label: _("Copy _Link");
+      action: "message-row.copy-link";
+      hidden-when: "action-disabled";
+    }
+
+    item {
       label: _("_Pin");
       action: "message-row.pin";
       hidden-when: "action-disabled";
