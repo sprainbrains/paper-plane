@@ -1,11 +1,11 @@
 use adw::prelude::*;
 use gettextrs::gettext;
+use glib::Properties;
 use glib::closure;
 use glib::subclass::InitializingObject;
-use glib::Properties;
+use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 use crate::expressions;
 use crate::i18n::gettext_f;
@@ -93,7 +93,7 @@ impl Row {
 
     pub(crate) async fn log_out(&self) {
         if let Some(session) = self.session() {
-            let dialog: adw::MessageDialog = adw::MessageDialog::builder()
+            let dialog: adw::AlertDialog = adw::AlertDialog::builder()
                 .heading_use_markup(true)
                 .heading(gettext_f(
                     "Log out <i>{display_name}</i>",
@@ -103,7 +103,6 @@ impl Row {
                     )],
                 ))
                 .body(gettext("Are you sure you want to log out?"))
-                .transient_for(self.root().unwrap().downcast_ref::<gtk::Window>().unwrap())
                 .build();
 
             dialog.add_responses(&[
@@ -113,7 +112,7 @@ impl Row {
             dialog.set_default_response(Some("cancel"));
             dialog.set_response_appearance("log-out", adw::ResponseAppearance::Destructive);
 
-            if dialog.choose_future().await == "log-out" {
+            if dialog.choose_future(Some(self)).await == "log-out" {
                 let imp = self.imp();
 
                 imp.stack.set_visible_child(&imp.spinner.get());
@@ -161,11 +160,7 @@ impl Row {
 
         username_not_empty_expr
             .chain_closure::<f64>(closure!(|_: Self, not_empty: bool| {
-                if not_empty {
-                    1.0
-                } else {
-                    0.5
-                }
+                if not_empty { 1.0 } else { 0.5 }
             }))
             .bind(&*imp.display_name_label, "yalign", Some(self));
 

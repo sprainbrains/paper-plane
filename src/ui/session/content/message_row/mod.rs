@@ -18,10 +18,10 @@ use std::sync::OnceLock;
 use adw::prelude::*;
 use gettextrs::gettext;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
 use gtk::subclass::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::base::MessageBase;
 pub(crate) use self::base::MessageBaseExt;
@@ -89,9 +89,11 @@ mod imp {
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
-                vec![glib::ParamSpecObject::builder::<glib::Object>("message")
-                    .explicit_notify()
-                    .build()]
+                vec![
+                    glib::ParamSpecObject::builder::<glib::Object>("message")
+                        .explicit_notify()
+                        .build(),
+                ]
             })
         }
 
@@ -165,19 +167,16 @@ impl Row {
     }
 
     fn show_delete_dialog(&self, revoke: bool) {
-        let window: gtk::Window = self.root().and_then(|root| root.downcast().ok()).unwrap();
-
         let message = if revoke {
             gettext("Do you want to delete this message for <b>everyone</b>?")
         } else {
             gettext("Do you want to delete this message?")
         };
 
-        let dialog = adw::MessageDialog::builder()
+        let dialog = adw::AlertDialog::builder()
             .heading(gettext("Confirm Message Deletion"))
             .body_use_markup(true)
             .body(message)
-            .transient_for(&window)
             .build();
 
         dialog.add_responses(&[("no", &gettext("_No")), ("yes", &gettext("_Yes"))]);
@@ -185,18 +184,28 @@ impl Row {
         dialog.set_response_appearance("yes", adw::ResponseAppearance::Destructive);
 
         dialog.choose(
+            Some(self),
             gio::Cancellable::NONE,
-            clone!(#[weak(rename_to = obj)] self, move |response| {
-                if response == "yes"
-                    && let Ok(message) = obj.message().downcast::<model::Message>()
-                {
-                    utils::spawn(async move {
-                        if let Err(e) = message.delete(revoke).await {
-                            log::warn!("Error deleting a message (revoke = {}): {:?}", revoke, e);
-                        }
-                    });
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |response| {
+                    if response == "yes"
+                        && let Ok(message) = obj.message().downcast::<model::Message>()
+                    {
+                        utils::spawn(async move {
+                            if let Err(e) = message.delete(revoke).await {
+                                log::warn!(
+                                    "Error deleting a message (revoke = {}): {:?}",
+                                    revoke,
+                                    e
+                                );
+                            }
+                        });
+                    }
                 }
-            }));
+            ),
+        );
     }
 
     pub(crate) fn message(&self) -> glib::Object {

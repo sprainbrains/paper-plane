@@ -7,13 +7,13 @@ use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 use regex::Regex;
 use thiserror::Error;
 
-use crate::config;
 use crate::APPLICATION_OPTS;
 use crate::TEMP_DIR;
+use crate::config;
 
 fn protocol_re() -> &'static Regex {
     static PROTOCOL_RE: OnceLock<Regex> = OnceLock::new();

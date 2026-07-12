@@ -7,12 +7,12 @@ mod switcher;
 
 use std::sync::OnceLock;
 
+use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::clone;
+use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
-use gtk::prelude::*;
-use gtk::CompositeTemplate;
 
 pub(crate) use self::contacts_window::ContactsWindow;
 pub(crate) use self::contacts_window::Row as ContactRow;
@@ -90,17 +90,20 @@ mod imp {
             klass.bind_template();
 
             klass.install_action("session.show-preferences", None, move |widget, _, _| {
-                let parent_window = widget.root().and_then(|r| r.downcast().ok());
-                let preferences = ui::PreferencesWindow::new(parent_window.as_ref(), widget);
-                preferences.present();
+                let preferences = ui::PreferencesWindow::new(widget);
+                preferences.present(Some(widget));
             });
             klass.install_action("session.show-contacts", None, move |widget, _, _| {
                 let parent = widget.root().and_then(|r| r.downcast().ok());
                 let contacts = ui::ContactsWindow::new(parent.as_ref(), widget.clone());
 
-                contacts.connect_contact_activated(clone!(#[weak] widget, move |_, user_id| {
-                    widget.select_chat(user_id);
-                }));
+                contacts.connect_contact_activated(clone!(
+                    #[weak]
+                    widget,
+                    move |_, user_id| {
+                        widget.select_chat(user_id);
+                    }
+                ));
 
                 contacts.present();
             });
@@ -180,12 +183,25 @@ impl Session {
     pub(crate) fn select_chat(&self, id: ChatId) {
         match self.model().unwrap().try_chat(id) {
             Some(chat) => self.imp().sidebar.set_selected_chat(Some(&chat)),
-            None => utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
-                match tdlib::functions::create_private_chat(id, true, obj.model().unwrap().client_().id()).await {
-                    Ok(tdlib::enums::Chat::Chat(data)) => obj.imp().sidebar.set_selected_chat(obj.model().unwrap().try_chat(data.id).as_ref()),
-                    Err(e) => log::warn!("Failed to create private chat: {:?}", e),
+            None => utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    match tdlib::functions::create_private_chat(
+                        id,
+                        true,
+                        obj.model().unwrap().client_().id(),
+                    )
+                    .await
+                    {
+                        Ok(tdlib::enums::Chat::Chat(data)) => obj
+                            .imp()
+                            .sidebar
+                            .set_selected_chat(obj.model().unwrap().try_chat(data.id).as_ref()),
+                        Err(e) => log::warn!("Failed to create private chat: {:?}", e),
+                    }
                 }
-            })),
+            )),
         }
     }
 

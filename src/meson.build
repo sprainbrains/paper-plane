@@ -69,12 +69,6 @@ test (
     '--',
     '-D',
     'warnings',
-    # TODO(stage2): the gtk4 0.9 / libadwaita 0.7 bump surfaces many
-    # deprecation warnings (AdwPreferencesWindow, GtkShortcutsWindow, etc.).
-    # Allow them for now and restore full strictness after the deprecation
-    # cleanup in the refactor stage.
-    '-A',
-    'deprecated',
   ],
   env: [
     'CARGO_HOME=@0@'.format(cargo_home),

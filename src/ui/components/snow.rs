@@ -1,3 +1,8 @@
+// TODO(stage2): gsk::GLShader is deprecated since GTK 4.16 with no drop-in
+// replacement (the GL renderer is being retired in favour of the GPU renderer).
+// Reimplement the snow effect without GLShader, then drop this allow.
+#![allow(deprecated)]
+
 use std::cell::Cell;
 use std::cell::RefCell;
 

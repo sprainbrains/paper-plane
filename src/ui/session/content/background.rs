@@ -1,3 +1,8 @@
+// TODO(stage2): gsk::GLShader is deprecated since GTK 4.16 with no drop-in
+// replacement (the GL renderer is being retired in favour of the GPU renderer).
+// Reimplement the gradient background without GLShader, then drop this allow.
+#![allow(deprecated)]
+
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -90,34 +95,44 @@ mod imp {
             let style_manager = adw::StyleManager::default();
             obj.set_theme(hard_coded_themes(style_manager.is_dark()));
 
-            style_manager.connect_dark_notify(clone!(#[weak] obj, move |style_manager| {
-                obj.set_theme(hard_coded_themes(style_manager.is_dark()))
-            }));
+            style_manager.connect_dark_notify(clone!(
+                #[weak]
+                obj,
+                move |style_manager| obj.set_theme(hard_coded_themes(style_manager.is_dark()))
+            ));
 
             if style_manager.is_high_contrast() {
                 obj.add_css_class("fallback");
             }
 
-            style_manager.connect_high_contrast_notify(clone!(#[weak] obj, move |style_manager| {
-                if style_manager.is_high_contrast() {
-                    obj.add_css_class("fallback");
-                } else if obj.imp().shader.borrow().is_some() {
-                    obj.remove_css_class("fallback");
+            style_manager.connect_high_contrast_notify(clone!(
+                #[weak]
+                obj,
+                move |style_manager| {
+                    if style_manager.is_high_contrast() {
+                        obj.add_css_class("fallback");
+                    } else if obj.imp().shader.borrow().is_some() {
+                        obj.remove_css_class("fallback");
+                    }
                 }
-            }));
+            ));
 
-            let target = adw::CallbackAnimationTarget::new(clone!(#[weak] obj, move |progress| {
-                let imp = obj.imp();
-                imp.gradient_texture.take();
-                let progress = progress as f32;
-                if progress >= 1.0 {
-                    imp.progress.set(0.0);
-                    imp.phase.set((imp.phase.get() + 1) % 8);
-                } else {
-                    imp.progress.set(progress)
+            let target = adw::CallbackAnimationTarget::new(clone!(
+                #[weak]
+                obj,
+                move |progress| {
+                    let imp = obj.imp();
+                    imp.gradient_texture.take();
+                    let progress = progress as f32;
+                    if progress >= 1.0 {
+                        imp.progress.set(0.0);
+                        imp.phase.set((imp.phase.get() + 1) % 8);
+                    } else {
+                        imp.progress.set(progress)
+                    }
+                    obj.queue_draw();
                 }
-                obj.queue_draw();
-            }));
+            ));
 
             let animation = adw::TimedAnimation::builder()
                 .widget(&*obj)
