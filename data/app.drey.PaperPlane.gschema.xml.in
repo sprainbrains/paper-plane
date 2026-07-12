@@ -36,5 +36,10 @@
       <summary>Color Scheme</summary>
       <description>The color scheme to be used in the app</description>
     </key>
+    <key name="recent-emojis" type="as">
+      <default>[]</default>
+      <summary>Recently used emoji</summary>
+      <description>Emoji recently inserted through the content picker</description>
+    </key>
   </schema>
 </schemalist>

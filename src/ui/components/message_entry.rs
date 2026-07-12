@@ -55,6 +55,10 @@ mod imp {
                     Signal::builder("emoji-button-press")
                         .param_types([gtk::Image::static_type()])
                         .build(),
+                    Signal::builder("emoji-button-hover")
+                        .param_types([gtk::Image::static_type()])
+                        .build(),
+                    Signal::builder("emoji-button-leave").build(),
                 ]
             })
         }
@@ -140,6 +144,20 @@ mod imp {
                 }
             ));
             self.emoji_button.add_controller(press);
+            let hover = gtk::EventControllerMotion::new();
+            hover.connect_enter(clone!(
+                #[weak]
+                obj,
+                move |_, _, _| {
+                    obj.emit_by_name::<()>("emoji-button-hover", &[&*obj.imp().emoji_button]);
+                }
+            ));
+            hover.connect_leave(clone!(
+                #[weak]
+                obj,
+                move |_| obj.emit_by_name::<()>("emoji-button-leave", &[])
+            ));
+            self.emoji_button.add_controller(hover);
 
             self.text_view.buffer().connect_changed(clone!(
                 #[weak]
@@ -221,6 +239,29 @@ impl MessageEntry {
         buffer.delete_selection(true, true);
         buffer.insert_at_cursor(text);
         buffer.end_user_action();
+    }
+
+    pub(crate) fn insert_custom_emoji(&self, emoji: &str, custom_emoji_id: i64) {
+        let buffer = self.imp().text_view.buffer();
+        let cursor = buffer.cursor_position();
+        let prefix = buffer.text(&buffer.start_iter(), &buffer.iter_at_offset(cursor), true);
+        let offset = prefix.encode_utf16().count() as i32;
+
+        self.insert_at_cursor(emoji);
+
+        if let Some(mut formatted) = self.formatted_text().map(|text| text.0) {
+            formatted.entities.push(tdlib::types::TextEntity {
+                offset,
+                length: emoji.encode_utf16().count() as i32,
+                r#type: tdlib::enums::TextEntityType::CustomEmoji(
+                    tdlib::types::TextEntityTypeCustomEmoji { custom_emoji_id },
+                ),
+            });
+            self.imp()
+                .formatted_text
+                .replace(Some(model::BoxedFormattedText(formatted)));
+            self.notify("formatted-text");
+        }
     }
 
     pub(crate) fn formatted_text(&self) -> Option<model::BoxedFormattedText> {
@@ -308,6 +349,29 @@ impl MessageEntry {
             let button = values[1].get::<gtk::Image>().unwrap();
             f(&obj, button);
 
+            None
+        })
+    }
+
+    pub(crate) fn connect_emoji_button_hover<F: Fn(&Self, gtk::Image) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("emoji-button-hover", true, move |values| {
+            let obj = values[0].get::<Self>().unwrap();
+            let button = values[1].get::<gtk::Image>().unwrap();
+            f(&obj, button);
+            None
+        })
+    }
+
+    pub(crate) fn connect_emoji_button_leave<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("emoji-button-leave", true, move |values| {
+            let obj = values[0].get::<Self>().unwrap();
+            f(&obj);
             None
         })
     }

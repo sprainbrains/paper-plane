@@ -24,7 +24,26 @@ template $Session : Adw.Bin {
       content: Adw.NavigationPage {
         tag: "content";
         title: _("Content");
-        child: $Content content {};
+        child: Box {
+          $Content content {
+            hexpand: true;
+          }
+
+          Separator picker_separator {
+            visible: bind content_picker_revealer.reveal-child;
+          }
+
+          Revealer content_picker_revealer {
+            transition-type: slide_left;
+            visible: bind content_picker_revealer.reveal-child;
+
+            $PaplContentPicker content_picker {
+              width-request: 360;
+              session: bind template.model;
+              chat: bind content.chat;
+            }
+          }
+        };
       };
     };
 

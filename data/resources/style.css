@@ -556,3 +556,40 @@ splitbutton.small-pill:dir(ltr) > menubutton > button {
 .chatlist-loading {
   animation: chatlist-title-shimmer 1.5s ease-in-out infinite;
 }
+contentpicker.content-picker {
+  background: @window_bg_color;
+}
+
+.content-picker-tabs {
+  padding: 6px 8px 0;
+}
+
+.content-picker-tabs > button {
+  border-radius: 0;
+  border-width: 0 0 2px;
+}
+
+.emoji-picker-item {
+  font-size: 22px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.sticker-picker-item {
+  min-width: 68px;
+  min-height: 68px;
+  padding: 2px;
+}
+
+.sticker-pack-rail-item {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px;
+}
+
+.gif-picker-item {
+  min-width: 100px;
+  min-height: 84px;
+  padding: 0;
+}

@@ -49,7 +49,6 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) chat_action_in_cooldown: Cell<bool>,
         pub(super) state: Cell<ChatActionBarState>,
-        pub(super) emoji_chooser: RefCell<Option<gtk::EmojiChooser>>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) basic_group_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) supergroup_signal_group: OnceCell<glib::SignalGroup>,
@@ -239,8 +238,22 @@ mod imp {
             self.message_entry.connect_emoji_button_press(clone!(
                 #[weak]
                 obj,
+                move |_, _| {
+                    utils::ancestor::<_, ui::Session>(&obj).toggle_content_picker_sidebar();
+                }
+            ));
+            self.message_entry.connect_emoji_button_hover(clone!(
+                #[weak]
+                obj,
                 move |_, button| {
-                    obj.show_emoji_chooser(&button);
+                    utils::ancestor::<_, ui::Session>(&obj).show_content_picker_popup(&button);
+                }
+            ));
+            self.message_entry.connect_emoji_button_leave(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    utils::ancestor::<_, ui::Session>(&obj).schedule_content_picker_close();
                 }
             ));
 
@@ -263,9 +276,6 @@ mod imp {
         fn dispose(&self) {
             self.top_bar_revealer.unparent();
             self.action_bar_stack.unparent();
-            if let Some(emoji_chooser) = self.emoji_chooser.take() {
-                emoji_chooser.unparent();
-            }
         }
     }
 
@@ -499,29 +509,16 @@ impl ChatActionBar {
         }
     }
 
-    fn show_emoji_chooser(&self, parent: &impl IsA<gtk::Widget>) {
-        let imp = self.imp();
-        let mut emoji_chooser = imp.emoji_chooser.borrow_mut();
-        if emoji_chooser.is_none() {
-            let chooser = gtk::EmojiChooser::new();
-            chooser.set_parent(parent);
-            chooser.connect_emoji_picked(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |_, emoji| {
-                    obj.imp().message_entry.insert_at_cursor(emoji);
-                }
-            ));
-            chooser.connect_hide(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |_| {
-                    obj.imp().message_entry.grab_focus();
-                }
-            ));
-            *emoji_chooser = Some(chooser);
-        }
-        emoji_chooser.as_ref().unwrap().popup();
+    pub(crate) fn insert_emoji(&self, emoji: &str) {
+        self.imp().message_entry.insert_at_cursor(emoji);
+        self.imp().message_entry.grab_focus();
+    }
+
+    pub(crate) fn insert_custom_emoji(&self, emoji: &str, custom_emoji_id: i64) {
+        self.imp()
+            .message_entry
+            .insert_custom_emoji(emoji, custom_emoji_id);
+        self.imp().message_entry.grab_focus();
     }
 
     async fn select_file(&self) {

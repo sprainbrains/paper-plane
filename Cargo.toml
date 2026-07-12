@@ -21,6 +21,8 @@ ori = { git = "https://github.com/Yach0/origami.git", tag="v0.10.0", package = "
 pretty_env_logger = "0.5"
 qrcode-generator = { version = "5", default-features = false }
 regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 rlt = { package = "gtk-rlottie", git = "https://github.com/Yach0/gtk-rlottie-rs.git", tag = "v0.10.0" }
 shumate = { version = "0.8", package = "libshumate" }
 tdlib = { version = "1.4", package = "tdlib-rs", features = ["pkg-config"] }

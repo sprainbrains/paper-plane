@@ -205,12 +205,24 @@ pub(crate) enum DecodeError {
 }
 
 pub(crate) fn decode_image_from_path(path: &str) -> Result<gdk::MemoryTexture, DecodeError> {
+    decode_image_from_path_at_size(path, None)
+}
+
+pub(crate) fn decode_image_from_path_at_size(
+    path: &str,
+    maximum_size: Option<u32>,
+) -> Result<gdk::MemoryTexture, DecodeError> {
     use image::DynamicImage::*;
 
-    let dynamic_image = ImageReader::open(path)
+    let mut dynamic_image = ImageReader::open(path)
         .map_err(DecodeError::IoError)?
         .decode()
         .map_err(DecodeError::ImageError)?;
+    if let Some(maximum_size) = maximum_size
+        && (dynamic_image.width() > maximum_size || dynamic_image.height() > maximum_size)
+    {
+        dynamic_image = dynamic_image.thumbnail(maximum_size, maximum_size);
+    }
     let (memory_format, layout, data) = match dynamic_image {
         ImageLuma8(_) => {
             let buffer = dynamic_image.to_rgb8();

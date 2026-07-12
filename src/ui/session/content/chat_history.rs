@@ -373,6 +373,16 @@ impl ChatHistory {
         self.imp().chat_action_bar.handle_paste_action();
     }
 
+    pub(crate) fn insert_emoji(&self, emoji: &str) {
+        self.imp().chat_action_bar.insert_emoji(emoji);
+    }
+
+    pub(crate) fn insert_custom_emoji(&self, emoji: &str, custom_emoji_id: i64) {
+        self.imp()
+            .chat_action_bar
+            .insert_custom_emoji(emoji, custom_emoji_id);
+    }
+
     pub(crate) fn chat(&self) -> Option<model::Chat> {
         self.imp().chat.upgrade()
     }

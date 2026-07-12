@@ -1199,6 +1199,8 @@ dependencies = [
  "pretty_env_logger",
  "qrcode-generator",
  "regex",
+ "serde",
+ "serde_json",
  "tdlib-rs",
  "temp-dir 0.2.0",
  "thiserror",

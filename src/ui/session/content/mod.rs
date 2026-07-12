@@ -3,6 +3,7 @@ mod chat_action_bar;
 mod chat_history;
 mod chat_history_row;
 mod chat_info_window;
+mod content_picker;
 mod event_row;
 mod forward_window;
 mod message_row;
@@ -20,6 +21,7 @@ pub(crate) use self::chat_action_bar::ChatActionBar;
 pub(crate) use self::chat_history::ChatHistory;
 pub(crate) use self::chat_history_row::ChatHistoryRow;
 pub(crate) use self::chat_info_window::ChatInfoWindow;
+pub(crate) use self::content_picker::ContentPicker;
 pub(crate) use self::event_row::EventRow;
 pub(crate) use self::forward_window::ForwardWindow;
 pub(crate) use self::message_row::MediaPicture;
@@ -134,6 +136,16 @@ impl Content {
 
     pub(crate) fn handle_paste_action(&self) {
         self.imp().chat_history.handle_paste_action();
+    }
+
+    pub(crate) fn insert_emoji(&self, emoji: &str) {
+        self.imp().chat_history.insert_emoji(emoji);
+    }
+
+    pub(crate) fn insert_custom_emoji(&self, emoji: &str, custom_emoji_id: i64) {
+        self.imp()
+            .chat_history
+            .insert_custom_emoji(emoji, custom_emoji_id);
     }
 
     pub(crate) fn chat(&self) -> Option<model::Chat> {

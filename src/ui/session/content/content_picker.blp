@@ -1,0 +1,102 @@
+using Gtk 4.0;
+
+template $PaplContentPicker : Widget {
+  styles ["content-picker"]
+  layout-manager: BoxLayout {
+    orientation: vertical;
+  };
+
+  Box {
+    homogeneous: true;
+    spacing: 2;
+    margin-start: 8;
+    margin-end: 8;
+    margin-top: 8;
+    margin-bottom: 6;
+    styles ["content-picker-tabs"]
+
+    ToggleButton emoji_tab {
+      label: _("Emoji");
+      active: true;
+      hexpand: true;
+    }
+
+    ToggleButton sticker_tab {
+      label: _("Stickers");
+      group: emoji_tab;
+      hexpand: true;
+    }
+
+    ToggleButton gif_tab {
+      label: _("GIFs");
+      group: emoji_tab;
+      hexpand: true;
+    }
+  }
+
+  SearchEntry search_entry {
+    placeholder-text: _("Search");
+    margin-start: 12;
+    margin-end: 12;
+    margin-bottom: 6;
+  }
+
+  Stack content_stack {
+    vexpand: true;
+    transition-type: crossfade;
+
+    ScrolledWindow emoji_page {
+      hscrollbar-policy: never;
+
+      Box emoji_sections {
+        orientation: vertical;
+        spacing: 12;
+        margin-start: 12;
+        margin-end: 12;
+        margin-top: 6;
+        margin-bottom: 12;
+      }
+    }
+
+    ScrolledWindow sticker_page {
+      hscrollbar-policy: never;
+
+      ListView sticker_list {
+        single-click-activate: false;
+        styles ["sticker-picker-list"]
+      }
+    }
+
+    ScrolledWindow gif_page {
+      hscrollbar-policy: never;
+
+      FlowBox gif_grid {
+        selection-mode: none;
+        homogeneous: true;
+        max-children-per-line: 3;
+        min-children-per-line: 2;
+        row-spacing: 6;
+        column-spacing: 6;
+        margin-start: 12;
+        margin-end: 12;
+        margin-top: 6;
+        margin-bottom: 12;
+      }
+    }
+  }
+
+  Separator {}
+
+  ScrolledWindow {
+    height-request: 44;
+    vscrollbar-policy: never;
+    hscrollbar-policy: automatic;
+
+    Box navigation_rail {
+      spacing: 2;
+      margin-start: 6;
+      margin-end: 6;
+      valign: center;
+    }
+  }
+}
