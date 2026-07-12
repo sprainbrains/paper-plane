@@ -444,6 +444,10 @@ messagesticker {
   color: @accent_fg_color;
 }
 
+.video-note {
+  border-radius: 9999px;
+}
+
 .sender-text-red {
   color: #c03d33;
 }

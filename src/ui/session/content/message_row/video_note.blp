@@ -1,0 +1,29 @@
+using Gtk 4.0;
+
+template $PaplMessageVideoNote: $PaplMessageBase {
+  layout-manager: BinLayout {};
+
+  $PaplMessageBubble message_bubble {
+    styles [
+      "media",
+    ]
+
+    prefix: Overlay {
+      $PaplMessageMediaPicture picture {
+        styles [
+          "video-note",
+        ]
+      }
+
+      [overlay]
+      Label indicator {
+        halign: start;
+        valign: end;
+
+        styles [
+          "osd-indicator",
+        ]
+      }
+    };
+  }
+}
