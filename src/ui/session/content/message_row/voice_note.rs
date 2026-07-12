@@ -25,10 +25,13 @@ mod imp {
         // once downloaded.
         pub(super) pending_file_id: Cell<i32>,
         pub(super) duration: Cell<i32>,
+        pub(super) samples: RefCell<Vec<u8>>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
         pub(super) play_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub(super) waveform: TemplateChild<gtk::DrawingArea>,
         #[template_child]
         pub(super) duration_label: TemplateChild<gtk::Label>,
     }
@@ -86,6 +89,14 @@ mod imp {
                     obj.obj().toggle_playback();
                 }
             ));
+
+            self.waveform.set_draw_func(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |area, cr, width, height| {
+                    draw_waveform(&obj.samples.borrow(), area, cr, width, height);
+                }
+            ));
         }
     }
 
@@ -123,6 +134,9 @@ impl ui::MessageBaseExt for MessageVoiceNote {
             imp.duration.set(voice_note.duration);
             imp.duration_label
                 .set_label(&format_duration(voice_note.duration));
+
+            imp.samples.replace(decode_waveform(&voice_note.waveform));
+            imp.waveform.queue_draw();
 
             if voice_note.voice.local.is_downloading_completed {
                 imp.pending_file_id.set(0);
@@ -231,4 +245,56 @@ fn format_duration(seconds: i32) -> String {
     let minutes = seconds / 60;
     let seconds = seconds % 60;
     format!("{minutes}:{seconds:02}")
+}
+
+/// Decodes TDLib's base64 waveform (5 bits per sample) into 0..=31 amplitudes.
+fn decode_waveform(waveform: &str) -> Vec<u8> {
+    let data = glib::base64_decode(waveform);
+    let sample_count = data.len() * 8 / 5;
+
+    (0..sample_count)
+        .map(|i| {
+            let bit = i * 5;
+            let byte = bit / 8;
+            let shift = bit % 8;
+            let mut value = u16::from(data[byte]) >> shift;
+            if shift > 3 && byte + 1 < data.len() {
+                value |= u16::from(data[byte + 1]) << (8 - shift);
+            }
+            (value & 0x1f) as u8
+        })
+        .collect()
+}
+
+fn draw_waveform(
+    samples: &[u8],
+    area: &gtk::DrawingArea,
+    cr: &gtk::cairo::Context,
+    width: i32,
+    height: i32,
+) {
+    if samples.is_empty() {
+        return;
+    }
+
+    let color = area.color();
+    cr.set_source_rgba(
+        color.red() as f64,
+        color.green() as f64,
+        color.blue() as f64,
+        0.6,
+    );
+
+    let n = samples.len() as f64;
+    let bar_gap = 1.0;
+    let bar_width = (width as f64 / n - bar_gap).max(1.0);
+    let h = height as f64;
+
+    for (i, &sample) in samples.iter().enumerate() {
+        let bar_height = ((sample as f64 / 31.0) * h).max(2.0);
+        let x = i as f64 * (bar_width + bar_gap);
+        cr.rectangle(x, (h - bar_height) / 2.0, bar_width, bar_height);
+    }
+
+    let _ = cr.fill();
 }
