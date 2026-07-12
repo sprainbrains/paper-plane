@@ -151,6 +151,17 @@ mod imp {
                 }
             ));
 
+            // Clicking the pinned-message bar reveals the message in the history.
+            let pinned_gesture = gtk::GestureClick::new();
+            pinned_gesture.connect_released(clone!(
+                #[weak]
+                obj,
+                move |_, _, _, _| {
+                    obj.scroll_to_pinned();
+                }
+            ));
+            self.pinned_message_bar.add_controller(pinned_gesture);
+
             let adj = self.list_view.vadjustment().unwrap();
             adj.connect_value_changed(clone!(
                 #[weak]
@@ -479,6 +490,29 @@ impl ChatHistory {
 
         imp.chat.set(chat);
         self.notify("chat");
+    }
+
+    /// Scrolls the history to the pinned message, if it is currently loaded.
+    fn scroll_to_pinned(&self) {
+        let imp = self.imp();
+        let message_id = imp.pinned_message_id.get();
+
+        let Some(model) = imp.list_view.model() else {
+            return;
+        };
+
+        for pos in 0..model.n_items() {
+            if let Some(item) = model.item(pos).and_downcast::<model::ChatHistoryItem>()
+                && let Some(message) = item.message()
+                && message.id() == message_id
+            {
+                imp.list_view
+                    .scroll_to(pos, gtk::ListScrollFlags::FOCUS, None);
+                return;
+            }
+        }
+
+        log::debug!("Pinned message {message_id} is not in the loaded history");
     }
 
     /// Unpins the message currently shown in the pinned-message bar.
