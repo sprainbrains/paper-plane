@@ -90,6 +90,9 @@ mod imp {
             klass.install_action("message-row.copy", None, move |widget, _, _| {
                 widget.copy_text()
             });
+            klass.install_action("message-row.pin", None, move |widget, _, _| {
+                widget.pin_message()
+            });
             klass.install_action("message-row.edit", None, move |widget, _, _| widget.edit());
             klass.install_action("message-row.revoke-delete", None, move |widget, _, _| {
                 widget.show_delete_dialog(true)
@@ -176,6 +179,26 @@ impl Row {
             self.activate_action("chat-history.reply", Some(&message.id().to_variant()))
                 .unwrap();
         }
+    }
+
+    /// Pins this message in its chat.
+    fn pin_message(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let chat = message.chat_();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::pin_chat_message(chat_id, message_id, false, false, client_id)
+                    .await
+            {
+                log::warn!("Failed to pin a message: {e:?}");
+            }
+        });
     }
 
     /// Copies the message's text (or media caption) to the clipboard.
