@@ -5,26 +5,31 @@ template $PaplSidebarChatList: Widget {
 
   notify::chat-list => $on_notify_chat_list();
 
-  ListView {
-    single-click-activate: true;
+  ScrolledWindow {
+    vexpand: true;
+    hscrollbar-policy: never;
 
-    activate => $list_activate() swapped;
+    ListView {
+      single-click-activate: true;
 
-    model: $PaplSidebarSelection selection {
-      model: bind template.chat-list;
-      hide-selection: bind template.compact;
-    };
+      activate => $list_activate() swapped;
 
-    factory: BuilderListItemFactory {
-      template ListItem {
-        child: $PaplSidebarRow {
-          item: bind template.item;
-        };
-      }
-    };
+      model: $PaplSidebarSelection selection {
+        model: bind template.chat-list;
+        hide-selection: bind template.compact;
+      };
 
-    styles [
-      "navigation-sidebar",
-    ]
+      factory: BuilderListItemFactory {
+        template ListItem {
+          child: $PaplSidebarRow {
+            item: bind template.item;
+          };
+        }
+      };
+
+      styles [
+        "navigation-sidebar",
+      ]
+    }
   }
 }

@@ -26,9 +26,9 @@ const CHATS_FETCH_INTERVAL_MS: u64 = 50;
 type SortKey = (i64, ChatId);
 
 #[derive(Debug)]
-struct Entry {
+struct Entry<T> {
     key: SortKey,
-    item: model::ChatListItem,
+    item: T,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, glib::Enum)]
@@ -62,7 +62,7 @@ mod imp {
         // `index` map turns "find this chat" into an O(1) key lookup plus an
         // O(log n) binary search instead of an O(n) scan that upgrades a weak
         // reference for every element.
-        pub(super) list: RefCell<Vec<Entry>>,
+        pub(super) list: RefCell<Vec<Entry<model::ChatListItem>>>,
         // chat id -> the chat's current negated order (the first half of its
         // `SortKey`), so a chat can be located without scanning `list`.
         pub(super) index: RefCell<HashMap<ChatId, i64>>,
@@ -227,7 +227,11 @@ impl ChatList {
         let new_key = (-position.order, chat_id);
 
         // O(1) lookup of the chat's current key (if it is already in this list).
-        let old_key = imp.index.borrow().get(&chat_id).map(|order| (*order, chat_id));
+        let old_key = imp
+            .index
+            .borrow()
+            .get(&chat_id)
+            .map(|order| (*order, chat_id));
 
         match old_key {
             // Same position: nothing moved, so update the item in place and skip the
@@ -252,23 +256,14 @@ impl ChatList {
                 imp.index.borrow_mut().remove(&chat_id);
                 self.items_changed(old_pos as u32, 1, 0);
             }
-            // The chat moved to a new position. Relocate it and emit a SINGLE
+            // The chat moved to a new position. Relocate it and emit a single
             // items_changed spanning the affected range instead of a separate
-            // remove + insert: two signals briefly leave the row missing, which
-            // makes GtkListView recycle it into a blank (the disappearing-rows bug).
+            // remove + insert, so the item remains present throughout the update.
             Some(old_key) => {
                 let (start, len, item) = {
                     let mut list = imp.list.borrow_mut();
                     let old_pos = position_of(&list, old_key);
-                    let mut entry = list.remove(old_pos);
-                    entry.key = new_key;
-                    let new_pos = list.partition_point(|e| e.key < new_key);
-                    let item = entry.item.clone();
-                    list.insert(new_pos, entry);
-
-                    let start = old_pos.min(new_pos);
-                    let len = old_pos.max(new_pos) - start + 1;
-                    (start as u32, len as u32, item)
+                    relocate_entry(&mut list, old_pos, new_key)
                 };
                 imp.index.borrow_mut().insert(chat_id, new_key.0);
                 // Drop the borrow before `update()`, which notifies and could
@@ -316,7 +311,85 @@ impl ChatList {
 
 /// Index of the entry with the given (present) key. O(log n) and, unlike a scan
 /// by chat id, never upgrades a weak reference.
-fn position_of(list: &[Entry], key: SortKey) -> usize {
+fn position_of<T>(list: &[Entry<T>], key: SortKey) -> usize {
     list.binary_search_by(|entry| entry.key.cmp(&key))
         .expect("the key was taken from the index, so it must be present")
+}
+
+/// Relocate one entry and return its affected range and preserved model item.
+///
+/// The list must already contain the entry at `old_pos` and must be sorted by
+/// key.
+fn relocate_entry<T: Clone>(
+    list: &mut Vec<Entry<T>>,
+    old_pos: usize,
+    new_key: SortKey,
+) -> (u32, u32, T) {
+    let mut entry = list.remove(old_pos);
+    entry.key = new_key;
+
+    let new_pos = list.partition_point(|entry| entry.key < new_key);
+    let item = entry.item.clone();
+    list.insert(new_pos, entry);
+
+    let start = old_pos.min(new_pos);
+    let len = old_pos.max(new_pos) - start + 1;
+    (start as u32, len as u32, item)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(order: i64, chat_id: ChatId) -> Entry<ChatId> {
+        Entry {
+            key: (-order, chat_id),
+            item: chat_id,
+        }
+    }
+
+    fn chat_ids(list: &[Entry<ChatId>]) -> Vec<ChatId> {
+        list.iter().map(|entry| entry.item).collect()
+    }
+
+    #[test]
+    fn relocates_chat_toward_beginning() {
+        let mut list = vec![entry(40, 1), entry(30, 2), entry(20, 3), entry(10, 4)];
+
+        let (start, len, item) = relocate_entry(&mut list, 3, (-35, 4));
+
+        assert_eq!((start, len, item), (1, 3, 4));
+        assert_eq!(chat_ids(&list), [1, 4, 2, 3]);
+    }
+
+    #[test]
+    fn relocates_chat_toward_end() {
+        let mut list = vec![entry(40, 1), entry(30, 2), entry(20, 3), entry(10, 4)];
+
+        let (start, len, item) = relocate_entry(&mut list, 0, (-15, 1));
+
+        assert_eq!((start, len, item), (0, 3, 1));
+        assert_eq!(chat_ids(&list), [2, 3, 1, 4]);
+    }
+
+    #[test]
+    fn relocates_chat_to_adjacent_position() {
+        let mut list = vec![entry(40, 1), entry(30, 2), entry(20, 3)];
+
+        let (start, len, item) = relocate_entry(&mut list, 1, (-10, 2));
+
+        assert_eq!((start, len, item), (1, 2, 2));
+        assert_eq!(chat_ids(&list), [1, 3, 2]);
+    }
+
+    #[test]
+    fn chat_id_breaks_equal_order_ties() {
+        let mut list = vec![entry(20, 1), entry(10, 2), entry(10, 4)];
+
+        let position = list.partition_point(|entry| entry.key < (-10, 3));
+        list.insert(position, entry(10, 3));
+
+        assert_eq!(chat_ids(&list), [1, 2, 3, 4]);
+        assert_eq!(position_of(&list, (-10, 3)), 2);
+    }
 }

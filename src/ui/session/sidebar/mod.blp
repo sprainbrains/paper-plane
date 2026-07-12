@@ -155,15 +155,10 @@ template $PaplSidebar: Widget {
           chat-folder-list: bind template.session as <$ClientStateSession>.chat-folder-list;
         }
 
-        ScrolledWindow {
-          vexpand: true;
-          hscrollbar-policy: never;
-
-          $PaplSidebarChatList {
-            chat-list: bind folder_bar.selected-chat-list;
-            selected-chat: bind template.selected-chat bidirectional;
-            compact: bind template.compact;
-          }
+        $PaplSidebarChatList {
+          chat-list: bind folder_bar.selected-chat-list;
+          selected-chat: bind template.selected-chat bidirectional;
+          compact: bind template.compact;
         }
       };
     }
@@ -196,15 +191,10 @@ template $PaplSidebar: Widget {
         [top]
         Adw.HeaderBar {}
 
-        ScrolledWindow {
-          vexpand: true;
-          hscrollbar-policy: never;
-
-          $PaplSidebarChatList {
-            chat-list: bind template.session as <$ClientStateSession>.archive-chat-list;
-            selected-chat: bind template.selected-chat bidirectional;
-            compact: bind template.compact;
-          }
+        $PaplSidebarChatList {
+          chat-list: bind template.session as <$ClientStateSession>.archive-chat-list;
+          selected-chat: bind template.selected-chat bidirectional;
+          compact: bind template.compact;
         }
       };
     }
