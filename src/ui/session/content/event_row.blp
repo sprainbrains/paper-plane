@@ -6,9 +6,24 @@ template $PaplEventRow : Adw.Bin {
 
   halign: center;
 
-  child: Label label {
-    justify: center;
-    wrap: true;
-    wrap-mode: word_char;
+  child: Box {
+    orientation: vertical;
+    spacing: 6;
+    halign: center;
+
+    Picture thumbnail {
+      visible: false;
+      width-request: 80;
+      height-request: 80;
+      content-fit: cover;
+
+      styles ["event-photo"]
+    }
+
+    Label label {
+      justify: center;
+      wrap: true;
+      wrap-mode: word_char;
+    }
   };
 }

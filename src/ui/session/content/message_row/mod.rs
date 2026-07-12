@@ -344,15 +344,26 @@ impl Row {
             };
 
             match message_.content().0 {
-                // FIXME: Re-enable MessageVideo when
-                // https://github.com/paper-plane-developers/paper-plane/issues/410 is fixed
-                MessageAnimation(_) /*| MessageContent::MessageVideo(_)*/ => {
+                // Videos are display-only until clicked (issue #410): the full
+                // file is downloaded on demand, not eagerly, so opening a chat
+                // full of videos no longer floods the download queue.
+                MessageAnimation(_) | MessageVideo(_) => {
                     self.update_specific_content::<_, ui::MessageVideo>(message_);
                 }
                 MessageAnimatedEmoji(data)
-                    if data.animated_emoji.sticker.clone().map(
-                        |s| matches!(s.format, tdlib::enums::StickerFormat::Webp | tdlib::enums::StickerFormat::Tgs)
-                    ).unwrap_or_default() => {
+                    if data
+                        .animated_emoji
+                        .sticker
+                        .clone()
+                        .map(|s| {
+                            matches!(
+                                s.format,
+                                tdlib::enums::StickerFormat::Webp
+                                    | tdlib::enums::StickerFormat::Tgs
+                            )
+                        })
+                        .unwrap_or_default() =>
+                {
                     self.update_specific_content::<_, ui::MessageSticker>(message_);
                 }
                 MessageLocation(_) => {
@@ -362,7 +373,10 @@ impl Row {
                     self.update_specific_content::<_, ui::MessagePhoto>(message_);
                 }
                 MessageSticker(data)
-                    if matches!(data.sticker.format, tdlib::enums::StickerFormat::Webp | tdlib::enums::StickerFormat::Tgs) =>
+                    if matches!(
+                        data.sticker.format,
+                        tdlib::enums::StickerFormat::Webp | tdlib::enums::StickerFormat::Tgs
+                    ) =>
                 {
                     self.update_specific_content::<_, ui::MessageSticker>(message_);
                 }

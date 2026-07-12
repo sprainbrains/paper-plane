@@ -121,13 +121,17 @@ impl ChatHistoryRow {
                         use tdlib::enums::MessageContent::*;
 
                         match message.content().0 {
+                            MessageChatChangePhoto(data) => {
+                                let event_row = self.get_or_create_event_row();
+                                event_row.set_label(&strings::message_content(message));
+                                event_row.set_minithumbnail(data.photo.minithumbnail.as_ref());
+                            }
                             MessageExpiredPhoto
                             | MessageExpiredVideo
                             | MessageCall(_)
                             | MessageBasicGroupChatCreate(_)
                             | MessageSupergroupChatCreate(_)
                             | MessageChatChangeTitle(_)
-                            | MessageChatChangePhoto(_) // TODO: Show photo thumbnail
                             | MessageChatDeletePhoto
                             | MessageChatAddMembers(_)
                             | MessageChatJoinByLink
@@ -137,8 +141,10 @@ impl ChatHistoryRow {
                             | MessageScreenshotTaken
                             | MessageGameScore(_)
                             | MessageContactRegistered => {
-                                self.get_or_create_event_row()
-                                    .set_label(&strings::message_content(message));
+                                let event_row = self.get_or_create_event_row();
+                                event_row.set_label(&strings::message_content(message));
+                                // Clear any preview left over from a recycled row.
+                                event_row.set_minithumbnail(None);
                             }
                             _ => self.update_or_create_message_row(message.to_owned().upcast()),
                         }

@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
 use gtk::CompositeTemplate;
+use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 
@@ -13,6 +14,8 @@ mod imp {
     pub(crate) struct EventRow {
         #[template_child]
         pub(super) label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) thumbnail: TemplateChild<gtk::Picture>,
     }
 
     #[glib::object_subclass]
@@ -82,5 +85,17 @@ impl EventRow {
 
     pub(crate) fn set_label(&self, label: &str) {
         self.imp().label.set_label(label);
+    }
+
+    /// Shows a small preview built from an inline minithumbnail, e.g. the new
+    /// chat photo of a "changed the group photo" service message. Pass `None` to
+    /// hide the preview.
+    pub(crate) fn set_minithumbnail(&self, minithumbnail: Option<&tdlib::types::Minithumbnail>) {
+        let thumbnail = &self.imp().thumbnail;
+        let texture = minithumbnail.and_then(|m| {
+            gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(&m.data))).ok()
+        });
+        thumbnail.set_paintable(texture.as_ref());
+        thumbnail.set_visible(texture.is_some());
     }
 }

@@ -23,12 +23,19 @@ mod imp {
         pub(super) handler_id: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) message: glib::WeakRef<model::Message>,
         pub(super) is_animation: Cell<bool>,
+        // File id of a not-yet-downloaded video to be fetched on click; 0 when
+        // there is nothing pending (animation, or already downloaded). Full
+        // videos are only downloaded on demand to avoid flooding the download
+        // queue (see issue #410).
+        pub(super) pending_file_id: Cell<i32>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
         pub(super) picture: TemplateChild<ui::MediaPicture>,
         #[template_child]
         pub(super) indicator: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) play_button: TemplateChild<gtk::Image>,
     }
 
     #[glib::object_subclass]
@@ -72,6 +79,22 @@ mod imp {
                 "message" => self.message.upgrade().to_value(),
                 _ => unimplemented!(),
             }
+        }
+
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            // Download and play the full video only when the user clicks it, to
+            // avoid eagerly downloading every video in view (see issue #410).
+            let gesture = gtk::GestureClick::new();
+            gesture.connect_released(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _, _, _| {
+                    obj.obj().play_pending_video();
+                }
+            ));
+            self.picture.add_controller(gesture);
         }
     }
 
@@ -155,7 +178,11 @@ impl MessageVideo {
 
         imp.picture.set_aspect_ratio(aspect_ratio);
 
+        let is_animation = imp.is_animation.get();
+
         if file.local.is_downloading_completed {
+            imp.pending_file_id.set(0);
+            imp.play_button.set_visible(false);
             self.load_video(&file.local.path);
         } else {
             imp.picture.set_paintable(
@@ -169,20 +196,52 @@ impl MessageVideo {
                     .as_ref(),
             );
 
-            let file_id = file.id;
-            utils::spawn(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[weak]
-                session,
-                async move {
-                    obj.download_video(file_id, &session).await;
-                }
-            ));
+            if is_animation {
+                // Animations (GIFs) are small; keep auto-downloading and playing.
+                imp.pending_file_id.set(0);
+                imp.play_button.set_visible(false);
+                let file_id = file.id;
+                utils::spawn(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    #[weak]
+                    session,
+                    async move {
+                        obj.download_and_play(file_id, &session).await;
+                    }
+                ));
+            } else {
+                // Full videos are only fetched when the user clicks the preview.
+                imp.pending_file_id.set(file.id);
+                imp.play_button.set_visible(true);
+            }
         }
     }
 
-    async fn download_video(&self, file_id: i32, session: &model::ClientStateSession) {
+    fn play_pending_video(&self) {
+        let imp = self.imp();
+        let file_id = imp.pending_file_id.get();
+        if file_id == 0 {
+            return;
+        }
+        // Prevent repeated clicks from queuing multiple downloads.
+        imp.pending_file_id.set(0);
+        imp.play_button.set_visible(false);
+
+        let Some(message) = imp.message.upgrade() else {
+            return;
+        };
+        let session = message.chat_().session_();
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                obj.download_and_play(file_id, &session).await;
+            }
+        ));
+    }
+
+    async fn download_and_play(&self, file_id: i32, session: &model::ClientStateSession) {
         match session.download_file(file_id).await {
             Ok(file) => {
                 self.load_video(&file.local.path);

@@ -135,19 +135,6 @@ impl Client {
                 e
             );
         }
-
-        // TODO: Hopefully we'll support animated emoji at some point
-        if let Err(e) = tdlib::functions::set_option(
-            "disable_animated_emoji".to_string(),
-            Some(tdlib::enums::OptionValue::Boolean(
-                tdlib::types::OptionValueBoolean { value: true },
-            )),
-            self.id(),
-        )
-        .await
-        {
-            log::warn!("Error disabling animated emoji: {:?}", e);
-        }
     }
 
     pub(crate) fn is_logged_in(&self) -> bool {

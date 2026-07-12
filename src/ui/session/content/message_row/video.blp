@@ -17,6 +17,17 @@ template $PaplMessageVideo : $PaplMessageBase {
 
         styles ["osd-indicator"]
       }
+
+      [overlay]
+      Image play_button {
+        visible: false;
+        halign: center;
+        valign: center;
+        icon-name: "media-playback-start-symbolic";
+        pixel-size: 48;
+
+        styles ["osd"]
+      }
     };
   }
 }

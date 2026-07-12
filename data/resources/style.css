@@ -423,6 +423,10 @@ messagesticker {
   padding: 3px 6px;
 }
 
+.event-photo {
+  border-radius: 9999px;
+}
+
 .sender-text-red {
   color: #c03d33;
 }

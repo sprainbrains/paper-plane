@@ -302,7 +302,7 @@ impl ClientManager {
 /// recently used sessions file and checking the individual session's database directory.
 fn analyze_data_dir() -> Result<Vec<model::DatabaseInfo>, anyhow::Error> {
     if !utils::data_dir().exists() {
-        // Create the Telegrand data directory if it does not exist and return.
+        // Create the Paper Plane data directory if it does not exist and return.
         fs::create_dir_all(utils::data_dir())?;
         return Ok(Vec::new());
     }
