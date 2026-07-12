@@ -86,7 +86,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct ContactsWindow(ObjectSubclass<imp::ContactsWindow>)
-        @extends gtk::Widget, gtk::Window, adw::Window;
+        @extends gtk::Widget, gtk::Window, adw::Window,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
 impl ContactsWindow {

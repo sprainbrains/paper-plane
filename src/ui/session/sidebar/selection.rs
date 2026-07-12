@@ -130,10 +130,10 @@ impl Selection {
     fn find_item_position(&self, chat: &model::Chat, start_pos: u32, end_pos: u32) -> u32 {
         if let Some(model) = self.model() {
             for pos in start_pos..end_pos {
-                if let Some(item) = model.item(pos).and_downcast_ref::<model::ChatListItem>() {
-                    if item.chat().as_ref() == Some(chat) {
-                        return pos;
-                    }
+                if let Some(item) = model.item(pos).and_downcast_ref::<model::ChatListItem>()
+                    && item.chat().as_ref() == Some(chat)
+                {
+                    return pos;
                 }
             }
         }

@@ -60,7 +60,7 @@ fn main() -> glib::ExitCode {
             // Print version ...
             println!("paper-plane {}", config::VERSION);
             // ... and exit application.
-            1
+            std::ops::ControlFlow::Break(glib::ExitCode::from(1))
         } else {
             adw::init().expect("Failed to init GTK/libadwaita");
             ui::init();
@@ -113,13 +113,13 @@ fn main() -> glib::ExitCode {
                 (None, None) => (),
                 _ => {
                     log::error!("Both client-id and client-secret must be set together");
-                    return 1;
+                    return std::ops::ControlFlow::Break(glib::ExitCode::from(1));
                 }
             };
 
             APPLICATION_OPTS.set(application_opts).unwrap();
 
-            -1
+            std::ops::ControlFlow::Continue(())
         }
     });
 

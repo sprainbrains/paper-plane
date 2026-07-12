@@ -111,7 +111,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MessageLocation(ObjectSubclass<imp::MessageLocation>)
-        @extends gtk::Widget, ui::MessageBase;
+        @extends gtk::Widget, ui::MessageBase,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl MessageBaseExt for MessageLocation {
@@ -242,8 +243,8 @@ impl MessageLocation {
     }
 
     fn update_map_window(&self, message: &model::Message) {
-        if let Some(map_window) = self.imp().map_window.upgrade() {
-            if let tdlib::enums::MessageContent::MessageLocation(message_) = message.content().0 {
+        if let Some(map_window) = self.imp().map_window.upgrade()
+            && let tdlib::enums::MessageContent::MessageLocation(message_) = message.content().0 {
                 let map = map_window.map();
 
                 if message_.live_period > 0 {
@@ -253,6 +254,5 @@ impl MessageLocation {
                 }
                 map.set_marker_position(message_.location.latitude, message_.location.longitude);
             }
-        }
     }
 }

@@ -111,30 +111,30 @@ pub(crate) fn parse_formatted_text(formatted_text: tdlib::types::FormattedText) 
         buffer.push(c);
         code_units_offset += c.len_utf16();
 
-        if let Some(entity_) = entity {
-            if code_units_offset >= (entity_.offset + entity_.length) as usize {
-                buffer = escape(&buffer);
+        if let Some(entity_) = entity
+            && code_units_offset >= (entity_.offset + entity_.length) as usize
+        {
+            buffer = escape(&buffer);
 
-                entity = loop {
-                    let entity = entities.next();
+            entity = loop {
+                let entity = entities.next();
 
-                    // Handle eventual nested entities
-                    match entity {
-                        Some(entity) => {
-                            if entity.offset == entity_.offset {
-                                buffer = convert_to_markup(buffer, &entity.r#type);
-                            } else {
-                                break Some(entity);
-                            }
+                // Handle eventual nested entities
+                match entity {
+                    Some(entity) => {
+                        if entity.offset == entity_.offset {
+                            buffer = convert_to_markup(buffer, &entity.r#type);
+                        } else {
+                            break Some(entity);
                         }
-                        None => break None,
                     }
-                };
+                    None => break None,
+                }
+            };
 
-                output.push_str(&convert_to_markup(buffer, &entity_.r#type));
-                buffer = String::new();
-                is_inside_entity = false;
-            }
+            output.push_str(&convert_to_markup(buffer, &entity_.r#type));
+            buffer = String::new();
+            is_inside_entity = false;
         }
     }
 

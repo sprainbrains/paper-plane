@@ -132,7 +132,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Bar(ObjectSubclass<imp::Bar>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Bar {

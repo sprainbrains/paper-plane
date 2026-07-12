@@ -142,7 +142,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Row(ObjectSubclass<imp::Row>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Row {
@@ -157,16 +158,16 @@ impl Row {
     }
 
     pub(crate) async fn remove_chat_folder(&self) {
-        if let Some(chat_list) = self.chat_list() {
-            if let Err(e) = chat_list.delete().await {
-                utils::show_toast(
-                    self,
-                    gettext_f(
-                        "Failed to remove folder: {error}",
-                        &[("error", &e.to_string())],
-                    ),
-                );
-            }
+        if let Some(chat_list) = self.chat_list()
+            && let Err(e) = chat_list.delete().await
+        {
+            utils::show_toast(
+                self,
+                gettext_f(
+                    "Failed to remove folder: {error}",
+                    &[("error", &e.to_string())],
+                ),
+            );
         }
     }
 

@@ -151,16 +151,15 @@ impl ChatHistoryModel {
             let mut dividers: Vec<(usize, model::ChatHistoryItem)> = vec![];
 
             for (index, current) in list.range(position..position + added).enumerate().rev() {
-                if let Some(current_timestamp) = current.message_timestamp() {
-                    if Some(current_timestamp.ymd()) != previous_timestamp.as_ref().map(|t| t.ymd())
-                    {
-                        let divider_pos = position + index + 1;
-                        dividers.push((
-                            divider_pos,
-                            model::ChatHistoryItem::for_day_divider(current_timestamp.clone()),
-                        ));
-                        previous_timestamp = Some(current_timestamp);
-                    }
+                if let Some(current_timestamp) = current.message_timestamp()
+                    && Some(current_timestamp.ymd()) != previous_timestamp.as_ref().map(|t| t.ymd())
+                {
+                    let divider_pos = position + index + 1;
+                    dividers.push((
+                        divider_pos,
+                        model::ChatHistoryItem::for_day_divider(current_timestamp.clone()),
+                    ));
+                    previous_timestamp = Some(current_timestamp);
                 }
             }
 
@@ -216,13 +215,12 @@ impl ChatHistoryModel {
 
                 if let Some(model::ChatHistoryItemType::DayDivider(date)) =
                     next_item.map(|item| item.type_())
+                    && date.ymd() == last_added_timestamp.ymd()
                 {
-                    if date.ymd() == last_added_timestamp.ymd() {
-                        list.remove(position - 1);
+                    list.remove(position - 1);
 
-                        removed += 1;
-                        position -= 1;
-                    }
+                    removed += 1;
+                    position -= 1;
                 }
             }
 

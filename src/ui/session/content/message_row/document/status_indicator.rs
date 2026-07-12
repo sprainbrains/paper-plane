@@ -100,7 +100,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct StatusIndicator(ObjectSubclass<imp::StatusIndicator>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl StatusIndicator {

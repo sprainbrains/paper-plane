@@ -129,7 +129,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Row(ObjectSubclass<imp::Row>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 #[gtk::template_callbacks]
@@ -186,14 +187,14 @@ impl Row {
         dialog.choose(
             gio::Cancellable::NONE,
             clone!(#[weak(rename_to = obj)] self, move |response| {
-                if response == "yes" {
-                    if let Ok(message) = obj.message().downcast::<model::Message>() {
-                        utils::spawn(async move {
-                            if let Err(e) = message.delete(revoke).await {
-                                log::warn!("Error deleting a message (revoke = {}): {:?}", revoke, e);
-                            }
-                        });
-                    }
+                if response == "yes"
+                    && let Ok(message) = obj.message().downcast::<model::Message>()
+                {
+                    utils::spawn(async move {
+                        if let Err(e) = message.delete(revoke).await {
+                            log::warn!("Error deleting a message (revoke = {}): {:?}", revoke, e);
+                        }
+                    });
                 }
             }));
     }

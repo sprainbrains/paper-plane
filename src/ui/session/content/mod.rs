@@ -108,7 +108,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Content(ObjectSubclass<imp::Content>)
-        @extends gtk::Widget, adw::Bin;
+        @extends gtk::Widget, adw::Bin,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Default for Content {

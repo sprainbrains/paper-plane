@@ -124,7 +124,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Search(ObjectSubclass<imp::Search>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 #[gtk::template_callbacks]

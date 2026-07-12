@@ -91,7 +91,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Sticker(ObjectSubclass<imp::Sticker>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Sticker {
@@ -126,13 +127,11 @@ impl Sticker {
     }
 
     pub(crate) fn play_animation(&self) {
-        if let Some(animation) = &*self.imp().child.borrow() {
-            if let Some(animation) = animation.downcast_ref::<rlt::Animation>() {
-                if !animation.is_playing() {
+        if let Some(animation) = &*self.imp().child.borrow()
+            && let Some(animation) = animation.downcast_ref::<rlt::Animation>()
+                && !animation.is_playing() {
                     animation.play();
                 }
-            }
-        }
     }
 
     async fn download_sticker(

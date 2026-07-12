@@ -79,7 +79,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MessageVideo(ObjectSubclass<imp::MessageVideo>)
-        @extends gtk::Widget, ui::MessageBase;
+        @extends gtk::Widget, ui::MessageBase,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl ui::MessageBaseExt for MessageVideo {

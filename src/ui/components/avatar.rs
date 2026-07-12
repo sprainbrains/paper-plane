@@ -95,7 +95,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Avatar(ObjectSubclass<imp::Avatar>)
-        @extends gtk::Widget, adw::Bin;
+        @extends gtk::Widget, adw::Bin,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Default for Avatar {

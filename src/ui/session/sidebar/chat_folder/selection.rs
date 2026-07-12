@@ -216,10 +216,10 @@ impl Selection {
     ) -> u32 {
         if let Some(model) = self.model() {
             for pos in start_pos..end_pos {
-                if let Some(item) = model.item(pos) {
-                    if item.downcast_ref::<model::ChatList>().unwrap() == chat_list {
-                        return pos;
-                    }
+                if let Some(item) = model.item(pos)
+                    && item.downcast_ref::<model::ChatList>().unwrap() == chat_list
+                {
+                    return pos;
                 }
             }
         }

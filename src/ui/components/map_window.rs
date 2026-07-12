@@ -110,7 +110,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MapWindow(ObjectSubclass<imp::MapWindow>)
-        @extends gtk::Widget, gtk::Window, adw::Window;
+        @extends gtk::Widget, gtk::Window, adw::Window,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
 impl MapWindow {

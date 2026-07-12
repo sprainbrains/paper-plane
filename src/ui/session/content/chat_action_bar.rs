@@ -255,7 +255,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct ChatActionBar(ObjectSubclass<imp::ChatActionBar>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Default for ChatActionBar {
@@ -502,9 +503,9 @@ impl ChatActionBar {
     }
 
     async fn edit_message(&self) {
-        if let Some(chat) = self.chat() {
-            if let ChatActionBarState::Editing(message_id) = self.imp().state.get() {
-                if let Some(message) = self.compose_text_message().await {
+        if let Some(chat) = self.chat()
+            && let ChatActionBarState::Editing(message_id) = self.imp().state.get()
+                && let Some(message) = self.compose_text_message().await {
                     let client_id = chat.session_().client_().id();
                     let chat_id = chat.id();
 
@@ -518,13 +519,11 @@ impl ChatActionBar {
 
                     self.cancel_action();
                 }
-            }
-        }
     }
 
     async fn send_text_message(&self) {
-        if let Some(chat) = self.chat() {
-            if let Some(message) = self.compose_text_message().await {
+        if let Some(chat) = self.chat()
+            && let Some(message) = self.compose_text_message().await {
                 let client_id = chat.session_().client_().id();
                 let chat_id = chat.id();
                 let message_id = match self.imp().state.get() {
@@ -553,7 +552,6 @@ impl ChatActionBar {
 
                 self.reset();
             }
-        }
     }
 
     fn is_chat_muted(&self) -> bool {

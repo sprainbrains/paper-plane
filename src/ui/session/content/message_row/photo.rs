@@ -87,7 +87,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MessagePhoto(ObjectSubclass<imp::MessagePhoto>)
-        @extends gtk::Widget, ui::MessageBase;
+        @extends gtk::Widget, ui::MessageBase,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl ui::MessageBaseExt for MessagePhoto {

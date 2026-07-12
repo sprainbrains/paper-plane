@@ -70,7 +70,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MessageBase(ObjectSubclass<imp::MessageBase>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 pub(crate) trait MessageBaseExt:

@@ -86,7 +86,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct SectionRow(ObjectSubclass<imp::SectionRow>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl SectionRow {

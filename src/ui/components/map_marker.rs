@@ -75,7 +75,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MapMarker(ObjectSubclass<imp::MapMarker>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl<W: IsA<gtk::Widget>> From<&W> for MapMarker {

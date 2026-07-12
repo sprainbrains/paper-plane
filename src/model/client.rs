@@ -238,10 +238,10 @@ impl Client {
 
     pub(crate) fn remove(&self) {
         let database_path = utils::data_dir().join(self.database_info().0.directory_base_name);
-        if fs::metadata(&database_path).is_ok() {
-            if let Err(e) = fs::remove_dir_all(&database_path) {
-                log::error!("Error on on removing database directory {database_path:?}: {e}");
-            }
+        if fs::metadata(&database_path).is_ok()
+            && let Err(e) = fs::remove_dir_all(&database_path)
+        {
+            log::error!("Error on on removing database directory {database_path:?}: {e}");
         }
 
         self.client_manager_().remove_client(self);

@@ -210,7 +210,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct ChatHistory(ObjectSubclass<imp::ChatHistory>)
-        @extends gtk::Widget, adw::Bin;
+        @extends gtk::Widget, adw::Bin,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Default for ChatHistory {

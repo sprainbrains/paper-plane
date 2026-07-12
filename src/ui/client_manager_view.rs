@@ -112,14 +112,13 @@ mod imp {
             client.set_active(true);
             obj.set_active_client_online();
 
-            if client.is_logged_in() {
-                if let Err(e) = self.settings.set_string(
+            if client.is_logged_in()
+                && let Err(e) = self.settings.set_string(
                     "last-used-session",
                     &client.database_info().0.directory_base_name,
                 ) {
                     log::warn!("Could not save setting 'last-used-session': {e}");
                 }
-            }
 
             self.animated_bin.set_child(&ui::ClientView::from(&client));
         }

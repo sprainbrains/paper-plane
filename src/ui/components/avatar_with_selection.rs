@@ -79,7 +79,7 @@ glib::wrapper! {
     /// A widget displaying an `Avatar` for an `Account`.
     pub(crate) struct AvatarWithSelection(ObjectSubclass<imp::AvatarWithSelection>)
         @extends gtk::Widget, adw::Bin,
-        @implements gtk::Accessible;
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl Default for AvatarWithSelection {

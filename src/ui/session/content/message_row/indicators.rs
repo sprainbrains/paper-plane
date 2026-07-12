@@ -94,7 +94,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct MessageIndicators(ObjectSubclass<imp::MessageIndicators>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl MessageIndicators {

@@ -202,5 +202,6 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Icon(ObjectSubclass<imp::Icon>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }

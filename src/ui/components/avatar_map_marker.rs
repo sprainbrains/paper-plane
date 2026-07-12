@@ -87,7 +87,8 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct AvatarMapMarker(ObjectSubclass<imp::AvatarMapMarker>)
-        @extends gtk::Widget;
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
 impl From<&model::User> for AvatarMapMarker {
