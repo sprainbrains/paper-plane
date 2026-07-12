@@ -62,6 +62,14 @@ menu model {
       hidden-when: "action-disabled";
     }
   }
+
+  section {
+    item {
+      label: _("Copy Debug Entry");
+      action: "message-row.copy-debug";
+      hidden-when: "action-disabled";
+    }
+  }
 }
 
 PopoverMenu menu {

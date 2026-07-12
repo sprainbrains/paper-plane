@@ -434,7 +434,7 @@ messagesticker {
 .reaction-chip {
   min-height: 0;
   min-width: 0;
-  padding: 2px 8px;
+  padding: 2px 4px;
   border-radius: 12px;
   font-size: smaller;
 }

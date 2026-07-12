@@ -49,6 +49,7 @@ pub(crate) use self::venue::MessageVenue;
 pub(crate) use self::video::MessageVideo;
 pub(crate) use self::video_note::MessageVideoNote;
 pub(crate) use self::voice_note::MessageVoiceNote;
+use crate::config;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -92,6 +93,9 @@ mod imp {
             });
             klass.install_action("message-row.copy-link", None, move |widget, _, _| {
                 widget.copy_link()
+            });
+            klass.install_action("message-row.copy-debug", None, move |widget, _, _| {
+                widget.copy_debug_entry()
             });
             klass.install_action("message-row.pin", None, move |widget, _, _| {
                 widget.pin_message()
@@ -248,6 +252,29 @@ impl Row {
             .downcast_ref::<model::Message>()
             .map(|message| matches!(message.chat_().chat_type(), model::ChatType::Supergroup(_)))
             .unwrap_or(false)
+    }
+
+    /// Development builds only: copies everything the client knows about this
+    /// message — its full `get_message` result, Debug-formatted — to the
+    /// clipboard. Useful for bug reports, adding support for currently
+    /// unsupported message types, and writing tests.
+    fn copy_debug_entry(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let chat = message.chat_();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+        let clipboard = self.clipboard();
+
+        utils::spawn(async move {
+            let text = match tdlib::functions::get_message(chat_id, message_id, client_id).await {
+                Ok(tdlib::enums::Message::Message(td_message)) => format!("{td_message:#?}"),
+                Err(e) => format!("get_message({chat_id}, {message_id}) failed: {e:?}"),
+            };
+            clipboard.set_text(&text);
+        });
     }
 
     /// Opens a chat picker to forward this message to another chat.
@@ -517,6 +544,8 @@ impl Row {
         self.action_set_enabled("message-row.edit", self.can_edit_message());
         self.action_set_enabled("message-row.copy", self.can_copy_text());
         self.action_set_enabled("message-row.copy-link", self.can_copy_link());
+        // The debug-entry action is a development-only tool.
+        self.action_set_enabled("message-row.copy-debug", config::PROFILE == "Devel");
 
         if let Some(message) = self.message().downcast_ref::<model::Message>() {
             self.action_set_enabled("message-row.delete", message.can_be_deleted_only_for_self());
