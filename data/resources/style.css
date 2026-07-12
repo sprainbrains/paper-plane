@@ -540,3 +540,19 @@ splitbutton.small-pill:dir(ltr) > menubutton > button {
   border-top-right-radius: 18px;
   border-bottom-right-radius: 18px;
 }
+
+/* Sidebar header shimmer shown while the visible chat list is still loading. */
+@keyframes chatlist-title-shimmer {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.chatlist-loading {
+  animation: chatlist-title-shimmer 1.5s ease-in-out infinite;
+}

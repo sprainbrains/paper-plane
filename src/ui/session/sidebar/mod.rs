@@ -8,6 +8,7 @@ mod selection;
 
 use std::cell::Cell;
 use std::cell::OnceCell;
+use std::cell::RefCell;
 
 use glib::Properties;
 use glib::clone;
@@ -50,6 +51,10 @@ mod imp {
         #[property(get, set = Self::set_session, explicit_notify)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         pub(super) row_menu: OnceCell<gtk::PopoverMenu>,
+        // The currently displayed chat list and its "loading" notify handler, so the
+        // header shimmer can follow whichever list (folder) is on screen.
+        pub(super) loading_handler:
+            RefCell<Option<(glib::WeakRef<model::ChatList>, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) navigation_view: TemplateChild<adw::NavigationView>,
         #[template_child]
@@ -122,6 +127,34 @@ mod imp {
         fn close_search(&self) {
             self.navigation_view.pop_to_tag("chats");
         }
+
+        fn update_loading_shimmer(&self) {
+            // Drop the handler for the previously displayed list.
+            if let Some((weak, id)) = self.loading_handler.take()
+                && let Some(list) = weak.upgrade()
+            {
+                list.disconnect(id);
+            }
+
+            let title_stack = self.title_stack.get();
+            let list = self.folder_bar.selected_chat_list();
+
+            set_header_loading(&title_stack, list.as_ref().is_some_and(|l| l.loading()));
+
+            if let Some(list) = list {
+                let id = list.connect_notify_local(
+                    Some("loading"),
+                    clone!(
+                        #[weak]
+                        title_stack,
+                        move |list: &model::ChatList, _| {
+                            set_header_loading(&title_stack, list.loading());
+                        }
+                    ),
+                );
+                self.loading_handler.replace(Some((list.downgrade(), id)));
+            }
+        }
     }
 
     impl ObjectImpl for Sidebar {
@@ -176,6 +209,18 @@ mod imp {
                 "visible",
                 Some(obj),
             );
+
+            // Shimmer the header title while the chat list currently on screen is
+            // still loading. Re-target whenever the displayed folder changes.
+            self.folder_bar.connect_notify_local(
+                Some("selected-chat-list"),
+                clone!(
+                    #[weak]
+                    obj,
+                    move |_, _| obj.imp().update_loading_shimmer()
+                ),
+            );
+            self.update_loading_shimmer();
         }
 
         fn dispose(&self) {
@@ -198,6 +243,14 @@ mod imp {
                     gtk::Align::Start
                 });
             }
+        }
+    }
+
+    fn set_header_loading(title_stack: &gtk::Stack, loading: bool) {
+        if loading {
+            title_stack.add_css_class("chatlist-loading");
+        } else {
+            title_stack.remove_css_class("chatlist-loading");
         }
     }
 }

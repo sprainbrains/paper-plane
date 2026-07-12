@@ -119,8 +119,18 @@ mod imp {
 
         #[template_callback]
         fn on_notify_chat_list(&self) {
+            let obj = self.obj();
+
+            // Lazily load the chats of whichever list just became visible. `fetch`
+            // is idempotent (it loads each list only once), so switching folders
+            // back and forth is cheap, and folders that are never opened are never
+            // loaded.
+            if let Some(chat_list) = obj.chat_list() {
+                chat_list.fetch();
+            }
+
             self.selection
-                .set_selected_chat(self.obj().selected_chat().as_ref());
+                .set_selected_chat(obj.selected_chat().as_ref());
         }
 
         #[template_callback]

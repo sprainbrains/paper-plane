@@ -1,7 +1,6 @@
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::cell::RefMut;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use gettextrs::gettext;
@@ -15,6 +14,22 @@ use gtk::subclass::prelude::*;
 use crate::model;
 use crate::types::ChatId;
 use crate::utils;
+
+/// How many chats to request per `loadChats` batch.
+const CHATS_FETCH_LIMIT: i32 = 20;
+/// Delay between batches, so chats stream in without blocking the UI.
+const CHATS_FETCH_INTERVAL_MS: u64 = 50;
+
+/// Sort key for a chat within the list: `(-order, chat_id)`. The negated order
+/// gives a descending sort, and the chat id breaks ties so chats sharing an
+/// `order` (e.g. several with `order == 0`) still get distinct, stable keys.
+type SortKey = (i64, ChatId);
+
+#[derive(Debug)]
+struct Entry {
+    key: SortKey,
+    item: model::ChatListItem,
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, glib::Enum)]
 #[enum_type(name = "ChatListType")]
@@ -42,8 +57,15 @@ mod imp {
     #[derive(Debug, Properties, Default)]
     #[properties(wrapper_type = super::ChatList)]
     pub(crate) struct ChatList {
-        // order -> item
-        pub(super) list: RefCell<BTreeMap<i64, model::ChatListItem>>,
+        // Chats sorted ascending by `SortKey`. A plain `Vec` gives O(1) indexed
+        // access for `item()` (which GtkListView calls constantly), while the
+        // `index` map turns "find this chat" into an O(1) key lookup plus an
+        // O(log n) binary search instead of an O(n) scan that upgrades a weak
+        // reference for every element.
+        pub(super) list: RefCell<Vec<Entry>>,
+        // chat id -> the chat's current negated order (the first half of its
+        // `SortKey`), so a chat can be located without scanning `list`.
+        pub(super) index: RefCell<HashMap<ChatId, i64>>,
         #[property(get, set, construct_only)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         #[property(get, set, construct_only)]
@@ -56,6 +78,13 @@ mod imp {
         pub(super) unread_chat_count: Cell<i32>,
         #[property(get, set)]
         pub(super) unread_message_count: Cell<i32>,
+        // `true` while a `fetch()` loop is streaming chats in; drives the sidebar
+        // loading spinner.
+        #[property(get, set)]
+        pub(super) loading: Cell<bool>,
+        // Set once the list has been fully loaded, so re-displaying it does not
+        // kick off a redundant fetch.
+        pub(super) loaded: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -109,9 +138,8 @@ mod imp {
         fn item(&self, position: u32) -> Option<glib::Object> {
             self.list
                 .borrow()
-                .iter()
-                .nth(position as usize)
-                .map(|(_, c)| c.upcast_ref())
+                .get(position as usize)
+                .map(|entry| entry.item.upcast_ref())
                 .cloned()
         }
     }
@@ -142,25 +170,48 @@ impl ChatList {
     }
 
     pub(crate) fn fetch(&self) {
+        // Load each list only once, and never run two loaders concurrently. The flag
+        // is set synchronously here (before spawning) so two fetch() calls in the same
+        // main-loop tick can't both start a loader.
+        if self.loading() || self.imp().loaded.get() {
+            return;
+        }
+        self.set_loading(true);
+
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
             async move {
-                let result = tdlib::functions::load_chats(
-                    Some(obj.list_type().0),
-                    20,
-                    obj.session_().client_().id(),
-                )
-                .await;
+                let client_id = obj.session_().client_().id();
+                loop {
+                    let result = tdlib::functions::load_chats(
+                        Some(obj.list_type().0),
+                        CHATS_FETCH_LIMIT,
+                        client_id,
+                    )
+                    .await;
 
-                if let Err(err) = result {
-                    // Error 404 means that all chats have been loaded
-                    if err.code != 404 {
-                        log::error!("Received an error for LoadChats: {}", err.code);
+                    match result {
+                        // Pace the loading so the UI stays responsive and chats stream
+                        // in progressively instead of freezing while all load at once.
+                        Ok(_) => {
+                            glib::timeout_future(std::time::Duration::from_millis(
+                                CHATS_FETCH_INTERVAL_MS,
+                            ))
+                            .await;
+                        }
+                        // Error 404 means that all chats have been loaded.
+                        Err(err) => {
+                            if err.code != 404 {
+                                log::error!("Received an error for LoadChats: {}", err.code);
+                            }
+                            break;
+                        }
                     }
-                } else {
-                    obj.fetch();
                 }
+
+                obj.imp().loaded.set(true);
+                obj.set_loading(false);
             }
         ));
     }
@@ -171,43 +222,79 @@ impl ChatList {
         position: &tdlib::types::ChatPosition,
     ) {
         let imp = self.imp();
-        let mut list = imp.list.borrow_mut();
 
-        match find_chat_item_position(&list, chat.id()) {
-            Some((old_pos, old_order)) => {
-                let item = list.remove(&old_order).unwrap();
+        let chat_id = chat.id();
+        let new_key = (-position.order, chat_id);
 
-                drop(list);
-                self.items_changed(old_pos as u32, 1, 0);
+        // O(1) lookup of the chat's current key (if it is already in this list).
+        let old_key = imp.index.borrow().get(&chat_id).map(|order| (*order, chat_id));
 
-                if position.order != 0 {
-                    item.update(position);
-
-                    self.insert_item(imp.list.borrow_mut(), item, position.order);
-                }
+        match old_key {
+            // Same position: nothing moved, so update the item in place and skip the
+            // remove/re-add churn that would needlessly recycle the row widget.
+            Some(old_key) if position.order != 0 && old_key == new_key => {
+                // Clone out and drop the borrow before `update()`, which notifies and
+                // could re-enter this list.
+                let item = {
+                    let list = imp.list.borrow();
+                    list[position_of(&list, old_key)].item.clone()
+                };
+                item.update(position);
             }
-            None => self.insert_item(
-                list,
-                model::ChatListItem::new(chat, position),
-                position.order,
-            ),
+            // `order == 0` means the chat is no longer part of this list.
+            Some(old_key) if position.order == 0 => {
+                let old_pos = {
+                    let mut list = imp.list.borrow_mut();
+                    let pos = position_of(&list, old_key);
+                    list.remove(pos);
+                    pos
+                };
+                imp.index.borrow_mut().remove(&chat_id);
+                self.items_changed(old_pos as u32, 1, 0);
+            }
+            // The chat moved to a new position. Relocate it and emit a SINGLE
+            // items_changed spanning the affected range instead of a separate
+            // remove + insert: two signals briefly leave the row missing, which
+            // makes GtkListView recycle it into a blank (the disappearing-rows bug).
+            Some(old_key) => {
+                let (start, len, item) = {
+                    let mut list = imp.list.borrow_mut();
+                    let old_pos = position_of(&list, old_key);
+                    let mut entry = list.remove(old_pos);
+                    entry.key = new_key;
+                    let new_pos = list.partition_point(|e| e.key < new_key);
+                    let item = entry.item.clone();
+                    list.insert(new_pos, entry);
+
+                    let start = old_pos.min(new_pos);
+                    let len = old_pos.max(new_pos) - start + 1;
+                    (start as u32, len as u32, item)
+                };
+                imp.index.borrow_mut().insert(chat_id, new_key.0);
+                // Drop the borrow before `update()`, which notifies and could
+                // re-enter this list.
+                item.update(position);
+                self.items_changed(start, len, len);
+            }
+            // A not-yet-tracked chat with `order == 0` is not part of this list, so
+            // there is nothing to insert.
+            None if position.order == 0 => {}
+            None => self.insert_item(new_key, model::ChatListItem::new(chat, position)),
         }
     }
 
-    fn insert_item(
-        &self,
-        mut list: RefMut<BTreeMap<i64, model::ChatListItem>>,
-        item: model::ChatListItem,
-        order: i64,
-    ) {
-        let client_id = item.chat().unwrap().id();
+    fn insert_item(&self, key: SortKey, item: model::ChatListItem) {
+        let imp = self.imp();
 
-        // Invert the sign to have a descending order
-        list.insert(-order, item);
+        let position = {
+            let mut list = imp.list.borrow_mut();
+            // Keys are unique, so the binary search always reports the insert point.
+            let position = list.partition_point(|entry| entry.key < key);
+            list.insert(position, Entry { key, item });
+            position
+        };
+        imp.index.borrow_mut().insert(key.1, key.0);
 
-        let position = find_chat_item_position(&list, client_id).unwrap().0;
-
-        drop(list);
         self.items_changed(position as u32, 0, 1);
     }
 
@@ -227,12 +314,9 @@ impl ChatList {
     }
 }
 
-fn find_chat_item_position(
-    list: &RefMut<BTreeMap<i64, model::ChatListItem>>,
-    chat_id: ChatId,
-) -> Option<(usize, i64)> {
-    list.iter()
-        .enumerate()
-        .find(|(_, (_, item))| item.chat().unwrap().id() == chat_id)
-        .map(|(pos, (order, _))| (pos, *order))
+/// Index of the entry with the given (present) key. O(log n) and, unlike a scan
+/// by chat id, never upgrades a weak reference.
+fn position_of(list: &[Entry], key: SortKey) -> usize {
+    list.binary_search_by(|entry| entry.key.cmp(&key))
+        .expect("the key was taken from the index, so it must be present")
 }

@@ -19,6 +19,10 @@ use crate::model;
 use crate::types::ClientId;
 use crate::utils;
 
+/// Number of TDLib updates to process before yielding to the main loop while a
+/// backlog remains, so bursts don't freeze the UI.
+const UPDATE_BATCH_BEFORE_YIELD: u32 = 8;
+
 mod imp {
     use super::*;
 
@@ -271,8 +275,20 @@ impl ClientManager {
             #[weak(rename_to = obj)]
             self,
             async move {
+                let mut processed_since_yield = 0u32;
                 while let Ok((update, client_id)) = receiver.recv().await {
                     obj.handle_update(update, client_id);
+
+                    // A large backlog (e.g. the burst of chat updates right after
+                    // login) would otherwise be drained in a single main-loop
+                    // iteration, blocking rendering and freezing the UI. Yield
+                    // periodically while updates are still queued so GTK can paint
+                    // and the chats stream in progressively.
+                    processed_since_yield += 1;
+                    if processed_since_yield >= UPDATE_BATCH_BEFORE_YIELD && !receiver.is_empty() {
+                        processed_since_yield = 0;
+                        glib::timeout_future(std::time::Duration::from_millis(1)).await;
+                    }
                 }
             }
         ));
@@ -280,13 +296,13 @@ impl ClientManager {
         thread::spawn(move || {
             loop {
                 if let Some((update, client_id)) = tdlib::receive() {
-                    glib::spawn_future(clone!(
-                        #[strong]
-                        sender,
-                        async move {
-                            _ = sender.send((update, client_id)).await;
-                        }
-                    ));
+                    // The channel is unbounded, so this never actually blocks; it
+                    // just hands the update to the main loop. Pushing directly (rather
+                    // than spawning a future per update onto the main context) keeps
+                    // the enqueue work off the main thread.
+                    if sender.send_blocking((update, client_id)).is_err() {
+                        break;
+                    }
                 }
             }
         });
