@@ -63,6 +63,7 @@ mod imp {
             obj.setup_gactions();
             obj.setup_accels();
             obj.load_color_scheme();
+            obj.setup_automation();
         }
     }
 
@@ -90,7 +91,7 @@ impl Application {
             .build()
     }
 
-    fn main_window(&self) -> ui::Window {
+    pub(crate) fn main_window(&self) -> ui::Window {
         self.imp().window.get().unwrap().upgrade().unwrap()
     }
 

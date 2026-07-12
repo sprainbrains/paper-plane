@@ -23,6 +23,7 @@ macro_rules! gettext {
 }
 
 mod application;
+mod automation;
 mod ui;
 #[rustfmt::skip]
 #[allow(clippy::all)]
