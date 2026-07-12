@@ -1,0 +1,30 @@
+using Gtk 4.0;
+
+template $PaplSidebarChatList: Widget {
+  layout-manager: BinLayout {};
+
+  notify::chat-list => $on_notify_chat_list();
+
+  ListView {
+    single-click-activate: true;
+
+    activate => $list_activate() swapped;
+
+    model: $PaplSidebarSelection selection {
+      model: bind template.chat-list;
+      hide-selection: bind template.compact;
+    };
+
+    factory: BuilderListItemFactory {
+      template ListItem {
+        child: $PaplSidebarRow {
+          item: bind template.item;
+        };
+      }
+    };
+
+    styles [
+      "navigation-sidebar",
+    ]
+  }
+}

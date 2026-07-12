@@ -1,0 +1,212 @@
+using Gtk 4.0;
+using Adw 1;
+
+menu primary_menu {
+  section {
+    item {
+      label: _("_Contacts");
+      action: "session.show-contacts";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Preferences");
+      action: "session.show-preferences";
+    }
+
+    item {
+      label: _("_Keyboard Shortcuts");
+      action: "win.show-help-overlay";
+    }
+
+    item {
+      label: _("_About Paper Plane");
+      action: "app.about";
+    }
+  }
+}
+
+template $PaplSidebar: Widget {
+  layout-manager: BinLayout {};
+
+  Adw.NavigationView navigation_view {
+    Adw.NavigationPage {
+      tag: "chats";
+      title: _("Chats");
+
+      child: Adw.ToolbarView main_view {
+        [top]
+        Overlay {
+          Adw.HeaderBar {
+            Button {
+              action-name: "sidebar.show-sessions";
+
+              $PaplAvatar {
+                size: 24;
+                item: bind template.session as <$ClientStateSession>.me;
+              }
+
+              styles [
+                "image-button",
+              ]
+            }
+
+            title-widget: Stack title_stack {
+              hhomogeneous: false;
+
+              StackPage {
+                name: "chats-label";
+
+                child: Label {
+                  label: _("Chats");
+
+                  styles [
+                    "title",
+                  ]
+                };
+              }
+
+              StackPage {
+                name: "archive-button";
+
+                child: Button {
+                  action-name: "sidebar.show-archived-chats";
+
+                  Box {
+                    orientation: vertical;
+                    valign: center;
+
+                    Box {
+                      halign: center;
+                      valign: center;
+                      spacing: 3;
+
+                      Label {
+                        label: _("Chats");
+                        ellipsize: end;
+                      }
+                    }
+
+                    Box {
+                      halign: center;
+                      valign: center;
+                      spacing: 3;
+
+                      Label {
+                        label: _("Archive");
+                        ellipsize: end;
+
+                        styles [
+                          "caption",
+                          "dim-label",
+                        ]
+                      }
+
+                      Label archive_unread_label {
+                        label: "6";
+                        valign: center;
+
+                        styles [
+                          "unread-label",
+                        ]
+                      }
+
+                      Image {
+                        icon-name: "arrow1-right-symbolic";
+                        margin-start: 3;
+
+                        styles [
+                          "dim-label",
+                        ]
+                      }
+                    }
+                  }
+
+                  styles [
+                    "flat",
+                    "two-line-window-title",
+                  ]
+                };
+              }
+            };
+
+            [end]
+            MenuButton {
+              icon-name: "open-menu-symbolic";
+              menu-model: primary_menu;
+            }
+
+            [start]
+            Button {
+              action-name: "sidebar.start-search";
+              icon-name: "system-search-symbolic";
+            }
+          }
+
+          [overlay]
+          $PaplSnow snow {
+            sensitive: false;
+          }
+        }
+
+        [top]
+        $PaplSidebarChatFolderBar folder_bar {
+          chat-folder-list: bind template.session as <$ClientStateSession>.chat-folder-list;
+        }
+
+        ScrolledWindow {
+          vexpand: true;
+          hscrollbar-policy: never;
+
+          $PaplSidebarChatList {
+            chat-list: bind folder_bar.selected-chat-list;
+            selected-chat: bind template.selected-chat bidirectional;
+            compact: bind template.compact;
+          }
+        }
+      };
+    }
+
+    Adw.NavigationPage {
+      tag: "search";
+      title: _("Search");
+
+      child: $PaplSidebarSearch search {
+        session: bind template.session;
+
+        close => $close_search() swapped;
+      };
+    }
+
+    Adw.NavigationPage {
+      tag: "sessions";
+      title: _("Sessions");
+
+      child: $PaplSessionSwitcher {
+        client-manager: bind template.session as <$ClientStateSession>.client as <$Client>.client-manager;
+      };
+    }
+
+    Adw.NavigationPage {
+      tag: "archived-chats";
+      title: _("Archived Chats");
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {}
+
+        ScrolledWindow {
+          vexpand: true;
+          hscrollbar-policy: never;
+
+          $PaplSidebarChatList {
+            chat-list: bind template.session as <$ClientStateSession>.archive-chat-list;
+            selected-chat: bind template.selected-chat bidirectional;
+            compact: bind template.compact;
+          }
+        }
+      };
+    }
+  }
+}

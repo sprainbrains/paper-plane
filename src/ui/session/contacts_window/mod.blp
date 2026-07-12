@@ -1,0 +1,47 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $PaplContactsWindow: Adw.Window {
+  title: _("Contacts");
+  modal: true;
+  default-width: 360;
+  default-height: 600;
+
+  content: Adw.ToolbarView {
+    [top]
+    HeaderBar {}
+
+    content: ScrolledWindow {
+      vexpand: true;
+      hscrollbar-policy: never;
+
+      Adw.ClampScrollable {
+        child: ListView list_view {
+          single-click-activate: true;
+
+          activate => $list_activate() swapped;
+
+          model: NoSelection {
+            model: SortListModel sort_model {
+              sorter: StringSorter {
+                expression: expr $user_display_name() as <string>;
+              };
+            };
+          };
+
+          factory: BuilderListItemFactory {
+            template ListItem {
+              child: $PaplContactRow {
+                user: bind template.item;
+              };
+            }
+          };
+
+          styles [
+            "navigation-sidebar",
+          ]
+        };
+      }
+    };
+  };
+}

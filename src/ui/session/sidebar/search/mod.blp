@@ -1,0 +1,65 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $PaplSidebarSearch: Widget {
+  layout-manager: BinLayout {};
+
+  Adw.ToolbarView toolbar_view {
+    [top]
+    Adw.HeaderBar {
+      title-widget: SearchEntry search_entry {
+        placeholder-text: _("Search");
+
+        search-changed => $search() swapped;
+      };
+    }
+
+    Stack stack {
+      vexpand: true;
+
+      StackPage {
+        name: "results";
+
+        child: ScrolledWindow {
+          hscrollbar-policy: never;
+
+          ListView {
+            single-click-activate: true;
+
+            activate => $list_activate() swapped;
+
+            model: NoSelection selection {};
+
+            factory: BuilderListItemFactory {
+              template ListItem {
+                child: $PaplSidebarSearchRow {
+                  item: bind template.item;
+                  list-item: template;
+                };
+              }
+            };
+
+            styles [
+              "navigation-sidebar",
+              "results-list",
+            ]
+          }
+        };
+      }
+
+      StackPage {
+        name: "empty";
+
+        child: Adw.StatusPage {
+          icon-name: "system-search-symbolic";
+          title: _("No Search Results");
+          description: _("Try a different search.");
+
+          styles [
+            "compact",
+          ]
+        };
+      }
+    }
+  }
+}
