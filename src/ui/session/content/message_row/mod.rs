@@ -82,6 +82,9 @@ mod imp {
             klass.install_action("message-row.reply", None, move |widget, _, _| {
                 widget.reply()
             });
+            klass.install_action("message-row.forward", None, move |widget, _, _| {
+                widget.show_forward()
+            });
             klass.install_action("message-row.edit", None, move |widget, _, _| widget.edit());
             klass.install_action("message-row.revoke-delete", None, move |widget, _, _| {
                 widget.show_delete_dialog(true)
@@ -168,6 +171,23 @@ impl Row {
             self.activate_action("chat-history.reply", Some(&message.id().to_variant()))
                 .unwrap();
         }
+    }
+
+    /// Opens a chat picker to forward this message to another chat.
+    fn show_forward(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let session = utils::ancestor::<_, ui::Session>(self);
+        let parent = self.root().and_downcast::<gtk::Window>();
+
+        let window = ui::ForwardWindow::new(
+            parent.as_ref(),
+            &session,
+            message.chat_().id(),
+            message.id(),
+        );
+        window.present();
     }
 
     /// Opens a popover offering the reactions available for this message; picking

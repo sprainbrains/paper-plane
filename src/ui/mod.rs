@@ -37,6 +37,7 @@ pub(crate) use self::session::ContactRow;
 pub(crate) use self::session::ContactsWindow;
 pub(crate) use self::session::Content;
 pub(crate) use self::session::EventRow;
+pub(crate) use self::session::ForwardWindow;
 pub(crate) use self::session::MediaPicture;
 pub(crate) use self::session::MessageAudio;
 pub(crate) use self::session::MessageBase;
@@ -98,6 +99,7 @@ pub(crate) fn init() {
     ContactsWindow::static_type();
     Content::static_type();
     EventRow::static_type();
+    ForwardWindow::static_type();
     IconMapMarker::static_type();
     Login::static_type();
     LoginCode::static_type();

@@ -1,0 +1,62 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $PaplForwardWindow: Adw.Window {
+  title: _("Forward To…");
+  modal: true;
+  default-width: 360;
+  default-height: 600;
+
+  content: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: SearchEntry search_entry {
+        placeholder-text: _("Search");
+
+        search-changed => $search_changed() swapped;
+      };
+    }
+
+    content: ScrolledWindow {
+      vexpand: true;
+      hscrollbar-policy: never;
+
+      Adw.ClampScrollable {
+        child: ListView list_view {
+          single-click-activate: true;
+
+          activate => $list_activate() swapped;
+
+          model: NoSelection {
+            model: FilterListModel filter_model {
+              filter: CustomFilter custom_filter {};
+            };
+          };
+
+          factory: BuilderListItemFactory {
+            template ListItem {
+              child: Box {
+                spacing: 6;
+
+                $PaplAvatar {
+                  size: 32;
+                  item: bind template.item as <$ChatListItem>.chat;
+                }
+
+                Inscription {
+                  hexpand: true;
+                  text-overflow: ellipsize_end;
+                  text: bind template.item as <$ChatListItem>.chat as <$Chat>.title;
+                }
+              };
+            }
+          };
+
+          styles [
+            "navigation-sidebar",
+          ]
+        };
+      }
+    };
+  };
+}

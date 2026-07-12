@@ -15,6 +15,12 @@ menu model {
     }
 
     item {
+      label: _("_Forward");
+      action: "message-row.forward";
+      hidden-when: "action-disabled";
+    }
+
+    item {
       label: _("_Edit");
       action: "message-row.edit";
       hidden-when: "action-disabled";

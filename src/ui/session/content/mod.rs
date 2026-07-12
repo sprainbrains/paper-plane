@@ -4,6 +4,7 @@ mod chat_history;
 mod chat_history_row;
 mod chat_info_window;
 mod event_row;
+mod forward_window;
 mod message_row;
 mod send_media_window;
 
@@ -20,6 +21,7 @@ pub(crate) use self::chat_history::ChatHistory;
 pub(crate) use self::chat_history_row::ChatHistoryRow;
 pub(crate) use self::chat_info_window::ChatInfoWindow;
 pub(crate) use self::event_row::EventRow;
+pub(crate) use self::forward_window::ForwardWindow;
 pub(crate) use self::message_row::MediaPicture;
 pub(crate) use self::message_row::MessageAudio;
 pub(crate) use self::message_row::MessageBase;
