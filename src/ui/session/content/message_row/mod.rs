@@ -417,15 +417,21 @@ impl Row {
 
     fn can_edit_message(&self) -> bool {
         if let Some(message) = self.message().downcast_ref::<model::Message>() {
-            let is_text_message = matches!(
+            use tdlib::enums::MessageContent::*;
+
+            // Text messages edit their text; captioned media edit their caption.
+            let is_editable = matches!(
                 message.content().0,
-                tdlib::enums::MessageContent::MessageText(_)
+                MessageText(_)
+                    | MessagePhoto(_)
+                    | MessageVideo(_)
+                    | MessageAnimation(_)
+                    | MessageDocument(_)
+                    | MessageAudio(_)
+                    | MessageVoiceNote(_)
             );
 
-            // TODO: Support more message types in the future
-            is_text_message
-                && message.can_be_edited()
-                && can_send_messages_in_chat(&message.chat_())
+            is_editable && message.can_be_edited() && can_send_messages_in_chat(&message.chat_())
         } else {
             false
         }

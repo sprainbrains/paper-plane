@@ -459,20 +459,22 @@ impl ChatActionBar {
             let client_id = chat.session_().client_().id();
 
             if let Some(message) = chat.message(id) {
-                match message.content().0 {
-                    tdlib::enums::MessageContent::MessageText(data) => {
-                        utils::block_on(async move {
-                            let tdlib::enums::FormattedText::FormattedText(markdown_text) =
-                                tdlib::functions::get_markdown_text(data.text, client_id)
-                                    .await
-                                    .unwrap();
+                let text = match message.content().0 {
+                    tdlib::enums::MessageContent::MessageText(data) => Some(data.text),
+                    other => message_caption(other),
+                };
 
-                            self.imp()
-                                .message_entry
-                                .set_formatted_text(Some(model::BoxedFormattedText(markdown_text)));
-                        });
-                    }
-                    _ => unimplemented!(),
+                if let Some(text) = text {
+                    utils::block_on(async move {
+                        let tdlib::enums::FormattedText::FormattedText(markdown_text) =
+                            tdlib::functions::get_markdown_text(text, client_id)
+                                .await
+                                .unwrap();
+
+                        self.imp()
+                            .message_entry
+                            .set_formatted_text(Some(model::BoxedFormattedText(markdown_text)));
+                    });
                 }
             }
         }
@@ -548,15 +550,35 @@ impl ChatActionBar {
     async fn edit_message(&self) {
         if let Some(chat) = self.chat()
             && let ChatActionBarState::Editing(message_id) = self.imp().state.get()
-            && let Some(message) = self.compose_text_message().await
         {
             let client_id = chat.session_().client_().id();
             let chat_id = chat.id();
 
-            let result =
-                tdlib::functions::edit_message_text(chat_id, message_id, message, client_id).await;
+            // Media messages edit their caption; everything else edits its text.
+            let is_caption = chat
+                .message(message_id)
+                .map(|message| {
+                    !matches!(
+                        message.content().0,
+                        tdlib::enums::MessageContent::MessageText(_)
+                    )
+                })
+                .unwrap_or(false);
+
+            let result = if is_caption {
+                let caption = self.imp().message_entry.as_markdown().await;
+                tdlib::functions::edit_message_caption(
+                    chat_id, message_id, caption, false, client_id,
+                )
+                .await
+            } else if let Some(message) = self.compose_text_message().await {
+                tdlib::functions::edit_message_text(chat_id, message_id, message, client_id).await
+            } else {
+                return;
+            };
+
             if let Err(e) = result {
-                log::warn!("Error editing a text message: {:?}", e);
+                log::warn!("Error editing a message: {:?}", e);
             }
 
             self.cancel_action();
@@ -792,5 +814,20 @@ impl ChatActionBar {
             .get()
             .unwrap()
             .set_target(supergroup.as_ref());
+    }
+}
+
+/// Extracts the editable caption from a captioned media message, if any.
+fn message_caption(content: tdlib::enums::MessageContent) -> Option<tdlib::types::FormattedText> {
+    use tdlib::enums::MessageContent::*;
+
+    match content {
+        MessagePhoto(data) => Some(data.caption),
+        MessageVideo(data) => Some(data.caption),
+        MessageAnimation(data) => Some(data.caption),
+        MessageDocument(data) => Some(data.caption),
+        MessageAudio(data) => Some(data.caption),
+        MessageVoiceNote(data) => Some(data.caption),
+        _ => None,
     }
 }
