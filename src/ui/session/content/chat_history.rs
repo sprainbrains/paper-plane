@@ -15,6 +15,7 @@ use gtk::glib;
 
 use crate::expressions;
 use crate::model;
+use crate::strings;
 use crate::ui;
 use crate::utils;
 
@@ -43,6 +44,10 @@ mod imp {
         pub(super) list_view: TemplateChild<gtk::ListView>,
         #[template_child]
         pub(super) chat_action_bar: TemplateChild<ui::ChatActionBar>,
+        #[template_child]
+        pub(super) pinned_message_bar: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) pinned_message_label: TemplateChild<gtk::Label>,
     }
 
     #[glib::object_subclass]
@@ -358,12 +363,18 @@ impl ChatHistory {
 
         let imp = self.imp();
 
+        // Reset the pinned-message bar; it's re-populated below if the new chat
+        // has a pinned message.
+        imp.pinned_message_bar.set_visible(false);
+
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
             perform_chat_action(chat.as_ref(), tdlib::functions::close_chat);
         }
 
         if let Some(chat) = chat {
+            self.fetch_pinned_message(chat);
+
             self.action_set_enabled(
                 "chat-history.leave-chat",
                 match chat.chat_type() {
@@ -457,6 +468,36 @@ impl ChatHistory {
 
         imp.chat.set(chat);
         self.notify("chat");
+    }
+
+    /// Fetches the chat's pinned message (if any) and shows a preview of it in
+    /// the bar below the header. TDLib returns an error when nothing is pinned,
+    /// in which case the bar stays hidden.
+    fn fetch_pinned_message(&self, chat: &model::Chat) {
+        let chat = chat.clone();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                if let Ok(tdlib::enums::Message::Message(td_message)) =
+                    tdlib::functions::get_chat_pinned_message(chat_id, client_id).await
+                {
+                    // Ignore the result if the user has since switched chats.
+                    if obj.chat().as_ref() != Some(&chat) {
+                        return;
+                    }
+
+                    let message = model::Message::new(&chat, td_message);
+                    let imp = obj.imp();
+                    imp.pinned_message_label
+                        .set_label(&strings::message_content(&message));
+                    imp.pinned_message_bar.set_visible(true);
+                }
+            }
+        ));
     }
 
     pub(crate) fn sticky(&self) -> bool {
