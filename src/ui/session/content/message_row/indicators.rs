@@ -21,6 +21,10 @@ mod imp {
         pub(super) interaction_info_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
         #[template_child]
+        pub(super) view_count_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) view_count_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub(super) reply_count_box: TemplateChild<gtk::Box>,
         #[template_child]
         pub(super) reply_count_label: TemplateChild<gtk::Label>,
@@ -129,6 +133,16 @@ impl MessageIndicators {
                 }
             ),
         );
+        interaction_info_signal_group.connect_notify_local(
+            Some("view-count"),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_view_count();
+                }
+            ),
+        );
         imp.interaction_info_signal_group
             .set(interaction_info_signal_group)
             .unwrap();
@@ -173,10 +187,34 @@ impl MessageIndicators {
             .set_target(message.map(|message| message.chat_()).as_ref());
 
         self.update_reply_count();
+        self.update_view_count();
         self.update_sending_state();
         self.update_message_info();
 
         self.notify("message");
+    }
+
+    /// Shows the view count on channel posts (where views are tracked), hidden
+    /// elsewhere.
+    fn update_view_count(&self) {
+        let imp = self.imp();
+        let message = self.message().and_downcast::<model::Message>();
+
+        let is_channel_message = message.as_ref().is_some_and(|message| {
+            matches!(message.chat_().chat_type(), model::ChatType::Supergroup(data) if data.is_channel())
+        });
+
+        let view_count = message
+            .as_ref()
+            .map(|message| message.interaction_info().view_count())
+            .unwrap_or(0);
+
+        if is_channel_message && view_count > 0 {
+            imp.view_count_label.set_label(&format_count(view_count));
+            imp.view_count_box.set_visible(true);
+        } else {
+            imp.view_count_box.set_visible(false);
+        }
     }
 
     fn update_reply_count(&self) {
@@ -274,5 +312,16 @@ impl MessageIndicators {
         };
 
         self.imp().message_info_label.set_label(&label);
+    }
+}
+
+/// Humanizes a view count, e.g. 1234 -> "1.2K", 1_234_567 -> "1.2M".
+fn format_count(count: i32) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
     }
 }

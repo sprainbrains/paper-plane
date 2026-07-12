@@ -17,6 +17,8 @@ mod imp {
     pub(crate) struct MessageInteractionInfo {
         #[property(get)]
         pub(super) reply_count: Cell<u32>,
+        #[property(get)]
+        pub(super) view_count: Cell<i32>,
         pub(super) reactions: OnceCell<gio::ListStore>,
     }
 
@@ -46,6 +48,9 @@ impl From<Option<tdlib::types::MessageInteractionInfo>> for MessageInteractionIn
         obj.imp()
             .reply_count
             .set(extract_reply_count(interaction_info.as_ref()));
+        obj.imp()
+            .view_count
+            .set(extract_view_count(interaction_info.as_ref()));
         obj.set_reactions_from(interaction_info.as_ref());
         obj
     }
@@ -54,7 +59,16 @@ impl From<Option<tdlib::types::MessageInteractionInfo>> for MessageInteractionIn
 impl MessageInteractionInfo {
     pub(crate) fn update(&self, interaction_info: Option<tdlib::types::MessageInteractionInfo>) {
         self.set_reply_count(extract_reply_count(interaction_info.as_ref()));
+        self.set_view_count(extract_view_count(interaction_info.as_ref()));
         self.set_reactions_from(interaction_info.as_ref());
+    }
+
+    fn set_view_count(&self, view_count: i32) {
+        if self.view_count() == view_count {
+            return;
+        }
+        self.imp().view_count.set(view_count);
+        self.notify_view_count()
     }
 
     /// The message's reactions as a `gio::ListStore` of `model::MessageReaction`,
@@ -96,4 +110,10 @@ fn extract_reply_count(interaction_info: Option<&tdlib::types::MessageInteractio
         .and_then(|interaction_info| interaction_info.reply_info.as_ref())
         .map(|reply_info| reply_info.reply_count)
         .unwrap_or(0) as u32
+}
+
+fn extract_view_count(interaction_info: Option<&tdlib::types::MessageInteractionInfo>) -> i32 {
+    interaction_info
+        .map(|interaction_info| interaction_info.view_count)
+        .unwrap_or(0)
 }
