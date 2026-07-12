@@ -48,6 +48,9 @@ mod imp {
         pub(super) pinned_message_bar: TemplateChild<gtk::Box>,
         #[template_child]
         pub(super) pinned_message_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) unpin_button: TemplateChild<gtk::Button>,
+        pub(super) pinned_message_id: Cell<i64>,
     }
 
     #[glib::object_subclass]
@@ -139,6 +142,14 @@ mod imp {
             let obj = self.obj();
 
             obj.setup_expressions();
+
+            self.unpin_button.connect_clicked(clone!(
+                #[weak]
+                obj,
+                move |_| {
+                    obj.unpin_message();
+                }
+            ));
 
             let adj = self.list_view.vadjustment().unwrap();
             adj.connect_value_changed(clone!(
@@ -470,6 +481,27 @@ impl ChatHistory {
         self.notify("chat");
     }
 
+    /// Unpins the message currently shown in the pinned-message bar.
+    fn unpin_message(&self) {
+        let imp = self.imp();
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let message_id = imp.pinned_message_id.get();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+
+        imp.pinned_message_bar.set_visible(false);
+
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::unpin_chat_message(chat_id, message_id, client_id).await
+            {
+                log::warn!("Failed to unpin a message: {e:?}");
+            }
+        });
+    }
+
     /// Fetches the chat's pinned message (if any) and shows a preview of it in
     /// the bar below the header. TDLib returns an error when nothing is pinned,
     /// in which case the bar stays hidden.
@@ -492,6 +524,7 @@ impl ChatHistory {
 
                     let message = model::Message::new(&chat, td_message);
                     let imp = obj.imp();
+                    imp.pinned_message_id.set(message.id());
                     imp.pinned_message_label
                         .set_label(&strings::message_content(&message));
                     imp.pinned_message_bar.set_visible(true);
