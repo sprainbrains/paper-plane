@@ -51,10 +51,6 @@ glib::wrapper! {
 
 impl SponsoredMessage {
     fn new(chat: &model::Chat, sponsored_message: tdlib::types::SponsoredMessage) -> Self {
-        use tdlib::enums::MessageSponsorType::*;
-
-        let session = chat.session_();
-
         glib::Object::builder()
             .property("chat", chat)
             .property("message-id", sponsored_message.message_id)
@@ -62,15 +58,7 @@ impl SponsoredMessage {
                 "content",
                 model::BoxedMessageContent(sponsored_message.clone().content),
             )
-            .property(
-                "sponsor-label",
-                match &sponsored_message.sponsor.r#type {
-                    Bot(sponsor) => session.user(sponsor.bot_user_id).first_name(),
-                    PublicChannel(sponsor) => session.chat(sponsor.chat_id).title(),
-                    PrivateChannel(sponsor) => sponsor.title.clone(),
-                    Website(sponsor) => sponsor.name.clone(),
-                },
-            )
+            .property("sponsor-label", sponsored_message.title.clone())
             .build()
     }
 

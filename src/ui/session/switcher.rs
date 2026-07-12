@@ -77,7 +77,7 @@ mod imp {
             let client_manager_view = obj.client_manager_view();
 
             self.set_selected(&client_manager_view);
-            client_manager_view.connect_active_client_notify(clone!(@weak obj => move |manager| {
+            client_manager_view.connect_active_client_notify(clone!(#[weak] obj, move |manager| {
                 obj.imp().set_selected(manager);
             }));
         }
@@ -116,7 +116,7 @@ mod imp {
                 gtk::FilterListModel::new(obj.client_manager(), Some(filter.clone()));
 
             if let Some(client_manager) = obj.client_manager() {
-                client_manager.connect_client_logged_in(clone!(@weak filter => move |_, _| {
+                client_manager.connect_client_logged_in(clone!(#[weak] filter, move |_, _| {
                     filter.changed(gtk::FilterChange::Different);
                 }));
             }

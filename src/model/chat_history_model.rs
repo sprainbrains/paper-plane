@@ -88,10 +88,10 @@ impl ChatHistoryModel {
 
         obj.imp().chat.set(Some(chat));
 
-        chat.connect_new_message(clone!(@weak obj => move |_, message| {
+        chat.connect_new_message(clone!(#[weak] obj, move |_, message| {
             obj.push_front(message);
         }));
-        chat.connect_deleted_message(clone!(@weak obj => move |_, message| {
+        chat.connect_deleted_message(clone!(#[weak] obj, move |_, message| {
             obj.remove(message);
         }));
 

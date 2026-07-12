@@ -97,7 +97,7 @@ impl Application {
     fn setup_gactions(&self) {
         // Quit
         let action_quit = gio::SimpleAction::new("quit", None);
-        action_quit.connect_activate(clone!(@weak self as app => move |_, _| {
+        action_quit.connect_activate(clone!(#[weak(rename_to = app)] self, move |_, _| {
             // This is needed to trigger the delete event and saving the window state
             app.main_window().close();
             app.quit();
@@ -106,7 +106,7 @@ impl Application {
 
         // About
         let action_about = gio::SimpleAction::new("about", None);
-        action_about.connect_activate(clone!(@weak self as app => move |_, _| {
+        action_about.connect_activate(clone!(#[weak(rename_to = app)] self, move |_, _| {
             app.show_about_dialog();
         }));
         self.add_action(&action_about);
@@ -114,7 +114,7 @@ impl Application {
         // Select chat
         let action_select_chat =
             gio::SimpleAction::new("select-chat", Some(glib::VariantTy::new("(ix)").unwrap()));
-        action_select_chat.connect_activate(clone!(@weak self as app => move |_, data| {
+        action_select_chat.connect_activate(clone!(#[weak(rename_to = app)] self, move |_, data| {
             let (client_id, chat_id) = data.unwrap().get().unwrap();
             app.main_window().select_chat(client_id, chat_id);
         }));
@@ -124,7 +124,7 @@ impl Application {
         let action_new_login_production_server =
             gio::SimpleAction::new("new-login-production-server", None);
         action_new_login_production_server.connect_activate(
-            clone!(@weak self as app => move |_, _| {
+            clone!(#[weak(rename_to = app)] self, move |_, _| {
                 app.main_window().client_manager_view().add_new_client(false);
             }),
         );
@@ -132,7 +132,7 @@ impl Application {
 
         // New login on test server
         let action_new_login_test_server = gio::SimpleAction::new("new-login-test-server", None);
-        action_new_login_test_server.connect_activate(clone!(@weak self as app => move |_, _| {
+        action_new_login_test_server.connect_activate(clone!(#[weak(rename_to = app)] self, move |_, _| {
             app.main_window().client_manager_view().add_new_client(true);
         }));
         self.add_action(&action_new_login_test_server);

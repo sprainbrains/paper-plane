@@ -3,7 +3,6 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use gettextrs::gettext;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
@@ -284,6 +283,7 @@ pub(crate) fn unparent_children<W: IsA<gtk::Widget>>(widget: &W) {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) struct ChildIter(Option<gtk::Widget>);
 impl From<&gtk::Widget> for ChildIter {
     fn from(widget: &gtk::Widget) -> Self {

@@ -1,0 +1,6 @@
+# Pin the Rust toolchain for reproducible builds. This matches the
+# `org.freedesktop.Sdk.Extension.rust-stable` version shipped with the
+# GNOME 50 flatpak runtime used in build-aux/app.drey.PaperPlane.Devel.json.
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]

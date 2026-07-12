@@ -104,7 +104,7 @@ mod imp {
 
             if let Some(session) = session {
                 session.archive_chat_list().connect_items_changed(
-                    clone!(@weak obj, @weak session => move |chat_list, _, _, _| {
+                    clone!(#[weak] obj, move |chat_list, _, _, _| {
                         if chat_list.n_items() == 0 {
                             obj.imp().navigation_view.pop_to_tag("chats");
                         }

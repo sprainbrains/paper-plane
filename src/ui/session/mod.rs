@@ -98,7 +98,7 @@ mod imp {
                 let parent = widget.root().and_then(|r| r.downcast().ok());
                 let contacts = ui::ContactsWindow::new(parent.as_ref(), widget.clone());
 
-                contacts.connect_contact_activated(clone!(@weak widget => move |_, user_id| {
+                contacts.connect_contact_activated(clone!(#[weak] widget, move |_, user_id| {
                     widget.select_chat(user_id);
                 }));
 
@@ -162,7 +162,7 @@ mod imp {
 
 glib::wrapper! {
     pub(crate) struct Session(ObjectSubclass<imp::Session>)
-        @extends gtk::Widget,
+        @extends adw::Bin, gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
@@ -180,7 +180,7 @@ impl Session {
     pub(crate) fn select_chat(&self, id: ChatId) {
         match self.model().unwrap().try_chat(id) {
             Some(chat) => self.imp().sidebar.set_selected_chat(Some(&chat)),
-            None => utils::spawn(clone!(@weak self as obj => async move {
+            None => utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
                 match tdlib::functions::create_private_chat(id, true, obj.model().unwrap().client_().id()).await {
                     Ok(tdlib::enums::Chat::Chat(data)) => obj.imp().sidebar.set_selected_chat(obj.model().unwrap().try_chat(data.id).as_ref()),
                     Err(e) => log::warn!("Failed to create private chat: {:?}", e),

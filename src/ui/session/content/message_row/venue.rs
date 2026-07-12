@@ -126,7 +126,7 @@ impl MessageBaseExt for MessageVenue {
 
         // Update the message.
         let handler_id =
-            message.connect_content_notify(clone!(@weak self as obj => move |message| {
+            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
                 obj.update_row(message);
                 obj.update_map_window(message);
             }));

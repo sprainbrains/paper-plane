@@ -96,7 +96,7 @@ mod imp {
 
             obj.setup_bindings();
 
-            utils::spawn(clone!(@weak obj => async move {
+            utils::spawn(clone!(#[weak] obj, async move {
                 obj.calculate_cache_size().await;
             }));
         }
@@ -143,7 +143,7 @@ impl PreferencesWindow {
         // 'Dark theme' switch state handling
         let follow_system_colors_switch = &*imp.follow_system_colors_switch;
         imp.dark_theme_switch.connect_active_notify(
-            clone!(@weak follow_system_colors_switch => move |switch| {
+            clone!(#[weak] follow_system_colors_switch, move |switch| {
                 if !follow_system_colors_switch.is_active() {
                     let style_manager = adw::StyleManager::default();
                     let settings = gio::Settings::new(config::APP_ID);

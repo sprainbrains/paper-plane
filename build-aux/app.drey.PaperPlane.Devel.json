@@ -1,11 +1,11 @@
 {
     "id": "app.drey.PaperPlane.Devel",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "46",
+    "runtime-version": "50",
     "sdk": "org.gnome.Sdk",
     "sdk-extensions": [
         "org.freedesktop.Sdk.Extension.rust-stable",
-        "org.freedesktop.Sdk.Extension.llvm16"
+        "org.freedesktop.Sdk.Extension.llvm20"
     ],
     "command": "paper-plane",
     "finish-args": [
@@ -18,7 +18,7 @@
         "--env=RUST_BACKTRACE=1"
     ],
     "build-options": {
-        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm16/bin:/app/bin",
+        "append-path": "/usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm20/bin:/app/bin",
         "env": {
             "CARGO_REGISTRIES_CRATES_IO_PROTOCOL": "sparse",
             "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER": "clang",
@@ -48,7 +48,7 @@
                 {
                     "type": "git",
                     "url": "https://github.com/paper-plane-developers/rlottie",
-                    "branch": "main"
+                    "commit": "1dd47cec7eb8e1f657f02dce9c497ae60f7cf8c5"
                 }
             ]
         },
@@ -57,9 +57,9 @@
             "buildsystem": "meson",
             "sources": [
                 {
-                    "type": "archive",
-                    "url": "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.8.1/blueprint-compiler-v0.8.1.tar.gz",
-                    "sha256": "9207697cfac6e87a3c0ccf463be1a95c3bd06aa017c966a7e352ad5bc486cf3c"
+                    "type": "git",
+                    "url": "https://gitlab.gnome.org/jwestman/blueprint-compiler.git",
+                    "tag": "v0.18.0"
                 }
             ]
         },
@@ -78,7 +78,7 @@
                 {
                     "type": "git",
                     "url": "https://gitlab.gnome.org/GNOME/gtk.git",
-                    "tag": "4.14.4"
+                    "tag": "4.22.4"
                 },
                 {
                     "type": "patch",
@@ -87,45 +87,7 @@
             ]
         },
         {
-            "name": "tdlib-prebuilt",
-            "only-arches": [
-                "x86_64",
-                "aarch64"
-            ],
-            "buildsystem": "simple",
-            "build-commands": [
-                "install -d /app/lib/pkgconfig",
-                "install -D libtdjson.so.* /app/lib",
-                "ln -sf /app/lib/libtdjson.so.* /app/lib/libtdjson.so",
-                "install -D pkgconfig/* /app/lib/pkgconfig"
-            ],
-            "sources": [
-                {
-                    "only-arches": [
-                        "x86_64"
-                    ],
-                    "type": "archive",
-                    "url": "https://github.com/melix99/tdjson-ci/releases/download/1.8.19/tdjson-x86_64.zip",
-                    "sha256": "55af3cb2cd5d9616c96d3fa6529c90cd66bebd9943f6b6c9aa41ec792067ccef",
-                    "strip-components": 0
-                },
-                {
-                    "only-arches": [
-                        "aarch64"
-                    ],
-                    "type": "archive",
-                    "url": "https://github.com/melix99/tdjson-ci/releases/download/1.8.19/tdjson-aarch64.zip",
-                    "sha256": "e5f5bfbae1c0617fe06ec7f9d74d65569d4a5a1ca4567f067e9d66d2292edb26",
-                    "strip-components": 0
-                }
-            ]
-        },
-        {
             "name": "tdlib",
-            "skip-arches": [
-                "x86_64",
-                "aarch64"
-            ],
             "buildsystem": "cmake-ninja",
             "builddir": true,
             "config-opts": [
@@ -135,7 +97,24 @@
                 {
                     "type": "git",
                     "url": "https://github.com/tdlib/td.git",
-                    "commit": "8517026415e75a8eec567774072cbbbbb52376c1"
+                    "commit": "11e254af695060d8890024dd7faa1cc2d6685ef8"
+                }
+            ]
+        },
+        {
+            "name": "protobuf-c",
+            "buildsystem": "autotools",
+            "config-opts": [
+                "--disable-protoc"
+            ],
+            "cleanup": [
+                "/bin"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/protobuf-c/protobuf-c/releases/download/v1.5.2/protobuf-c-1.5.2.tar.gz",
+                    "sha256": "e2c86271873a79c92b58fef7ebf8de1aa0df4738347a8bd5d4e65a80a16d0d24"
                 }
             ]
         },
@@ -152,7 +131,7 @@
                 {
                     "type": "git",
                     "url": "https://gitlab.gnome.org/GNOME/libshumate/",
-                    "tag": "1.1.4"
+                    "tag": "1.6.2"
                 }
             ]
         },

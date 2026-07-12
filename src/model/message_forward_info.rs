@@ -25,6 +25,9 @@ pub(crate) enum MessageForwardOrigin {
     HiddenUser {
         sender_name: String,
     },
+    // TDLib no longer produces a message-import forward origin, but the variant
+    // is still referenced in match patterns.
+    #[allow(dead_code)]
     MessageImport {
         sender_name: String,
     },
@@ -79,7 +82,7 @@ glib::wrapper! {
 
 impl MessageForwardInfo {
     pub(crate) fn new(chat: &model::Chat, forward_info: tdlib::types::MessageForwardInfo) -> Self {
-        use tdlib::enums::MessageForwardOrigin::*;
+        use tdlib::enums::MessageOrigin::*;
 
         let origin = match forward_info.origin {
             User(data) => MessageForwardOrigin::User(chat.session_().user(data.sender_user_id)),
@@ -101,9 +104,6 @@ impl MessageForwardInfo {
                 }
             }
             HiddenUser(data) => MessageForwardOrigin::HiddenUser {
-                sender_name: data.sender_name,
-            },
-            MessageImport(data) => MessageForwardOrigin::MessageImport {
                 sender_name: data.sender_name,
             },
         };

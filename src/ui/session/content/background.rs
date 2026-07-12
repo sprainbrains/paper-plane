@@ -90,7 +90,7 @@ mod imp {
             let style_manager = adw::StyleManager::default();
             obj.set_theme(hard_coded_themes(style_manager.is_dark()));
 
-            style_manager.connect_dark_notify(clone!(@weak obj => move |style_manager| {
+            style_manager.connect_dark_notify(clone!(#[weak] obj, move |style_manager| {
                 obj.set_theme(hard_coded_themes(style_manager.is_dark()))
             }));
 
@@ -98,7 +98,7 @@ mod imp {
                 obj.add_css_class("fallback");
             }
 
-            style_manager.connect_high_contrast_notify(clone!(@weak obj => move |style_manager| {
+            style_manager.connect_high_contrast_notify(clone!(#[weak] obj, move |style_manager| {
                 if style_manager.is_high_contrast() {
                     obj.add_css_class("fallback");
                 } else if obj.imp().shader.borrow().is_some() {
@@ -106,7 +106,7 @@ mod imp {
                 }
             }));
 
-            let target = adw::CallbackAnimationTarget::new(clone!(@weak obj => move |progress| {
+            let target = adw::CallbackAnimationTarget::new(clone!(#[weak] obj, move |progress| {
                 let imp = obj.imp();
                 imp.gradient_texture.take();
                 let progress = progress as f32;
@@ -313,6 +313,9 @@ impl Background {
             tdlib::enums::BackgroundType::Wallpaper(_) => {
                 unimplemented!("Wallpaper chat background")
             }
+            tdlib::enums::BackgroundType::ChatTheme(_) => {
+                unimplemented!("Chat theme background")
+            }
         };
 
         match fill {
@@ -385,6 +388,11 @@ fn hard_coded_themes(dark: bool) -> tdlib::types::ThemeSettings {
         use tdlib::types::*;
 
         ThemeSettings {
+            base_theme: if dark {
+                tdlib::enums::BuiltInTheme::Night
+            } else {
+                tdlib::enums::BuiltInTheme::Day
+            },
             background: Some(Background {
                 is_default: true,
                 is_dark: dark,
@@ -398,7 +406,7 @@ fn hard_coded_themes(dark: bool) -> tdlib::types::ThemeSettings {
             accent_color: 0,
             animate_outgoing_message_fill: false,
             outgoing_message_accent_color: 0,
-            outgoing_message_fill: Solid(BackgroundFillSolid { color: 0 }),
+            outgoing_message_fill: Some(Solid(BackgroundFillSolid { color: 0 })),
         }
     }
 

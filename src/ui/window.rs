@@ -52,7 +52,7 @@ mod imp {
             obj.client_manager_view()
                 .client_manager()
                 .connect_update_notification_group(
-                    clone!(@weak obj => move |_, notification_group, session| {
+                    clone!(#[weak] obj, move |_, notification_group, session| {
                         obj.handle_notifications(notification_group, session);
                     }),
                 );
@@ -73,7 +73,7 @@ mod imp {
         // Save window state on delete event
         fn close_request(&self) -> glib::Propagation {
             if let Err(err) = self.obj().save_window_size() {
-                log::warn!("Failed to save window state, {}", &err);
+                log::warn!("Failed to save window state, {}", err);
             }
 
             // Pass close request on to the parent
@@ -184,7 +184,7 @@ impl Window {
 
                         let file_id = avatar_file.id;
                         utils::spawn(
-                            clone!(@weak self as obj, @weak session, @weak app => async move {
+                            clone!(#[weak] session, #[weak] app, async move {
                                 match session.download_file(file_id).await {
                                     Ok(file) => {
                                         let texture = gdk::Texture::from_filename(file.local.path)

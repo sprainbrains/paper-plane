@@ -106,7 +106,7 @@ mod imp {
             self.disconnect_model_signal();
 
             let n_items = if let Some(ref model) = model {
-                let handler = model.connect_items_changed(clone!(@weak obj => move |_, p, r, a| {
+                let handler = model.connect_items_changed(clone!(#[weak] obj, move |_, p, r, a| {
                     obj.imp().model_items_changed(p, r, a);
                 }));
                 self.signal_handler.replace(Some(handler));

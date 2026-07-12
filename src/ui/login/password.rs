@@ -247,12 +247,12 @@ impl Password {
 
         dialog.choose(
             gio::Cancellable::NONE,
-            clone!(@weak self as obj => move |response| {
+            clone!(#[weak(rename_to = obj)] self, move |response| {
                 if response == "delete" {
                     obj.freeze(true);
                     let client_id = obj.model().unwrap().auth().unwrap().client().unwrap().id();
 
-                    utils::spawn(clone!(@weak obj => async move {
+                    utils::spawn(clone!(#[weak] obj, async move {
                         let result = tdlib::functions::delete_account(
                             "Cloud password lost and not recoverable".into(),
                             String::new(),
@@ -325,7 +325,7 @@ impl Password {
 
         dialog.choose(
             gio::Cancellable::NONE,
-            clone!(@weak self as obj => move |_| {
+            clone!(#[weak(rename_to = obj)] self, move |_| {
                 obj.imp()
                     .password_recovery_code_entry_row
                     .grab_focus();
@@ -334,7 +334,7 @@ impl Password {
     }
 
     pub(crate) fn focus_password_entry_row(&self) {
-        glib::idle_add_local_once(clone!(@weak self as obj => move || {
+        glib::idle_add_local_once(clone!(#[weak(rename_to = obj)] self, move || {
             obj.imp().password_entry_row.grab_focus();
         }));
     }

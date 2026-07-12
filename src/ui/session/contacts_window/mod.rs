@@ -22,7 +22,6 @@ mod imp {
 
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/app/drey/paper-plane/ui/session/contacts_window/mod.ui")]
-
     pub(crate) struct ContactsWindow {
         pub(super) session: OnceCell<ui::Session>,
         #[template_child]
@@ -98,7 +97,7 @@ impl ContactsWindow {
 
         obj.imp().session.set(session).unwrap();
 
-        utils::spawn(clone!(@weak obj => async move {
+        utils::spawn(clone!(#[weak] obj, async move {
             obj.fetch_contacts().await;
         }));
 

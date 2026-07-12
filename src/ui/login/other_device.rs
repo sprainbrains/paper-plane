@@ -94,7 +94,7 @@ mod imp {
 
                 obj.action_set_enabled("login.exit", !client_manager.sessions().is_empty());
                 client_manager.connect_items_changed(
-                    clone!(@weak obj => move |client_manager, _, _, _| {
+                    clone!(#[weak] obj, move |client_manager, _, _, _| {
                         obj.action_set_enabled("login.exit", !client_manager.sessions().is_empty());
                     }),
                 );

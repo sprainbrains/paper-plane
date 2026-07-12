@@ -72,8 +72,8 @@ mod imp {
 
             let adw_style_manager = adw::StyleManager::default();
             adw_style_manager
-                .connect_high_contrast_notify(clone!(@weak obj => move |_| obj.queue_draw()));
-            adw_style_manager.connect_dark_notify(clone!(@weak obj => move |_| obj.queue_draw()));
+                .connect_high_contrast_notify(clone!(#[weak] obj, move |_| obj.queue_draw()));
+            adw_style_manager.connect_dark_notify(clone!(#[weak] obj, move |_| obj.queue_draw()));
         }
     }
 
@@ -132,7 +132,7 @@ mod imp {
             snapshot.pop();
             snapshot.pop();
 
-            snapshot.append_node(&child_snapshot.to_node().unwrap());
+            snapshot.append_node(child_snapshot.to_node().unwrap());
             snapshot.pop();
         }
     }

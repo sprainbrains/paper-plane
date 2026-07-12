@@ -67,12 +67,12 @@ mod imp {
             let obj = self.obj();
 
             self.caption_entry
-                .connect_activate(clone!(@weak obj => move |_| {
+                .connect_activate(clone!(#[weak] obj, move |_| {
                     obj.activate_action("send-media-window.send-message", None).unwrap()
                 }));
 
             self.caption_entry
-                .connect_emoji_button_press(clone!(@weak obj => move |_, button| {
+                .connect_emoji_button_press(clone!(#[weak] obj, move |_, button| {
                     obj.show_emoji_chooser(&button);
                 }));
         }
@@ -142,10 +142,10 @@ impl SendMediaWindow {
         if emoji_chooser.is_none() {
             let chooser = gtk::EmojiChooser::new();
             chooser.set_parent(parent);
-            chooser.connect_emoji_picked(clone!(@weak self as obj => move |_, emoji| {
+            chooser.connect_emoji_picked(clone!(#[weak(rename_to = obj)] self, move |_, emoji| {
                 obj.imp().caption_entry.insert_at_cursor(emoji);
             }));
-            chooser.connect_hide(clone!(@weak self as obj => move |_| {
+            chooser.connect_hide(clone!(#[weak(rename_to = obj)] self, move |_| {
                 obj.imp().caption_entry.grab_focus();
             }));
             *emoji_chooser = Some(chooser);
@@ -180,6 +180,7 @@ impl SendMediaWindow {
                 width: paintable.intrinsic_width(),
                 height: paintable.intrinsic_height(),
                 caption,
+                show_caption_above_media: false,
                 self_destruct_type: None,
                 has_spoiler: false,
             })
@@ -189,12 +190,18 @@ impl SendMediaWindow {
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
 
-        let reply_to = Some(MessageReplyTo::Message(MessageReplyToMessage {
-            chat_id,
-            message_id: *imp.reply_to.get().unwrap(),
-        }));
+        let reply_to_message_id = *imp.reply_to.get().unwrap();
+        let reply_to = if reply_to_message_id != 0 {
+            Some(InputMessageReplyTo::Message(InputMessageReplyToMessage {
+                message_id: reply_to_message_id,
+                ..Default::default()
+            }))
+        } else {
+            None
+        };
 
-        match tdlib::functions::send_message(chat_id, 0, reply_to, None, content, client_id).await {
+        match tdlib::functions::send_message(chat_id, None, reply_to, None, content, client_id).await
+        {
             Ok(_) => self.close(),
             Err(e) => imp.toast_overlay.add_toast(
                 adw::Toast::builder()

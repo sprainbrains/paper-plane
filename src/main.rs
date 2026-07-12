@@ -2,6 +2,26 @@
 // when the macros are either fixed or removed (check #94).
 #![allow(clippy::format_push_string)]
 
+/// Like `gettext`, but interpolates positional `{}` placeholders with the given
+/// arguments, in order.
+///
+/// This replaces the `gettext!` format macro that was provided by `gettext-rs`
+/// up to 0.7.0 and removed in later releases. Defined at the crate root so it is
+/// textually in scope (as bare `gettext!`) for all modules below without a `use`
+/// that would collide with the `gettextrs::gettext` function import.
+macro_rules! gettext {
+    ($msgid:expr $(,)?) => {
+        ::gettextrs::gettext($msgid)
+    };
+    ($msgid:expr, $($arg:expr),+ $(,)?) => {{
+        let mut msg = ::gettextrs::gettext($msgid);
+        $(
+            msg = msg.replacen("{}", &::std::string::ToString::to_string(&$arg), 1);
+        )+
+        msg
+    }};
+}
+
 mod application;
 mod ui;
 #[rustfmt::skip]

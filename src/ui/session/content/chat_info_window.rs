@@ -164,14 +164,14 @@ impl ChatInfoWindow {
 
         // Phone number
         if !user.phone_number().is_empty() {
-            let row = new_property_row(&gettext("Mobile"), &format!("+{}", &user.phone_number()));
+            let row = new_property_row(&gettext("Mobile"), &format!("+{}", user.phone_number()));
             self.make_row_copyable(&row);
             imp.info_list.append(&row);
         }
 
         // Username
         if !user.username().is_empty() {
-            let row = new_property_row(&gettext("Username"), &format!("@{}", &user.username()));
+            let row = new_property_row(&gettext("Username"), &format!("@{}", user.username()));
             self.make_row_copyable(&row);
             imp.info_list.append(&row);
         }
@@ -199,7 +199,7 @@ impl ChatInfoWindow {
         self.update_info_list_visibility();
 
         // Full info
-        utils::spawn(clone!(@weak self as obj => async move {
+        utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
             let result = tdlib::functions::get_basic_group_full_info(basic_group_id, client_id).await;
             match result {
                 Ok(tdlib::enums::BasicGroupFullInfo::BasicGroupFullInfo(full_info)) => {
@@ -246,7 +246,7 @@ impl ChatInfoWindow {
         if !supergroup.username().is_empty() {
             let row = new_property_row(
                 &gettext("Link"),
-                &format!("https://t.me/{}", &supergroup.username()),
+                &format!("https://t.me/{}", supergroup.username()),
             );
             self.make_row_copyable(&row);
             imp.info_list.append(&row);
@@ -255,7 +255,7 @@ impl ChatInfoWindow {
         self.update_info_list_visibility();
 
         // Full info
-        utils::spawn(clone!(@weak self as obj => async move {
+        utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
             let result = tdlib::functions::get_supergroup_full_info(supergroup_id, client_id).await;
             match result {
                 Ok(tdlib::enums::SupergroupFullInfo::SupergroupFullInfo(full_info)) => {
@@ -288,7 +288,7 @@ impl ChatInfoWindow {
 
     fn make_row_copyable(&self, action_row: &adw::ActionRow) {
         action_row.set_activatable(true);
-        action_row.connect_activated(clone!(@weak self as obj => move |action_row| {
+        action_row.connect_activated(clone!(#[weak(rename_to = obj)] self, move |action_row| {
             action_row.clipboard().set_text(&action_row.title());
 
             let toast = adw::Toast::new(&gettext("Copied to clipboard"));

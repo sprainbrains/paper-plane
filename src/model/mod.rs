@@ -138,7 +138,7 @@ pub(crate) struct BoxedDatabaseInfo(pub(crate) DatabaseInfo);
 pub(crate) struct BoxedChatMemberStatus(pub(crate) ChatMemberStatus);
 impl Default for BoxedChatMemberStatus {
     fn default() -> Self {
-        Self(ChatMemberStatus::Member)
+        Self(ChatMemberStatus::Member(Default::default()))
     }
 }
 

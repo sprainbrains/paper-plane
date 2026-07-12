@@ -173,7 +173,7 @@ impl Row {
     pub(crate) fn toggle_chat_is_archived(&self) {
         if let Some(item) = self.item() {
             let chat = item.chat_();
-            utils::spawn(clone!(@weak self as obj => async move {
+            utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
                 if let Err(e) = tdlib::functions::add_chat_to_list(
                     chat.id(),
                     match item.chat_list_type().0 {
@@ -246,7 +246,7 @@ impl Row {
         let item_signal_group = glib::SignalGroup::new::<model::ChatListItem>();
         item_signal_group.connect_notify_local(
             Some("is-pinned"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_status_stack();
                 obj.update_actions();
             }),
@@ -256,33 +256,33 @@ impl Row {
         let chat_signal_group = glib::SignalGroup::new::<model::Chat>();
         chat_signal_group.connect_notify_local(
             Some("is-marked-as-unread"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_status_stack();
                 obj.update_actions();
             }),
         );
         chat_signal_group.connect_notify_local(
             Some("unread-count"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_status_stack();
                 obj.update_actions();
             }),
         );
         chat_signal_group.connect_notify_local(
             Some("unread-mention-count"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_status_stack();
             }),
         );
         chat_signal_group.connect_notify_local(
             Some("last-read-outbox-message-id"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_message_status_icon();
             }),
         );
         chat_signal_group.connect_notify_local(
             Some("last-message"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_message_status_icon();
                 obj.update_timestamp();
                 obj.update_subtitle_prefix_label();
@@ -292,7 +292,7 @@ impl Row {
         );
         chat_signal_group.connect_notify_local(
             Some("draft-message"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_timestamp();
                 obj.update_subtitle_prefix_label();
                 obj.update_minithumbnail();
@@ -301,7 +301,7 @@ impl Row {
         );
         chat_signal_group.connect_notify_local(
             Some("actions"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_subtitle_prefix_label();
                 obj.update_minithumbnail();
                 obj.update_subtitle_label();
@@ -309,7 +309,7 @@ impl Row {
         );
         chat_signal_group.connect_notify_local(
             Some("notification-settings"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_unread_count_style();
             }),
         );
@@ -318,19 +318,19 @@ impl Row {
         let session_signal_group = glib::SignalGroup::new::<model::ClientStateSession>();
         session_signal_group.connect_notify_local(
             Some("private-chats-notification-settings"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_unread_count_style();
             }),
         );
         session_signal_group.connect_notify_local(
             Some("group-chats-notification-settings"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_unread_count_style();
             }),
         );
         session_signal_group.connect_notify_local(
             Some("channel-chats-notification-settings"),
-            clone!(@weak self as obj => move |_, _| {
+            clone!(#[weak(rename_to = obj)] self, move |_, _| {
                 obj.update_unread_count_style();
             }),
         );

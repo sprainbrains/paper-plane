@@ -136,7 +136,7 @@ mod imp {
             obj.setup_expressions();
 
             let adj = self.list_view.vadjustment().unwrap();
-            adj.connect_value_changed(clone!(@weak obj => move |adj| {
+            adj.connect_value_changed(clone!(#[weak] obj, move |adj| {
                 obj.view_messages();
 
                 let imp = obj.imp();
@@ -160,7 +160,7 @@ mod imp {
                     if let Some(model) = imp.model.borrow().as_ref() {
                         imp.is_loading_messages.set(true);
 
-                        utils::spawn(clone!(@weak obj, @weak model => async move {
+                        utils::spawn(clone!(#[weak] obj, #[weak] model, async move {
                             obj.imp().is_loading_messages.set(false);
 
                             if let Err(model::ChatHistoryError::Tdlib(e)) =
@@ -173,7 +173,7 @@ mod imp {
                 }
             }));
 
-            adj.connect_upper_notify(clone!(@weak obj => move |_| {
+            adj.connect_upper_notify(clone!(#[weak] obj, move |_| {
                 if obj.sticky() || obj.imp().is_auto_scrolling.get() {
                     obj.scroll_down();
                 }
@@ -272,7 +272,7 @@ impl ChatHistory {
     }
 
     fn request_sponsored_message(&self, chat: &model::Chat, list: &gio::ListStore) {
-        utils::spawn(clone!(@weak chat, @weak list => async move {
+        utils::spawn(clone!(#[weak] chat, #[weak] list, async move {
             match model::SponsoredMessage::request(&chat).await {
                 Ok(sponsored_message) => {
                     if let Some(sponsored_message) = sponsored_message {
@@ -375,7 +375,7 @@ impl ChatHistory {
                 model.clone().upcast()
             };
 
-            utils::spawn(clone!(@weak self as obj, @weak model => async move {
+            utils::spawn(clone!(#[weak(rename_to = obj)] self, #[weak] model, async move {
                 let imp = obj.imp();
 
                 imp.is_loading_messages.set(true);
@@ -406,7 +406,7 @@ impl ChatHistory {
                 obj.view_messages();
             }));
 
-            let handler = chat.connect_new_message(clone!(@weak self as obj => move |_, msg| {
+            let handler = chat.connect_new_message(clone!(#[weak(rename_to = obj)] self, move |_, msg| {
                 if msg.is_outgoing() {
                     obj.imp().background.animate();
                 }
@@ -473,7 +473,7 @@ where
     F: Fn(i64, i32) -> Fut + 'static,
     Fut: Future<Output = Result<(), tdlib::types::Error>>,
 {
-    utils::spawn(clone!(@weak chat => async move  {
+    utils::spawn(clone!(#[weak] chat, async move  {
         op(
             chat.id(),
             chat.session_().client_().id(),

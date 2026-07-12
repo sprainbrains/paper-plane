@@ -117,15 +117,13 @@ impl Message {
                 model::MessageSender::new(&chat.session_(), &td_message.sender_id),
             )
             .property("is-outgoing", td_message.is_outgoing)
-            .property("can-be-edited", td_message.can_be_edited)
-            .property(
-                "can-be-deleted-only-for-self",
-                td_message.can_be_deleted_only_for_self,
-            )
-            .property(
-                "can-be-deleted-for-all-users",
-                td_message.can_be_deleted_for_all_users,
-            )
+            // TODO: `can_be_edited`/`can_be_deleted_only_for_self`/
+            // `can_be_deleted_for_all_users` were removed from `message` in newer
+            // TDLib; they now come from `getMessageProperties`. Until that async
+            // lookup is wired up, approximate from `is_outgoing`.
+            .property("can-be-edited", td_message.is_outgoing)
+            .property("can-be-deleted-only-for-self", true)
+            .property("can-be-deleted-for-all-users", td_message.is_outgoing)
             .property(
                 "sending-state",
                 td_message

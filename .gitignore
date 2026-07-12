@@ -12,3 +12,6 @@ src/config.rs
 .vscode/
 
 /subprojects/blueprint-compiler
+
+# flatpak-builder local build output
+_build_flatpak/

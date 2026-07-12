@@ -134,7 +134,7 @@ impl MessageBaseExt for MessageLocation {
 
         // Update the message.
         let handler_id =
-            message.connect_content_notify(clone!(@weak self as obj => move |message| {
+            message.connect_content_notify(clone!(#[weak(rename_to = obj)] self, move |message| {
                 obj.update_row(message);
                 obj.update_map_window(message);
             }));
@@ -177,7 +177,7 @@ impl MessageLocation {
 
                     let source_id = glib::timeout_add_seconds_local(
                         1,
-                        clone!(@weak self as obj => @default-return glib::ControlFlow::Break, move || {
+                        clone!(#[weak(rename_to = obj)] self, #[upgrade_or] glib::ControlFlow::Break, move || {
                             match obj.update_time(message_date, message_.live_period) {
                                 Some(now) => {
                                     let minutes = now.difference(&last_update_date).as_minutes();

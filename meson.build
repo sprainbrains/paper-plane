@@ -10,12 +10,12 @@ gnome = import('gnome')
 
 base_id = 'app.drey.PaperPlane'
 
-dependency('glib-2.0', version: '>= 2.72')
-dependency('gio-2.0', version: '>= 2.72')
-dependency('gtk4', version: '>= 4.12')
-dependency('libadwaita-1', version: '>= 1.4')
+dependency('glib-2.0', version: '>= 2.82')
+dependency('gio-2.0', version: '>= 2.82')
+dependency('gtk4', version: '>= 4.16')
+dependency('libadwaita-1', version: '>= 1.6')
 dependency('shumate-1.0', version: '>= 1')
-dependency('tdjson', version: '== 1.8.19')
+dependency('tdjson', version: '== 1.8.61')
 
 glib_compile_resources = find_program('glib-compile-resources', required: true)
 glib_compile_schemas = find_program('glib-compile-schemas', required: true)

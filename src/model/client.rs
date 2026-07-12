@@ -68,7 +68,7 @@ mod imp {
 
             let obj = &*self.obj();
 
-            utils::spawn(clone!(@weak obj => async move {
+            utils::spawn(clone!(#[weak] obj, async move {
                 obj.init().await;
             }));
             obj.set_state(model::ClientStateAuth::from(obj).upcast());
@@ -187,8 +187,6 @@ impl Client {
             "Desktop".into(),
             String::new(),
             config::VERSION.into(),
-            true,
-            false,
             self.id(),
         )
         .await
@@ -256,14 +254,14 @@ impl Client {
         match update {
             Update::AuthorizationState(state) => match state.authorization_state {
                 AuthorizationState::WaitTdlibParameters => {
-                    utils::spawn(clone!(@weak self as obj => async move {
+                    utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
                         if let Err(e) = obj.send_tdlib_parameters().await {
                             log::error!("Failed sensing tdlib parameters: {e:?}");
                         }
                     }));
                 }
                 AuthorizationState::Ready => {
-                    utils::spawn(clone!(@weak self as obj => async move {
+                    utils::spawn(clone!(#[weak(rename_to = obj)] self, async move {
                         let tdlib::enums::User::User(me) =
                             tdlib::functions::get_me(obj.id()).await.unwrap();
 

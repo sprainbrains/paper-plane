@@ -185,7 +185,7 @@ impl Row {
 
         dialog.choose(
             gio::Cancellable::NONE,
-            clone!(@weak self as obj => move |response| {
+            clone!(#[weak(rename_to = obj)] self, move |response| {
                 if response == "yes" {
                     if let Ok(message) = obj.message().downcast::<model::Message>() {
                         utils::spawn(async move {
@@ -421,7 +421,7 @@ fn can_send_messages_in_chat(chat: &model::Chat) -> bool {
         .map(|s| match s.0 {
             Creator(_) => true,
             Administrator(_) => true,
-            Member => chat.permissions().0.can_send_basic_messages,
+            Member(_) => chat.permissions().0.can_send_basic_messages,
             Restricted(data) => {
                 chat.permissions().0.can_send_basic_messages
                     && data.permissions.can_send_basic_messages
