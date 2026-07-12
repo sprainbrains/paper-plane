@@ -86,6 +86,16 @@ impl User {
         obj
     }
 
+    /// Creates a bare placeholder user with only its id, used when a user is
+    /// referenced before TDLib has delivered it. All other properties take their
+    /// defaults until [`Self::update`] fills them in from a real `getUser`.
+    pub(crate) fn new_placeholder(session: &model::ClientStateSession, id: UserId) -> Self {
+        glib::Object::builder()
+            .property("session", session)
+            .property("id", id)
+            .build()
+    }
+
     pub(crate) fn session_(&self) -> model::ClientStateSession {
         self.session().unwrap()
     }

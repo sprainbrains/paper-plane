@@ -26,7 +26,7 @@ impl MessageSender {
         use tdlib::enums::MessageSender::*;
 
         match sender {
-            User(data) => Self::User(session.user(data.user_id)),
+            User(data) => Self::User(session.user_or_fetch(data.user_id)),
             Chat(data) => Self::Chat(session.chat(data.chat_id)),
         }
     }

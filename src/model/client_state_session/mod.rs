@@ -184,6 +184,51 @@ impl ClientStateSession {
         self.imp().users.borrow().get(&user_id).unwrap().clone()
     }
 
+    /// Like [`Self::user`], but returns `None` instead of panicking when the user
+    /// has not been loaded yet.
+    pub(crate) fn try_user(&self, user_id: UserId) -> Option<model::User> {
+        self.imp().users.borrow().get(&user_id).cloned()
+    }
+
+    /// Returns the `model::User` of the specified id, inserting a placeholder and
+    /// fetching the real user from TDLib in the background if it is not yet
+    /// cached.
+    ///
+    /// The "types are returned before their ids" guarantee holds for the update
+    /// stream, but not always for results of direct requests such as
+    /// `getChatHistory`, which can reference a sender that has not been pushed to
+    /// the client yet. Using this instead of [`Self::user`] there keeps message
+    /// construction from panicking on a not-yet-known sender.
+    pub(crate) fn user_or_fetch(&self, user_id: UserId) -> model::User {
+        if let Some(user) = self.try_user(user_id) {
+            return user;
+        }
+
+        log::warn!("User {user_id} referenced before being loaded; fetching it");
+
+        let placeholder = model::User::new_placeholder(self, user_id);
+        self.imp()
+            .users
+            .borrow_mut()
+            .insert(user_id, placeholder.clone());
+
+        let client_id = self.client_().id();
+        utils::spawn(clone!(
+            #[weak(rename_to = session)]
+            self,
+            async move {
+                match tdlib::functions::get_user(user_id, client_id).await {
+                    Ok(tdlib::enums::User::User(td_user)) => {
+                        session.upsert_user(td_user);
+                    }
+                    Err(e) => log::warn!("Failed to fetch user {user_id}: {e:?}"),
+                }
+            }
+        ));
+
+        placeholder
+    }
+
     /// Returns the `model::BasicGroup` of the specified id. Panics if the basic group is not present.
     ///
     /// Note that TDLib guarantees that types are always returned before their ids,
