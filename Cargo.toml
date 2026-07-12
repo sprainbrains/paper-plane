@@ -2,8 +2,8 @@
 name = "paper-plane"
 version = "0.1.0-beta.5"
 authors = ["Marco Melorio <marco.melorio@protonmail.com>", "Marcus Behrendt <marcus.behrendt.86@gmail.com>"]
-edition = "2021"
-rust-version = "1.83"
+edition = "2024"
+rust-version = "1.85"
 
 [dependencies]
 adw = { version = "0.7", package = "libadwaita", features = ["v1_6"] }
@@ -19,13 +19,13 @@ locale_config = "0.3"
 log = "0.4"
 ori = { git = "https://github.com/paper-plane-developers/origami.git", tag="v0.9.0", package = "origami" }
 pretty_env_logger = "0.5"
-qrcode-generator = { version = "4", default-features = false }
+qrcode-generator = { version = "5", default-features = false }
 regex = "1"
 rlt = { package = "gtk-rlottie", git = "https://github.com/paper-plane-developers/gtk-rlottie-rs.git", tag = "v0.9.0" }
 shumate = { version = "0.6", package = "libshumate" }
 tdlib = { version = "1.4", package = "tdlib-rs", features = ["pkg-config"] }
-temp-dir = "0.1"
-thiserror = "1"
+temp-dir = "0.2"
+thiserror = "2"
 
 [profile.release]
 lto = true

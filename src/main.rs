@@ -91,7 +91,11 @@ fn main() -> glib::ExitCode {
 
             let mut application_opts = ApplicationOptions::default();
 
-            std::env::set_var("RUST_LOG", log_level.as_str());
+            // SAFETY: called once at startup, before any additional threads are
+            // spawned, so there is no concurrent access to the environment.
+            unsafe {
+                std::env::set_var("RUST_LOG", log_level.as_str());
+            }
             pretty_env_logger::init();
 
             if dict.contains("test-dc") {
