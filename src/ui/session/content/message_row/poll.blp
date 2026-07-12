@@ -1,0 +1,39 @@
+using Gtk 4.0;
+
+template $PaplMessagePoll: $PaplMessageBase {
+  layout-manager: BinLayout {};
+
+  $PaplMessageBubble message_bubble {
+    prefix: Box {
+      orientation: vertical;
+      spacing: 8;
+
+      styles [
+        "poll",
+      ]
+
+      Label question_label {
+        xalign: 0;
+        wrap: true;
+
+        styles [
+          "heading",
+        ]
+      }
+
+      Box options_box {
+        orientation: vertical;
+        spacing: 8;
+      }
+
+      Label votes_label {
+        xalign: 0;
+
+        styles [
+          "dim-label",
+          "caption",
+        ]
+      }
+    };
+  }
+}

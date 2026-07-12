@@ -36,6 +36,7 @@ pub(crate) use self::content::MessageIndicators;
 pub(crate) use self::content::MessageLabel;
 pub(crate) use self::content::MessageLocation;
 pub(crate) use self::content::MessagePhoto;
+pub(crate) use self::content::MessagePoll;
 pub(crate) use self::content::MessageReactions;
 pub(crate) use self::content::MessageReply;
 pub(crate) use self::content::MessageRow;

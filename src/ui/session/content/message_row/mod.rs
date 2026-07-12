@@ -7,6 +7,7 @@ mod label;
 mod location;
 mod media_picture;
 mod photo;
+mod poll;
 mod reactions;
 mod reply;
 mod sticker;
@@ -39,6 +40,7 @@ pub(crate) use self::label::MessageLabel;
 pub(crate) use self::location::MessageLocation;
 pub(crate) use self::media_picture::MediaPicture;
 pub(crate) use self::photo::MessagePhoto;
+pub(crate) use self::poll::MessagePoll;
 pub(crate) use self::reactions::MessageReactions;
 pub(crate) use self::reply::MessageReply;
 pub(crate) use self::sticker::MessageSticker;
@@ -483,6 +485,9 @@ impl Row {
                 }
                 MessagePhoto(_) => {
                     self.update_specific_content::<_, ui::MessagePhoto>(message_);
+                }
+                MessagePoll(_) => {
+                    self.update_specific_content::<_, ui::MessagePoll>(message_);
                 }
                 MessageSticker(data)
                     if matches!(
