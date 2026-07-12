@@ -70,6 +70,9 @@ mod imp {
             klass.bind_template();
             klass.bind_template_instance_callbacks();
 
+            klass.install_action("message-row.react", None, move |widget, _, _| {
+                widget.show_reaction_chooser()
+            });
             klass.install_action("message-row.reply", None, move |widget, _, _| {
                 widget.reply()
             });
@@ -159,6 +162,87 @@ impl Row {
             self.activate_action("chat-history.reply", Some(&message.id().to_variant()))
                 .unwrap();
         }
+    }
+
+    /// Opens a popover offering the reactions available for this message; picking
+    /// one adds it via `add_message_reaction`.
+    fn show_reaction_chooser(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let chat = message.chat_();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+
+        let flow_box = gtk::FlowBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .max_children_per_line(8)
+            .build();
+        let scrolled = gtk::ScrolledWindow::builder()
+            .max_content_height(220)
+            .propagate_natural_height(true)
+            .propagate_natural_width(true)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&flow_box)
+            .build();
+        let popover = gtk::Popover::builder().child(&scrolled).build();
+        popover.set_parent(self);
+        popover.connect_closed(|popover| popover.unparent());
+
+        utils::spawn(clone!(
+            #[weak]
+            flow_box,
+            #[weak]
+            popover,
+            async move {
+                match tdlib::functions::get_message_available_reactions(
+                    chat_id, message_id, 8, client_id,
+                )
+                .await
+                {
+                    Ok(tdlib::enums::AvailableReactions::AvailableReactions(available)) => {
+                        for available_reaction in available.top_reactions {
+                            if let tdlib::enums::ReactionType::Emoji(ref emoji) =
+                                available_reaction.r#type
+                            {
+                                let button = gtk::Button::builder()
+                                    .label(&emoji.emoji)
+                                    .has_frame(false)
+                                    .build();
+                                let reaction_type = available_reaction.r#type.clone();
+                                button.connect_clicked(clone!(
+                                    #[weak]
+                                    popover,
+                                    move |_| {
+                                        let reaction_type = reaction_type.clone();
+                                        utils::spawn(async move {
+                                            if let Err(e) = tdlib::functions::add_message_reaction(
+                                                chat_id,
+                                                message_id,
+                                                reaction_type,
+                                                false,
+                                                true,
+                                                client_id,
+                                            )
+                                            .await
+                                            {
+                                                log::warn!("Failed to add a reaction: {e:?}");
+                                            }
+                                        });
+                                        popover.popdown();
+                                    }
+                                ));
+                                flow_box.append(&button);
+                            }
+                        }
+                    }
+                    Err(e) => log::warn!("Failed to get available reactions: {e:?}"),
+                }
+            }
+        ));
+
+        popover.popup();
     }
 
     fn edit(&self) {
