@@ -1,0 +1,45 @@
+using Gtk 4.0;
+
+template $PaplMessageAudio: $PaplMessageBase {
+  layout-manager: BinLayout {};
+
+  $PaplMessageBubble message_bubble {
+    prefix: Box {
+      spacing: 8;
+
+      styles [
+        "audio",
+      ]
+
+      Button play_button {
+        valign: center;
+        icon-name: "media-playback-start-symbolic";
+
+        styles [
+          "circular",
+        ]
+      }
+
+      Box {
+        valign: center;
+        hexpand: true;
+        orientation: vertical;
+
+        Label title_label {
+          xalign: 0;
+          ellipsize: end;
+        }
+
+        Label subtitle_label {
+          xalign: 0;
+          ellipsize: end;
+
+          styles [
+            "caption",
+            "dim-label",
+          ]
+        }
+      }
+    };
+  }
+}

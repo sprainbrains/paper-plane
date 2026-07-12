@@ -21,6 +21,7 @@ pub(crate) use self::chat_history_row::ChatHistoryRow;
 pub(crate) use self::chat_info_window::ChatInfoWindow;
 pub(crate) use self::event_row::EventRow;
 pub(crate) use self::message_row::MediaPicture;
+pub(crate) use self::message_row::MessageAudio;
 pub(crate) use self::message_row::MessageBase;
 pub(crate) use self::message_row::MessageBaseExt;
 pub(crate) use self::message_row::MessageBaseImpl;

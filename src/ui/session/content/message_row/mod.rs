@@ -1,3 +1,4 @@
+mod audio;
 mod base;
 mod bubble;
 mod document;
@@ -25,6 +26,7 @@ use gtk::gio;
 use gtk::glib;
 use gtk::subclass::prelude::*;
 
+pub(crate) use self::audio::MessageAudio;
 pub(crate) use self::base::MessageBase;
 pub(crate) use self::base::MessageBaseExt;
 pub(crate) use self::base::MessageBaseImpl;
@@ -473,6 +475,9 @@ impl Row {
                 }
                 MessageVoiceNote(_) => {
                     self.update_specific_content::<_, ui::MessageVoiceNote>(message_);
+                }
+                MessageAudio(_) => {
+                    self.update_specific_content::<_, ui::MessageAudio>(message_);
                 }
                 MessageVenue(_) => {
                     self.update_specific_content::<_, ui::MessageVenue>(message_);

@@ -38,6 +38,7 @@ pub(crate) use self::session::ContactsWindow;
 pub(crate) use self::session::Content;
 pub(crate) use self::session::EventRow;
 pub(crate) use self::session::MediaPicture;
+pub(crate) use self::session::MessageAudio;
 pub(crate) use self::session::MessageBase;
 pub(crate) use self::session::MessageBaseExt;
 pub(crate) use self::session::MessageBaseImpl;
@@ -112,6 +113,7 @@ pub(crate) fn init() {
     MessageDocument::static_type();
     MessageDocumentStatusIndicator::static_type();
     MessageEntry::static_type();
+    MessageAudio::static_type();
     MessageIndicators::static_type();
     MessageLabel::static_type();
     MessageLocation::static_type();
