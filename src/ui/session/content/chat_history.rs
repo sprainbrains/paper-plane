@@ -475,6 +475,12 @@ impl ChatHistory {
                 move |_, msg| {
                     if msg.is_outgoing() {
                         obj.imp().background.animate();
+                        // Reveal the message the user just sent: stick to the
+                        // bottom and scroll down, even if the view wasn't already
+                        // pinned there (otherwise an own message lands below the
+                        // fold and only shows up after reloading the chat).
+                        obj.set_sticky(true);
+                        obj.scroll_down();
                     }
                 }
             ));
