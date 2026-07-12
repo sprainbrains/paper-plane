@@ -78,6 +78,11 @@ impl Application {
         self.add_auto_action("auto-screenshot", None, |app, _| app.auto_screenshot());
         self.add_auto_action("auto-list-chats", None, |app, _| app.auto_list_chats());
         self.add_auto_action(
+            "auto-list-messages",
+            Some(glib::VariantTy::INT64),
+            |app, p| app.auto_list_messages(p.unwrap().get::<i64>().unwrap()),
+        );
+        self.add_auto_action(
             "auto-describe-message",
             Some(glib::VariantTy::new("(xx)").unwrap()),
             |app, p| {
@@ -224,6 +229,42 @@ impl Application {
         if let Err(e) = std::fs::write(&path, out) {
             log::warn!("auto-list-chats: failed to write {}: {e:?}", path.display());
         }
+    }
+
+    /// Writes the newest messages of a chat (`<id>\t<content-preview>` per line,
+    /// newest first) to `<output_dir>/messages.txt`, so a driver can pick a
+    /// message id to act on.
+    fn auto_list_messages(&self, chat_id: ChatId) {
+        let Some(client_id) = self.active_client_id() else {
+            log::warn!("auto-list-messages: no active client");
+            return;
+        };
+
+        utils::spawn(async move {
+            let out = match tdlib::functions::get_chat_history(chat_id, 0, 0, 30, false, client_id)
+                .await
+            {
+                Ok(tdlib::enums::Messages::Messages(data)) => data
+                    .messages
+                    .into_iter()
+                    .flatten()
+                    .map(|m| {
+                        let mut preview = format!("{:?}", m.content);
+                        preview.truncate(80);
+                        format!("{}\t{}", m.id, preview)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                Err(e) => format!("get_chat_history({chat_id}) failed: {e:?}"),
+            };
+            let path = output_dir().join("messages.txt");
+            if let Err(e) = std::fs::write(&path, out) {
+                log::warn!(
+                    "auto-list-messages: failed to write {}: {e:?}",
+                    path.display()
+                );
+            }
+        });
     }
 
     /// Dumps everything the client knows about a message (its full `get_message`

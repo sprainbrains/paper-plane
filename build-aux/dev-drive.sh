@@ -11,6 +11,7 @@
 #   build-aux/dev-drive.sh run-headless        # start the app under broadway (no display)
 #   build-aux/dev-drive.sh screenshot [OUT]    # capture window -> OUT (default: /tmp/pp-shot.png)
 #   build-aux/dev-drive.sh list-chats          # dump loaded chats -> stdout
+#   build-aux/dev-drive.sh list-messages CHAT  # dump newest messages of a chat -> stdout
 #   build-aux/dev-drive.sh describe MSG CHAT    # dump a message's full TDLib object -> stdout
 #   build-aux/dev-drive.sh new-test-client     # begin a test-DC login
 #   build-aux/dev-drive.sh phone NUMBER        # submit phone number (test-DC: e.g. 9996612345)
@@ -80,6 +81,12 @@ case "$cmd" in
     list-chats)
         activate auto-list-chats
         f=$(wait_for chats.txt 5)
+        cat "$f"
+        ;;
+    list-messages)
+        chat="$1"
+        activate auto-list-messages "[<int64 $chat>]"
+        f=$(wait_for messages.txt 8)
         cat "$f"
         ;;
     describe)
