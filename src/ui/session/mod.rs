@@ -5,7 +5,9 @@ mod row;
 mod sidebar;
 mod switcher;
 
+use std::cell::Cell;
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::OnceLock;
 
 use adw::prelude::*;
@@ -14,6 +16,7 @@ use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
+use gtk::graphene;
 
 pub(crate) use self::contacts_window::ContactsWindow;
 pub(crate) use self::contacts_window::Row as ContactRow;
@@ -91,7 +94,11 @@ mod imp {
         #[template_child]
         pub(super) content_picker: TemplateChild<ui::ContentPicker>,
         #[template_child]
-        pub(super) content_picker_revealer: TemplateChild<gtk::Revealer>,
+        pub(super) content_picker_split: TemplateChild<adw::OverlaySplitView>,
+        #[template_child]
+        pub(super) sidebar_resize_handle: TemplateChild<gtk::Separator>,
+        #[template_child]
+        pub(super) picker_resize_handle: TemplateChild<gtk::Separator>,
         pub(super) content_picker_popover: RefCell<Option<gtk::Popover>>,
         pub(super) popup_content_picker: RefCell<Option<ui::ContentPicker>>,
         pub(super) content_picker_close_timeout: RefCell<Option<glib::SourceId>>,
@@ -175,6 +182,11 @@ mod imp {
             }
         }
 
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.obj().setup_resizable_panels();
+        }
+
         fn dispose(&self) {
             if let Some(source) = self.content_picker_close_timeout.borrow_mut().take() {
                 source.remove();
@@ -202,9 +214,136 @@ impl From<&model::ClientStateSession> for Session {
     }
 }
 
+const SIDEBAR_MIN_WIDTH: i32 = 240;
+const SIDEBAR_MAX_WIDTH: i32 = 500;
+const PICKER_MIN_WIDTH: i32 = 320;
+const PICKER_MAX_WIDTH: i32 = 560;
+
 impl Session {
     pub(crate) fn model(&self) -> Option<model::ClientStateSession> {
         self.imp().model.upgrade()
+    }
+
+    /// Fixes each split view's sidebar to its saved width and makes the divider handle
+    /// draggable to resize it, persisting the new width.
+    fn setup_resizable_panels(&self) {
+        let settings = utils::PaperPlaneSettings::default();
+        let imp = self.imp();
+
+        // Chat list sidebar (start): dragging the handle right widens it.
+        let sidebar_width = settings
+            .int("sidebar-width")
+            .clamp(SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH) as f64;
+        let split = imp.split_view.get();
+        split.set_min_sidebar_width(sidebar_width);
+        split.set_max_sidebar_width(sidebar_width);
+        let split_apply = split.downgrade();
+        self.setup_panel_resize(
+            imp.sidebar_resize_handle.upcast_ref(),
+            true,
+            SIDEBAR_MIN_WIDTH,
+            SIDEBAR_MAX_WIDTH,
+            "sidebar-width",
+            move |width| {
+                if let Some(split) = split_apply.upgrade() {
+                    split.set_min_sidebar_width(width);
+                    split.set_max_sidebar_width(width);
+                }
+            },
+        );
+
+        // Content picker (end): dragging the handle left widens it.
+        let picker_width = settings
+            .int("content-picker-width")
+            .clamp(PICKER_MIN_WIDTH, PICKER_MAX_WIDTH) as f64;
+        let picker_split = imp.content_picker_split.get();
+        picker_split.set_min_sidebar_width(picker_width);
+        picker_split.set_max_sidebar_width(picker_width);
+        let picker_apply = picker_split.downgrade();
+        self.setup_panel_resize(
+            imp.picker_resize_handle.upcast_ref(),
+            false,
+            PICKER_MIN_WIDTH,
+            PICKER_MAX_WIDTH,
+            "content-picker-width",
+            move |width| {
+                if let Some(split) = picker_apply.upgrade() {
+                    split.set_min_sidebar_width(width);
+                    split.set_max_sidebar_width(width);
+                }
+            },
+        );
+    }
+
+    /// Wires a resizable panel divider. `from_start` is true for a sidebar on the left
+    /// (width grows as the handle moves right) and false for one on the right.
+    ///
+    /// The width is tracked live during the drag. The handle sits inside the panel it
+    /// resizes, so naively using the drag offset would feed back into itself and
+    /// flicker; instead the pointer is projected into this widget's own (stable)
+    /// coordinate space each frame with `compute_point`, which cancels the handle's
+    /// movement out exactly, giving smooth live resizing.
+    fn setup_panel_resize(
+        &self,
+        handle: &gtk::Widget,
+        from_start: bool,
+        min: i32,
+        max: i32,
+        key: &'static str,
+        apply: impl Fn(f64) + 'static,
+    ) {
+        handle.set_cursor_from_name(Some("col-resize"));
+
+        let drag = gtk::GestureDrag::new();
+        let min = min as f64;
+        let max = max as f64;
+        let last_width = Rc::new(Cell::new(0));
+
+        drag.connect_drag_begin(clone!(
+            #[weak]
+            handle,
+            move |_, _, _| handle.add_css_class("dragging")
+        ));
+        drag.connect_drag_update(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            handle,
+            #[strong]
+            last_width,
+            move |gesture, offset_x, offset_y| {
+                let Some((start_x, start_y)) = gesture.start_point() else {
+                    return;
+                };
+                let point =
+                    graphene::Point::new((start_x + offset_x) as f32, (start_y + offset_y) as f32);
+                let Some(point) = handle.compute_point(&obj, &point) else {
+                    return;
+                };
+                let pointer_x = point.x() as f64;
+                let width = if from_start {
+                    pointer_x
+                } else {
+                    obj.width() as f64 - pointer_x
+                }
+                .clamp(min, max);
+                last_width.set(width as i32);
+                apply(width);
+            }
+        ));
+        drag.connect_drag_end(clone!(
+            #[weak]
+            handle,
+            #[strong]
+            last_width,
+            move |_, _, _| {
+                handle.remove_css_class("dragging");
+                if last_width.get() > 0 {
+                    let _ = utils::PaperPlaneSettings::default().set_int(key, last_width.get());
+                }
+            }
+        ));
+        handle.add_controller(drag);
     }
 
     pub(crate) fn select_chat(&self, id: ChatId) {
@@ -236,10 +375,23 @@ impl Session {
         self.imp().content.handle_paste_action();
     }
 
+    /// Jumps the open chat's history to its newest message (used when the user
+    /// re-activates the already-selected chat).
+    pub(crate) fn scroll_content_to_latest(&self) {
+        self.imp().content.scroll_history_to_latest();
+    }
+
+    /// Opens the content-picker sidebar on the sticker tab, showing a single sticker
+    /// pack (triggered by "Show Sticker Pack" in a sticker message's menu).
+    pub(crate) fn show_sticker_pack(&self, set_id: i64) {
+        self.imp().content_picker_split.set_show_sidebar(true);
+        self.imp().content_picker.show_sticker_pack(set_id);
+    }
+
     pub(crate) fn toggle_content_picker_sidebar(&self) {
-        let revealer = &self.imp().content_picker_revealer;
-        let show = !revealer.reveals_child();
-        revealer.set_reveal_child(show);
+        let split = &self.imp().content_picker_split;
+        let show = !split.shows_sidebar();
+        split.set_show_sidebar(show);
         if show {
             self.imp().content_picker.refresh();
         }

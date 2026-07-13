@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cell::OnceCell;
 
 use glib::Properties;
@@ -17,6 +18,7 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/chat_folder/bar.ui")]
     pub(crate) struct Bar {
         pub(super) popover_menu: OnceCell<gtk::PopoverMenu>,
+        pub(super) vertical: Cell<bool>,
         #[property(get, set)]
         pub(super) chat_folder_list: glib::WeakRef<model::ChatFolderList>,
         #[property(get, set)]
@@ -90,6 +92,11 @@ mod imp {
             dy: f64,
             _scroll: gtk::EventControllerScroll,
         ) -> glib::Propagation {
+            // A vertical rail scrolls natively; only the horizontal bar remaps the
+            // wheel onto its horizontal adjustment.
+            if self.vertical.get() {
+                return glib::Propagation::Proceed;
+            }
             let adj = self.scrolled_window.hadjustment();
             adj.set_value(adj.value() + dy * 25.0);
 
@@ -136,6 +143,40 @@ glib::wrapper! {
 }
 
 impl Bar {
+    /// Switches the folder bar between a horizontal tab strip (default) and a vertical
+    /// rail (for the far-left folder layout).
+    pub(crate) fn set_vertical(&self, vertical: bool) {
+        let imp = self.imp();
+        imp.vertical.set(vertical);
+
+        if let Some(list_view) = imp.scrolled_window.child().and_downcast::<gtk::ListView>() {
+            list_view.set_orientation(if vertical {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            });
+            if vertical {
+                list_view.remove_css_class("navigation-tabbar");
+            } else {
+                list_view.add_css_class("navigation-tabbar");
+            }
+        }
+
+        if vertical {
+            imp.scrolled_window
+                .set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
+            imp.scrolled_window.set_propagate_natural_width(true);
+            imp.scrolled_window.set_propagate_natural_height(false);
+            self.add_css_class("vertical");
+        } else {
+            imp.scrolled_window
+                .set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
+            imp.scrolled_window.set_propagate_natural_width(false);
+            imp.scrolled_window.set_propagate_natural_height(true);
+            self.remove_css_class("vertical");
+        }
+    }
+
     pub(crate) fn popover_menu(&self) -> gtk::PopoverMenu {
         self.imp()
             .popover_menu

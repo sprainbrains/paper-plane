@@ -35,6 +35,7 @@ pub(crate) use self::search::SectionType as SearchSectionType;
 pub(crate) use self::selection::Selection;
 use crate::model;
 use crate::ui;
+use crate::utils;
 
 mod imp {
     use super::*;
@@ -50,6 +51,8 @@ mod imp {
         #[property(get, set = Self::set_session, explicit_notify)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         pub(super) row_menu: OnceCell<gtk::PopoverMenu>,
+        // Kept alive so the `vertical-folders` change handler stays connected.
+        pub(super) settings: OnceCell<utils::PaperPlaneSettings>,
         // The currently displayed chat list and its "loading" notify handler, so the
         // header shimmer can follow whichever list (folder) is on screen.
         pub(super) loading_handler:
@@ -72,6 +75,8 @@ mod imp {
         pub(super) snow: TemplateChild<ui::Snow>,
         #[template_child]
         pub(super) folder_bar: TemplateChild<ui::SidebarChatFolderBar>,
+        #[template_child]
+        pub(super) folder_rail: TemplateChild<gtk::Box>,
     }
 
     #[glib::object_subclass]
@@ -186,6 +191,22 @@ mod imp {
 
             let obj = &*self.obj();
 
+            // Place the chat-folder bar either along the top (horizontal) or as a rail
+            // on the far left (vertical), following the setting live.
+            let settings = utils::PaperPlaneSettings::default();
+            obj.apply_folder_layout(settings.boolean("vertical-folders"));
+            settings.connect_changed(
+                Some("vertical-folders"),
+                clone!(
+                    #[weak]
+                    obj,
+                    move |settings, _| {
+                        obj.apply_folder_layout(settings.boolean("vertical-folders"));
+                    }
+                ),
+            );
+            let _ = self.settings.set(settings);
+
             let session_expr = Self::Type::this_expression("session");
 
             session_expr
@@ -283,6 +304,29 @@ glib::wrapper! {
 }
 
 impl Sidebar {
+    /// Moves the chat-folder bar between the top toolbar (horizontal) and a rail on the
+    /// far left (vertical), matching the `vertical-folders` preference.
+    fn apply_folder_layout(&self, vertical: bool) {
+        let imp = self.imp();
+        let bar = imp.folder_bar.get();
+        let rail: &gtk::Widget = imp.folder_rail.upcast_ref();
+        let in_rail = bar.parent().as_ref() == Some(rail);
+
+        if vertical && !in_rail {
+            if bar.parent().is_some() {
+                imp.main_view.remove(&bar);
+            }
+            bar.set_vertical(true);
+            bar.set_vexpand(true);
+            imp.folder_rail.append(&bar);
+        } else if !vertical && in_rail {
+            imp.folder_rail.remove(&bar);
+            bar.set_vertical(false);
+            bar.set_vexpand(false);
+            imp.main_view.add_top_bar(&bar);
+        }
+    }
+
     pub(crate) fn row_menu(&self) -> &gtk::PopoverMenu {
         self.imp().row_menu.get_or_init(|| {
             let menu =

@@ -136,11 +136,22 @@ mod imp {
         #[template_callback]
         fn list_activate(&self, pos: u32) {
             let obj = &*self.obj();
+            let previously_selected = obj.selected_chat();
             self.selection.set_selected_position(pos);
 
             obj.set_selected_chat(self.selection.selected_chat());
             obj.activate_action("navigation.push", Some(&"content".to_variant()))
                 .unwrap();
+
+            // Re-activating the chat that is already open drops the view to its newest
+            // message (the set_selected_chat above is a no-op in that case).
+            let newly_selected = obj.selected_chat();
+            if newly_selected.is_some()
+                && newly_selected == previously_selected
+                && let Some(session) = utils::ancestor::<_, ui::Session>(obj)
+            {
+                session.scroll_content_to_latest();
+            }
         }
     }
 }

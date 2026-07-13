@@ -14,35 +14,51 @@ template $Session : Adw.Bin {
       sidebar: Adw.NavigationPage {
         title: _("Chats");
 
-        child: $PaplSidebar sidebar {
-          compact: bind split_view.collapsed;
-          selected-chat: bind content.chat bidirectional;
-          session: bind template.model;
+        child: Box {
+          orientation: horizontal;
+
+          $PaplSidebar sidebar {
+            hexpand: true;
+            compact: bind split_view.collapsed;
+            selected-chat: bind content.chat bidirectional;
+            session: bind template.model;
+          }
+
+          Separator sidebar_resize_handle {
+            styles ["panel-resize-handle"]
+          }
         };
       };
 
       content: Adw.NavigationPage {
         tag: "content";
         title: _("Content");
-        child: Box {
-          $Content content {
+        child: Adw.OverlaySplitView content_picker_split {
+          sidebar-position: end;
+          show-sidebar: false;
+          min-sidebar-width: 360;
+          max-sidebar-width: 420;
+          sidebar-width-fraction: 0.35;
+
+          content: $Content content {
             hexpand: true;
-          }
+          };
 
-          Separator picker_separator {
-            visible: bind content_picker_revealer.reveal-child;
-          }
+          sidebar: Box {
+            orientation: horizontal;
 
-          Revealer content_picker_revealer {
-            transition-type: slide_left;
-            visible: bind content_picker_revealer.reveal-child;
+            Separator picker_resize_handle {
+              styles ["panel-resize-handle"]
+            }
 
             $PaplContentPicker content_picker {
+              hexpand: true;
               width-request: 360;
+              show-window-controls: true;
               session: bind template.model;
               chat: bind content.chat;
             }
-          }
+          };
         };
       };
     };
@@ -51,6 +67,13 @@ template $Session : Adw.Bin {
       condition ("max-width: 560sp")
       setters {
         split_view.collapsed: true;
+      }
+    }
+
+    Adw.Breakpoint {
+      condition ("max-width: 860sp")
+      setters {
+        content_picker_split.collapsed: true;
       }
     }
   };

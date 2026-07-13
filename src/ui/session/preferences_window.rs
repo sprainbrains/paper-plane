@@ -28,6 +28,12 @@ mod imp {
         pub(super) notifications_switch_row: TemplateChild<adw::SwitchRow>,
         #[template_child]
         pub(super) cache_size_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) debug_options_switch_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) vertical_folders_switch_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) version_label: TemplateChild<gtk::Label>,
     }
 
     #[glib::object_subclass]
@@ -46,6 +52,13 @@ mod imp {
                     widget.clear_cache().await;
                 },
             );
+
+            klass.install_action("preferences.open-website", None, |widget, _, _| {
+                widget.open_uri("https://github.com/paper-plane-developers/paper-plane");
+            });
+            klass.install_action("preferences.report-issue", None, |widget, _, _| {
+                widget.open_uri("https://github.com/paper-plane-developers/paper-plane/issues");
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -98,6 +111,8 @@ mod imp {
                 self.follow_system_colors_switch.set_sensitive(false);
             }
 
+            self.version_label.set_label(config::VERSION);
+
             obj.setup_bindings();
 
             utils::spawn(clone!(
@@ -130,10 +145,30 @@ impl PreferencesWindow {
         let imp = self.imp();
 
         // Notifications toggle, backed directly by the gsetting.
-        gio::Settings::new(config::APP_ID)
+        let settings = gio::Settings::new(config::APP_ID);
+        settings
             .bind(
                 "notifications-enabled",
                 &*imp.notifications_switch_row,
+                "active",
+            )
+            .build();
+
+        // Debug options toggle, backed directly by the gsetting; message rows read
+        // this key to decide whether to expose "Copy Debug Entry".
+        settings
+            .bind(
+                "debug-options-enabled",
+                &*imp.debug_options_switch_row,
+                "active",
+            )
+            .build();
+
+        // Folder layout; applied on next start (the sidebar is built once).
+        settings
+            .bind(
+                "vertical-folders",
+                &*imp.vertical_folders_switch_row,
                 "active",
             )
             .build();
@@ -230,6 +265,16 @@ impl PreferencesWindow {
                 log::warn!("Error optimizing the storage: {e:?}");
             }
         }
+    }
+
+    fn open_uri(&self, uri: &str) {
+        let launcher = gtk::UriLauncher::new(uri);
+        let parent = self.root().and_downcast::<gtk::Window>();
+        launcher.launch(parent.as_ref(), gio::Cancellable::NONE, |result| {
+            if let Err(e) = result {
+                log::warn!("Failed to open URI: {e:?}");
+            }
+        });
     }
 
     pub(crate) fn session(&self) -> &ui::Session {

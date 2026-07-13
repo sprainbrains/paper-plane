@@ -3,27 +3,8 @@ using Adw 1;
 
 template $PaplPreferencesWindow : Adw.PreferencesDialog {
   Adw.PreferencesPage {
-    Adw.PreferencesGroup {
-      title: _("Color Scheme");
-
-      Adw.ActionRow {
-        title: _("Follow System Colors");
-        activatable-widget: follow_system_colors_switch;
-
-        Switch follow_system_colors_switch {
-          valign: center;
-        }
-      }
-
-      Adw.ActionRow {
-        title: _("Dark Theme");
-        activatable-widget: dark_theme_switch;
-
-        Switch dark_theme_switch {
-          valign: center;
-        }
-      }
-    }
+    title: _("General");
+    icon-name: "preferences-system-symbolic";
 
     Adw.PreferencesGroup {
       title: _("Notifications");
@@ -52,6 +33,111 @@ template $PaplPreferencesWindow : Adw.PreferencesDialog {
         action-name: "preferences.clear-cache";
         halign: center;
         margin-top: 24;
+      }
+    }
+  }
+
+  Adw.PreferencesPage {
+    title: _("Design");
+    icon-name: "preferences-desktop-appearance-symbolic";
+
+    Adw.PreferencesGroup {
+      title: _("Color Scheme");
+
+      Adw.ActionRow {
+        title: _("Follow System Colors");
+        activatable-widget: follow_system_colors_switch;
+
+        Switch follow_system_colors_switch {
+          valign: center;
+        }
+      }
+
+      Adw.ActionRow {
+        title: _("Dark Theme");
+        activatable-widget: dark_theme_switch;
+
+        Switch dark_theme_switch {
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Sidebar");
+
+      Adw.SwitchRow vertical_folders_switch_row {
+        title: _("Vertical Folders");
+        subtitle: _("Show chat folders as a rail on the far left of the sidebar");
+      }
+    }
+  }
+
+  Adw.PreferencesPage {
+    title: _("Features");
+    icon-name: "applications-utilities-symbolic";
+
+    Adw.PreferencesGroup {
+      title: _("Debug Options");
+      description: _("Developer tools for troubleshooting and bug reports");
+
+      Adw.SwitchRow debug_options_switch_row {
+        title: _("Enable Debug Options");
+        subtitle: _("Adds \"Copy Debug Entry\" to the message menu, which copies a message's raw data for bug reports");
+      }
+    }
+  }
+
+  Adw.PreferencesPage {
+    title: _("About");
+    icon-name: "help-about-symbolic";
+
+    Adw.PreferencesGroup {
+      Adw.ActionRow {
+        title: _("Paper Plane");
+        subtitle: _("A Telegram client for the GNOME desktop");
+      }
+
+      Adw.ActionRow {
+        title: _("Version");
+
+        Label version_label {
+          styles ["dim-label"]
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      Adw.ActionRow {
+        title: _("Website");
+        activatable: true;
+        action-name: "preferences.open-website";
+
+        [suffix]
+        Image {
+          icon-name: "adw-external-link-symbolic";
+        }
+      }
+
+      Adw.ActionRow {
+        title: _("Report an Issue");
+        activatable: true;
+        action-name: "preferences.report-issue";
+
+        [suffix]
+        Image {
+          icon-name: "adw-external-link-symbolic";
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      Button {
+        styles ["pill"]
+
+        label: _("About Paper Plane");
+        action-name: "app.about";
+        halign: center;
       }
     }
   }

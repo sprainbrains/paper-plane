@@ -155,10 +155,19 @@ template $PaplSidebar: Widget {
           chat-folder-list: bind template.session as <$ClientStateSession>.chat-folder-list;
         }
 
-        $PaplSidebarChatList {
-          chat-list: bind folder_bar.selected-chat-list;
-          selected-chat: bind template.selected-chat bidirectional;
-          compact: bind template.compact;
+        Box {
+          orientation: horizontal;
+
+          Box folder_rail {
+            orientation: vertical;
+          }
+
+          $PaplSidebarChatList {
+            hexpand: true;
+            chat-list: bind folder_bar.selected-chat-list;
+            selected-chat: bind template.selected-chat bidirectional;
+            compact: bind template.compact;
+          }
         }
       };
     }
