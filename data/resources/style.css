@@ -517,31 +517,46 @@ messagesticker {
 }
 
 .reaction-bar {
-  padding: 4px 6px;
+  padding: 3px 5px;
   border-radius: 9999px;
   background-color: @popover_bg_color;
-  box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 2px 6px 1px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.28);
+  animation: message-menu-pop 150ms ease-out;
 }
 
 .reaction-bar-item,
 .reaction-bar-expand {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 3px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 2px;
   border-radius: 9999px;
 }
 
 /* Standard-emoji reactions are plain labels; enlarge the glyph to match the
-   bigger custom-emoji stickers in the bar. */
+   custom-emoji stickers in the bar. */
 .reaction-bar-item label {
-  font-size: 28px;
+  font-size: 24px;
+}
+
+/* A subtle scale-and-fade so the menu pops in rather than snapping. */
+@keyframes message-menu-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .message-menu-card {
   padding: 6px;
   border-radius: 12px;
   background-color: @popover_bg_color;
-  box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 2px 6px 1px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.28);
+  animation: message-menu-pop 150ms ease-out;
 }
 
 .message-menu-item {

@@ -234,7 +234,7 @@ impl MessageMenuReactions {
             .property("chat", &chat)
             .build();
         picker.set_reaction_mode(chat_id, message_id, allowed_emoji);
-        picker.set_size_request(360, 420);
+        picker.set_size_request(300, 360);
         // The `session` property is set after construction, so the emoji page built in
         // `constructed()` had no session and skipped custom-emoji packs. Refresh now
         // that the session is available so custom-emoji reactions appear (the sidebar
