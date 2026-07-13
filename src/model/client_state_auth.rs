@@ -7,7 +7,6 @@ use glib::subclass::prelude::*;
 use gtk::glib;
 
 use crate::model;
-use crate::utils;
 
 mod imp {
     use super::*;
@@ -69,13 +68,6 @@ impl ClientStateAuth {
 
     pub(crate) fn handle_update(&self, update: tdlib::types::UpdateAuthorizationState) {
         use tdlib::enums::AuthorizationState::*;
-
-        let client = self.client_();
-        if client.remove_if_auth() {
-            utils::spawn(async move {
-                _ = client.log_out().await;
-            });
-        }
 
         self.set_state(Some(match update.authorization_state {
             WaitPhoneNumber => model::ClientStateAuthPhoneNumber::from(self).upcast(),
