@@ -14,7 +14,6 @@ pub(crate) use markup::parse_formatted_text;
 pub(crate) use paths::data_dir;
 pub(crate) use paths::temp_dir;
 pub(crate) use settings::PaperPlaneSettings;
-pub(crate) use widgets::ChildIter;
 pub(crate) use widgets::ancestor;
 pub(crate) use widgets::descendant;
 pub(crate) use widgets::show_toast;

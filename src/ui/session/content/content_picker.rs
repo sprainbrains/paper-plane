@@ -60,10 +60,6 @@ mod imp {
         pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
-        /// Debounces the active-rail update onto idle, so it reads row bounds after the
-        /// scroll has re-laid-out (reading them synchronously in value-changed gives the
-        /// pre-scroll positions, which highlighted the wrong section).
-        pub(super) rail_update_pending: Cell<bool>,
         pub(super) emoji_model: OnceCell<gio::ListStore>,
         pub(super) sticker_model: OnceCell<gio::ListStore>,
         pub(super) gif_model: OnceCell<gio::ListStore>,
@@ -415,7 +411,7 @@ impl ContentPicker {
                 list,
                 move |_| {
                     obj.mark_scrolling();
-                    obj.queue_active_rail_update(&list, &page);
+                    obj.update_active_rail_for(&list, &page);
                 }
             ));
             // `changed` fires when the content is (re)allocated — after a pack loads or
@@ -1846,18 +1842,31 @@ impl ContentPicker {
     }
 
     /// Adds a back button to a reaction-mode picker (used when the picker is opened from
-    /// the message menu, so the user can return to it). Shows a slim header with only the
-    /// back button — the tab switcher stays hidden.
+    /// the message menu, so the user can return to it). To save vertical space the button
+    /// sits at the left of the search row rather than in its own header, leaving the rest
+    /// of the row for the search entry.
     pub(crate) fn add_reaction_back_button<F: Fn() + 'static>(&self, callback: F) {
         let imp = self.imp();
-        imp.header_bar.set_title_widget(gtk::Widget::NONE);
-        imp.header_bar.set_visible(true);
+        let search = imp.search_entry.get();
 
         let back = gtk::Button::from_icon_name("go-previous-symbolic");
         back.add_css_class("flat");
+        back.set_valign(gtk::Align::Center);
         back.set_tooltip_text(Some(&gettext("Back")));
         back.connect_clicked(move |_| callback());
-        imp.header_bar.pack_start(&back);
+
+        // Wrap the back button and the existing search entry in a horizontal row, in place
+        // of the standalone search entry.
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        row.set_margin_start(6);
+        row.set_margin_end(6);
+        row.insert_before(self, Some(&search));
+        search.unparent();
+        search.set_hexpand(true);
+        search.set_margin_start(0);
+        search.set_margin_end(0);
+        row.append(&back);
+        row.append(&search);
     }
 
     pub(crate) fn connect_reaction_picked<F: Fn(&Self, model::BoxedReactionType) + 'static>(

@@ -8,7 +8,6 @@ use gtk::subclass::prelude::*;
 use super::ContentPicker;
 use super::EmojiRow;
 use super::StickerRow;
-use crate::utils;
 
 const RAIL_SECTION_KEY: &str = "papl-rail-section";
 
@@ -59,30 +58,6 @@ impl ContentPicker {
         })
     }
 
-    /// Schedules an active-rail update on idle (debounced). Reading row bounds directly
-    /// from the scroll handler sees the pre-scroll layout; idle runs after the relayout.
-    pub(super) fn queue_active_rail_update(
-        &self,
-        list: &gtk::ListView,
-        page: &gtk::ScrolledWindow,
-    ) {
-        if self.imp().rail_update_pending.replace(true) {
-            return;
-        }
-        glib::idle_add_local_once(glib::clone!(
-            #[weak(rename_to = obj)]
-            self,
-            #[weak]
-            list,
-            #[weak]
-            page,
-            move || {
-                obj.imp().rail_update_pending.set(false);
-                obj.update_active_rail_for(&list, &page);
-            }
-        ));
-    }
-
     pub(super) fn update_active_rail_for(&self, list: &gtk::ListView, page: &gtk::ScrolledWindow) {
         if !self
             .imp()
@@ -92,26 +67,21 @@ impl ContentPicker {
         {
             return;
         }
-        let viewport_height = page.height() as f32;
-        let mut top_section: Option<(f32, String)> = None;
-        for item_widget in utils::ChildIter::from(list.upcast_ref::<gtk::Widget>()) {
-            let Some(bounds) = item_widget.compute_bounds(page) else {
-                continue;
-            };
-            let top = bounds.y();
-            let bottom = top + bounds.height();
-            if bottom <= 1.0 || top >= viewport_height {
-                continue;
+        // Highlight the section of whatever row is rendered at the top of the viewport.
+        // `pick()` reflects what the user currently sees, so the rail stays correct during
+        // scrolling without waiting for a post-scroll relayout (every row is tagged with
+        // its section in the list factory).
+        let x = (list.width() / 2).max(1) as f64;
+        let mut widget = list.pick(x, 6.0, gtk::PickFlags::DEFAULT);
+        while let Some(w) = widget {
+            if let Some(section) = widget_rail_section(&w) {
+                self.set_active_rail(&section);
+                return;
             }
-            if top_section.as_ref().is_none_or(|(t, _)| top < *t)
-                && let Some(row) = item_widget.first_child()
-                && let Some(section) = widget_rail_section(&row)
-            {
-                top_section = Some((top, section));
+            if w.eq(list) {
+                break;
             }
-        }
-        if let Some((_, section)) = top_section {
-            self.set_active_rail(&section);
+            widget = w.parent();
         }
     }
 }

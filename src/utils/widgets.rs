@@ -38,22 +38,3 @@ pub(crate) fn descendant<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -
     }
     None
 }
-
-#[allow(dead_code)]
-pub(crate) struct ChildIter(Option<gtk::Widget>);
-
-impl From<&gtk::Widget> for ChildIter {
-    fn from(widget: &gtk::Widget) -> Self {
-        Self(widget.first_child())
-    }
-}
-
-impl Iterator for ChildIter {
-    type Item = gtk::Widget;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let r = self.0.take();
-        self.0 = r.as_ref().and_then(|widget| widget.next_sibling());
-        r
-    }
-}
