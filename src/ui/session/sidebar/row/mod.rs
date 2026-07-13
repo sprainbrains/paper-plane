@@ -149,7 +149,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

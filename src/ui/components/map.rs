@@ -7,7 +7,6 @@ use gtk::subclass::prelude::*;
 use shumate::prelude::*;
 
 use crate::ui;
-use crate::utils;
 
 // The golden ratio
 const PHI: f64 = 1.6180339887;
@@ -48,8 +47,8 @@ mod imp {
         type ParentType = gtk::Widget;
 
         fn class_init(klass: &mut Self::Class) {
-            Self::bind_template(klass);
-            Self::bind_template_callbacks(klass);
+            klass.bind_template();
+            klass.bind_template_callbacks();
 
             klass.set_css_name("map");
         }
@@ -113,7 +112,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

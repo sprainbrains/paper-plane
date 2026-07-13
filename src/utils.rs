@@ -282,14 +282,6 @@ pub(crate) fn ancestor<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -> 
     widget.ancestor(T::static_type()).and_downcast::<T>()
 }
 
-pub(crate) fn unparent_children<W: IsA<gtk::Widget>>(widget: &W) {
-    let mut child = widget.first_child();
-    while let Some(child_) = child {
-        child = child_.next_sibling();
-        child_.unparent();
-    }
-}
-
 #[allow(dead_code)]
 pub(crate) struct ChildIter(Option<gtk::Widget>);
 impl From<&gtk::Widget> for ChildIter {

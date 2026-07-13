@@ -65,7 +65,7 @@ mod imp {
 
         fn dispose(&self) {
             self.popover_menu.unparent();
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

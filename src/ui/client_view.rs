@@ -8,7 +8,6 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
-use crate::utils;
 
 mod imp {
     use super::*;
@@ -55,7 +54,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

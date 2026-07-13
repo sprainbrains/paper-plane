@@ -287,14 +287,13 @@ impl ChatHistory {
 
     async fn show_leave_chat_dialog(&self) {
         if let Some(chat) = self.chat() {
-            let dialog = adw::AlertDialog::new(
-                Some(&gettext("Leave chat?")),
-                Some(&gettext("Do you want to leave this chat?")),
+            let dialog = ui::destructive_confirmation_dialog(
+                &gettext("Leave chat?"),
+                &gettext("Do you want to leave this chat?"),
+                ("no", &gettext("_No")),
+                ("yes", &gettext("_Yes")),
             );
-            dialog.add_responses(&[("no", &gettext("_No")), ("yes", &gettext("_Yes"))]);
-            dialog.set_default_response(Some("no"));
             dialog.set_close_response("no");
-            dialog.set_response_appearance("yes", adw::ResponseAppearance::Destructive);
 
             if dialog.choose_future(Some(self)).await == "yes" {
                 match tdlib::functions::leave_chat(chat.id(), chat.session_().client_().id()).await

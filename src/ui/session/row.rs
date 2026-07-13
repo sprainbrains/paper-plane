@@ -11,6 +11,7 @@ use crate::expressions;
 use crate::i18n::gettext_f;
 use crate::model;
 use crate::strings;
+use crate::ui;
 use crate::utils;
 
 mod imp {
@@ -74,7 +75,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 
@@ -93,24 +94,19 @@ impl Row {
 
     pub(crate) async fn log_out(&self) {
         if let Some(session) = self.session() {
-            let dialog: adw::AlertDialog = adw::AlertDialog::builder()
-                .heading_use_markup(true)
-                .heading(gettext_f(
+            let dialog = ui::destructive_confirmation_dialog(
+                &gettext_f(
                     "Log out <i>{display_name}</i>",
                     &[(
                         "display_name",
                         &strings::user_display_name(&session.me_(), true),
                     )],
-                ))
-                .body(gettext("Are you sure you want to log out?"))
-                .build();
-
-            dialog.add_responses(&[
+                ),
+                &gettext("Are you sure you want to log out?"),
                 ("cancel", &gettext("_Cancel")),
                 ("log-out", &gettext("_Log out")),
-            ]);
-            dialog.set_default_response(Some("cancel"));
-            dialog.set_response_appearance("log-out", adw::ResponseAppearance::Destructive);
+            );
+            dialog.set_heading_use_markup(true);
 
             if dialog.choose_future(Some(self)).await == "log-out" {
                 let imp = self.imp();

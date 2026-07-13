@@ -1,6 +1,5 @@
 use gettextrs::gettext;
 use glib::Properties;
-use glib::clone;
 use glib::closure;
 use glib::subclass::InitializingObject;
 use gtk::CompositeTemplate;
@@ -78,7 +77,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            self.obj().first_child().unwrap().unparent();
+            self.dispose_template();
         }
     }
 
@@ -203,21 +202,13 @@ impl Code {
     }
 
     pub(crate) fn focus_entry_row(&self) {
-        glib::idle_add_local_once(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move || {
-                obj.imp().entry_row.grab_focus();
-            }
-        ));
+        super::focus_on_idle(&*self.imp().entry_row);
     }
 
     fn freeze(&self, freeze: bool) {
         let imp = self.imp();
 
-        imp.input_box.set_sensitive(!freeze);
-        imp.next_button_stack
-            .set_visible_child_name(if freeze { "spinner" } else { "label" });
+        super::set_input_frozen(&*imp.input_box, &imp.next_button_stack, freeze);
 
         self.action_set_enabled("login.code.next", !freeze);
         self.action_set_enabled("login.code.resend-auth-code", !freeze);

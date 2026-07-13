@@ -72,7 +72,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 
@@ -201,21 +201,13 @@ impl Registration {
     }
 
     pub(crate) fn focus_first_name_entry_row(&self) {
-        glib::idle_add_local_once(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move || {
-                obj.imp().first_name_entry_row.grab_focus();
-            }
-        ));
+        super::focus_on_idle(&*self.imp().first_name_entry_row);
     }
 
     fn freeze(&self, freeze: bool) {
         let imp = self.imp();
 
-        imp.input_box.set_sensitive(!freeze);
-        imp.next_button_stack
-            .set_visible_child_name(if freeze { "spinner" } else { "label" });
+        super::set_input_frozen(&*imp.input_box, &imp.next_button_stack, freeze);
 
         self.action_set_enabled("login.registration.next", !freeze);
         self.action_set_enabled("login.resend-auth-code", !freeze);

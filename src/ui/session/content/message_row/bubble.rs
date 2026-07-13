@@ -11,7 +11,6 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
-use crate::utils;
 
 const MAX_WIDTH: i32 = 400;
 const SENDER_COLOR_CLASSES: &[&str] = &[
@@ -96,7 +95,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

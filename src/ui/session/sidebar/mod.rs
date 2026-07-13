@@ -35,7 +35,6 @@ pub(crate) use self::search::SectionType as SearchSectionType;
 pub(crate) use self::selection::Selection;
 use crate::model;
 use crate::ui;
-use crate::utils;
 
 mod imp {
     use super::*;
@@ -246,7 +245,7 @@ mod imp {
             {
                 list.disconnect(id);
             }
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

@@ -11,6 +11,7 @@ use gtk::subclass::prelude::*;
 
 use crate::i18n::gettext_f;
 use crate::model;
+use crate::ui;
 use crate::utils;
 
 mod imp {
@@ -124,7 +125,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            self.obj().first_child().unwrap().unparent();
+            self.dispose_template();
         }
     }
 
@@ -230,19 +231,14 @@ impl Password {
     }
 
     pub(crate) fn delete_account(&self) {
-        let dialog = adw::AlertDialog::builder()
-            .heading(gettext("Warning"))
-            .body(gettext(
+        let dialog = ui::destructive_confirmation_dialog(
+            &gettext("Warning"),
+            &gettext(
                 "You will lose all your chats and messages, along with any media and files you shared!\n\nDo you want to delete your account?",
-            ))
-            .build();
-
-        dialog.add_responses(&[
+            ),
             ("cancel", &gettext("_Cancel")),
             ("delete", &gettext("_Delete Account")),
-        ]);
-        dialog.set_default_response(Some("cancel"));
-        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        );
 
         dialog.choose(
             Some(self),
@@ -347,29 +343,23 @@ impl Password {
     }
 
     pub(crate) fn focus_password_entry_row(&self) {
-        glib::idle_add_local_once(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move || {
-                obj.imp().password_entry_row.grab_focus();
-            }
-        ));
+        super::focus_on_idle(&*self.imp().password_entry_row);
     }
 
     fn freeze(&self, freeze: bool) {
         let imp = self.imp();
 
-        imp.password_input_box.set_sensitive(!freeze);
-        imp.next_button_stack
-            .set_visible_child_name(if freeze { "spinner" } else { "label" });
-
-        imp.password_forgotten_input_box.set_sensitive(!freeze);
-        imp.send_code_button_stack
-            .set_visible_child_name(if freeze { "spinner" } else { "label" });
-
-        imp.send_recovery_code_input_box.set_sensitive(!freeze);
-        imp.send_recovery_code_button_stack
-            .set_visible_child_name(if freeze { "spinner" } else { "label" });
+        super::set_input_frozen(&*imp.password_input_box, &imp.next_button_stack, freeze);
+        super::set_input_frozen(
+            &*imp.password_forgotten_input_box,
+            &imp.send_code_button_stack,
+            freeze,
+        );
+        super::set_input_frozen(
+            &*imp.send_recovery_code_input_box,
+            &imp.send_recovery_code_button_stack,
+            freeze,
+        );
 
         self.action_set_enabled("login.password.next", !freeze);
         self.action_set_enabled("login.password.forgot", !freeze);

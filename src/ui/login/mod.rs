@@ -9,7 +9,6 @@ use gettextrs::gettext;
 use glib::Properties;
 use glib::subclass::InitializingObject;
 use gtk::CompositeTemplate;
-use gtk::gio;
 use gtk::glib;
 use gtk::glib::clone;
 use gtk::subclass::prelude::*;
@@ -21,6 +20,22 @@ pub(crate) use self::phone_number::PhoneNumber;
 pub(crate) use self::registration::Registration;
 use crate::model;
 use crate::ui;
+
+fn focus_on_idle(widget: &impl IsA<gtk::Widget>) {
+    let widget = widget.as_ref().clone();
+    glib::idle_add_local_once(clone!(
+        #[weak]
+        widget,
+        move || {
+            widget.grab_focus();
+        }
+    ));
+}
+
+fn set_input_frozen(input: &impl IsA<gtk::Widget>, button_stack: &gtk::Stack, frozen: bool) {
+    input.set_sensitive(!frozen);
+    button_stack.set_visible_child_name(if frozen { "spinner" } else { "label" });
+}
 
 mod imp {
     use super::*;
@@ -66,7 +81,7 @@ mod imp {
         }
 
         fn dispose(&self) {
-            self.obj().first_child().unwrap().unparent();
+            self.dispose_template();
         }
     }
 
@@ -116,23 +131,20 @@ impl Login {
     }
 
     pub(crate) fn reset(&self) {
-        let dialog = adw::AlertDialog::builder()
-            .heading(gettext("Reset Registration Process?"))
-            .body(gettext("If you reset the registration process, the previous progress will be irrevocably lost."))
-            .build();
-
-        dialog.add_responses(&[
+        let dialog = ui::destructive_confirmation_dialog(
+            &gettext("Reset Registration Process?"),
+            &gettext(
+                "If you reset the registration process, the previous progress will be irrevocably lost.",
+            ),
             ("cancel", &gettext("_Cancel")),
             ("reset", &gettext("_Reset")),
-        ]);
-        dialog.set_default_response(Some("cancel"));
-        dialog.set_response_appearance("reset", adw::ResponseAppearance::Destructive);
+        );
 
         let model = self.model_();
 
         dialog.choose(
             Some(self),
-            gio::Cancellable::NONE,
+            gtk::gio::Cancellable::NONE,
             clone!(
                 #[weak]
                 model,

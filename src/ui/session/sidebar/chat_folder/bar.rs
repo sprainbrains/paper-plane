@@ -8,7 +8,6 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
-use crate::utils;
 
 mod imp {
     use super::*;
@@ -62,7 +61,7 @@ mod imp {
             if let Some(popover_menu) = self.popover_menu.get() {
                 popover_menu.unparent();
             }
-            utils::unparent_children(&*self.obj());
+            self.dispose_template();
         }
     }
 

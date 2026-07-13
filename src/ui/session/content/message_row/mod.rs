@@ -346,15 +346,13 @@ impl Row {
             gettext("Do you want to delete this message?")
         };
 
-        let dialog = adw::AlertDialog::builder()
-            .heading(gettext("Confirm Message Deletion"))
-            .body_use_markup(true)
-            .body(message)
-            .build();
-
-        dialog.add_responses(&[("no", &gettext("_No")), ("yes", &gettext("_Yes"))]);
-        dialog.set_default_response(Some("no"));
-        dialog.set_response_appearance("yes", adw::ResponseAppearance::Destructive);
+        let dialog = ui::destructive_confirmation_dialog(
+            &gettext("Confirm Message Deletion"),
+            &message,
+            ("no", &gettext("_No")),
+            ("yes", &gettext("_Yes")),
+        );
+        dialog.set_body_use_markup(true);
 
         dialog.choose(
             Some(self),
