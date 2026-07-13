@@ -84,10 +84,20 @@ fn main() -> glib::ExitCode {
                     .expect("Could not load UI gresource file"),
             );
 
-            let log_level = match dict.lookup::<String>("log-level").unwrap() {
-                Some(level) => log::Level::from_str(&level).expect("Error on parsing log-level"),
+            let log_level = match dict.lookup::<String>("log-level") {
+                Ok(Some(level)) => match log::Level::from_str(&level) {
+                    Ok(level) => level,
+                    Err(e) => {
+                        eprintln!("Invalid log level '{level}': {e}");
+                        return std::ops::ControlFlow::Break(glib::ExitCode::from(1));
+                    }
+                },
                 // Standard log levels if not specified by user
-                None => log::Level::Warn,
+                Ok(None) => log::Level::Warn,
+                Err(e) => {
+                    eprintln!("Could not read log-level option: {e}");
+                    return std::ops::ControlFlow::Break(glib::ExitCode::from(1));
+                }
             };
 
             let mut application_opts = ApplicationOptions::default();
@@ -100,8 +110,20 @@ fn main() -> glib::ExitCode {
                 application_opts.test_dc = true;
             }
 
-            let client_id = dict.lookup("client-id").unwrap();
-            let client_secret = dict.lookup("client-secret").unwrap();
+            let client_id = match dict.lookup("client-id") {
+                Ok(client_id) => client_id,
+                Err(e) => {
+                    log::error!("Could not read client-id option: {e}");
+                    return std::ops::ControlFlow::Break(glib::ExitCode::from(1));
+                }
+            };
+            let client_secret = match dict.lookup("client-secret") {
+                Ok(client_secret) => client_secret,
+                Err(e) => {
+                    log::error!("Could not read client-secret option: {e}");
+                    return std::ops::ControlFlow::Break(glib::ExitCode::from(1));
+                }
+            };
 
             match (client_id, client_secret) {
                 (Some(client_id), Some(client_secret)) => {
