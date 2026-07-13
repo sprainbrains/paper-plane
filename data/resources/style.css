@@ -713,9 +713,12 @@ contentpicker.content-picker.reaction-mode {
   padding: 0;
 }
 
+/* Give the search field a filled, rounded surface so it stands out from the
+   popover background instead of blending into it. */
 contentpicker.content-picker.reaction-mode entry {
-  background: none;
+  background-color: alpha(@window_fg_color, 0.08);
   box-shadow: none;
+  border-radius: 9px;
 }
 
 contentpicker.content-picker.reaction-mode separator {

@@ -267,6 +267,18 @@ impl MessageMenuReactions {
             move |_| revealer.set_reveal_child(true)
         ));
 
+        // Back returns to the message menu it was opened from (still parented to the row).
+        if let Some(menu) = menu {
+            picker.add_reaction_back_button(clone!(
+                #[weak]
+                popover,
+                move || {
+                    popover.popdown();
+                    menu.popup();
+                }
+            ));
+        }
+
         picker.connect_content_picked(clone!(
             #[weak]
             popover,

@@ -185,10 +185,15 @@ mod imp {
             if let Some(source) = self.scroll_timeout.borrow_mut().take() {
                 source.remove();
             }
-            self.emoji_list.unparent();
-            self.sticker_list.unparent();
-            self.gif_grid.unparent();
-            self.navigation_rail.unparent();
+            // Unparent every direct child (header bar, search entry, stack, separator,
+            // rail scroll); each disposes its own nested widgets. Unparenting only the
+            // nested lists left the direct children dangling, which crashed on finalize
+            // (e.g. when the reaction-mode picker is torn down on a theme change).
+            let mut child = self.obj().first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                widget.unparent();
+            }
         }
     }
 
@@ -1838,6 +1843,21 @@ impl ContentPicker {
         // Drop the picker's own opaque background so it sits directly on the popover's
         // native surface instead of looking like a widget boxed inside it.
         self.add_css_class("reaction-mode");
+    }
+
+    /// Adds a back button to a reaction-mode picker (used when the picker is opened from
+    /// the message menu, so the user can return to it). Shows a slim header with only the
+    /// back button — the tab switcher stays hidden.
+    pub(crate) fn add_reaction_back_button<F: Fn() + 'static>(&self, callback: F) {
+        let imp = self.imp();
+        imp.header_bar.set_title_widget(gtk::Widget::NONE);
+        imp.header_bar.set_visible(true);
+
+        let back = gtk::Button::from_icon_name("go-previous-symbolic");
+        back.add_css_class("flat");
+        back.set_tooltip_text(Some(&gettext("Back")));
+        back.connect_clicked(move |_| callback());
+        imp.header_bar.pack_start(&back);
     }
 
     pub(crate) fn connect_reaction_picked<F: Fn(&Self, model::BoxedReactionType) + 'static>(
