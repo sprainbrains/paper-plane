@@ -1213,11 +1213,16 @@ impl ChatHistory {
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
     /// it — used when following a reply, jump, or link so the user can spot the target.
     /// Morphs the just-sent text out of the composer and up into the history: a ghost that
-    /// starts as the grey composer field springs upward, narrows to a bubble, and tints to
-    /// the accent colour — so the message appears to fly into its place. `start` is the
-    /// composer's rectangle in this widget's coordinates. The real message arrives
-    /// separately via the new-message handler.
-    pub(crate) fn play_send_animation(&self, text: &str, start: Option<graphene::Rect>) {
+    /// starts as the grey composer field springs onto the real message's bubble, narrowing
+    /// to its shape and tinting to the accent colour, then hands off to the real bubble
+    /// (which is hidden during the flight so the ghost appears to *become* it). `start` is
+    /// the composer's rectangle in this widget's coordinates.
+    pub(crate) fn play_send_animation(
+        &self,
+        text: &str,
+        start: Option<graphene::Rect>,
+        message_id: i64,
+    ) {
         let text = text.trim();
         let Some(start) = start.filter(|_| !text.is_empty()) else {
             return;
@@ -1225,7 +1230,7 @@ impl ChatHistory {
         let imp = self.imp();
 
         // Two stacked layers with the same text: a grey "field" underneath and an accent
-        // "bubble" on top whose opacity is animated in, cross-fading grey → blue.
+        // "bubble" on top whose opacity is animated in, cross-fading grey → accent.
         let make_label = |class: &str| {
             let label = gtk::Label::builder()
                 .label(text)
@@ -1255,34 +1260,48 @@ impl ChatHistory {
         ghost.set_size_request(start.width() as i32, start.height() as i32);
         imp.send_overlay.add_overlay(&ghost);
 
-        // Target the real bubble's place: a text-width bubble at the bottom-right of the
-        // (clamped, max-800) message column, just above the composer — where the sent
-        // message actually lands.
-        let overlay_width = imp.send_overlay.width() as f32;
-        let text_natural = gtk::Label::new(Some(text))
-            .measure(gtk::Orientation::Horizontal, -1)
-            .1 as f32;
-        let (content_right, list_bottom) =
-            match imp.scrolled_window.compute_bounds(&*imp.send_overlay) {
-                Some(bounds) => {
-                    let content_width = bounds.width().min(800.0);
-                    let content_right = bounds.x() + (bounds.width() + content_width) / 2.0;
-                    // Leave the row's small trailing margin, matching an outgoing bubble.
-                    (content_right - 8.0, bounds.y() + bounds.height())
+        // Wait a frame for the sent message's row to be laid out, then spring the ghost
+        // exactly onto its bubble.
+        let text = text.to_owned();
+        glib::idle_add_local_once(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            ghost,
+            #[weak]
+            accent,
+            move || obj.spring_send_ghost(ghost, accent, start, message_id, text)
+        ));
+    }
+
+    /// Springs `ghost` from `start` onto the real message bubble (hidden for the duration so
+    /// the ghost visually becomes it), or onto a computed spot if the row isn't ready.
+    fn spring_send_ghost(
+        &self,
+        ghost: gtk::Overlay,
+        accent: gtk::Box,
+        start: graphene::Rect,
+        message_id: i64,
+        text: String,
+    ) {
+        let imp = self.imp();
+
+        // Prefer the real bubble's exact rectangle; hide the row so the ghost stands in for
+        // it until it lands.
+        let row = self.find_message_row(message_id);
+        let end = row
+            .as_ref()
+            .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
+            .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay));
+        let end = match end {
+            Some(rect) => {
+                if let Some(row) = &row {
+                    row.set_opacity(0.0);
                 }
-                None => (overlay_width - 12.0, start.y()),
-            };
-        // A one-line bubble is much shorter than the composer; size the end to the text
-        // (+ the ghost's 16px vertical padding), not the tall entry.
-        let text_height = gtk::Label::new(Some(text))
-            .measure(gtk::Orientation::Vertical, -1)
-            .1 as f32;
-        let end_height = text_height + 16.0;
-        let max_width = (content_right - 12.0).max(120.0);
-        // The ghost's two layers add 24px of horizontal padding around the text.
-        let end_width = (text_natural + 24.0).clamp(96.0, max_width);
-        let end_x = (content_right - end_width).max(12.0);
-        let end_y = (list_bottom - end_height - 6.0).max(6.0);
+                rect
+            }
+            None => self.fallback_bubble_rect(start, &text),
+        };
 
         let target = adw::CallbackAnimationTarget::new(clone!(
             #[weak]
@@ -1292,18 +1311,18 @@ impl ChatHistory {
             move |value| {
                 let progress = value as f32;
                 let lerp = |a: f32, b: f32| a + (b - a) * progress;
-                ghost.set_margin_start(lerp(start.x(), end_x) as i32);
-                ghost.set_margin_top(lerp(start.y(), end_y) as i32);
+                ghost.set_margin_start(lerp(start.x(), end.x()) as i32);
+                ghost.set_margin_top(lerp(start.y(), end.y()) as i32);
                 ghost.set_size_request(
-                    lerp(start.width(), end_width) as i32,
-                    lerp(start.height(), end_height) as i32,
+                    lerp(start.width(), end.width()) as i32,
+                    lerp(start.height(), end.height()) as i32,
                 );
                 accent.set_opacity(value.clamp(0.0, 1.0));
             }
         ));
         // A springy, macOS-like motion: underdamped so it settles with a soft bounce. The
-        // progress runs 0..1, so a large initial velocity would fling the ghost far past
-        // the target; keep it small so the overshoot stays a gentle bounce near the bubble.
+        // progress runs 0..1, so a large initial velocity would fling the ghost far past the
+        // target; keep it small so the overshoot stays a gentle bounce near the bubble.
         let params = adw::SpringParams::new(0.45, 3.3, 100.0);
         let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, params, target);
         animation.set_initial_velocity(0.5);
@@ -1314,11 +1333,42 @@ impl ChatHistory {
             ghost,
             move |_| {
                 obj.imp().send_overlay.remove_overlay(&ghost);
+                if let Some(row) = &row {
+                    row.set_opacity(1.0);
+                }
                 obj.imp().send_animation.replace(None);
             }
         ));
         animation.play();
         imp.send_animation.replace(Some(animation));
+    }
+
+    /// A fallback landing rectangle when the real bubble isn't laid out yet: a text-width
+    /// bubble at the bottom-right of the clamped (max-800) message column.
+    fn fallback_bubble_rect(&self, start: graphene::Rect, text: &str) -> graphene::Rect {
+        let imp = self.imp();
+        let overlay_width = imp.send_overlay.width() as f32;
+        let text_natural = gtk::Label::new(Some(text))
+            .measure(gtk::Orientation::Horizontal, -1)
+            .1 as f32;
+        let (content_right, list_bottom) =
+            match imp.scrolled_window.compute_bounds(&*imp.send_overlay) {
+                Some(bounds) => {
+                    let content_width = bounds.width().min(800.0);
+                    let content_right = bounds.x() + (bounds.width() + content_width) / 2.0;
+                    (content_right - 8.0, bounds.y() + bounds.height())
+                }
+                None => (overlay_width - 12.0, start.y()),
+            };
+        let text_height = gtk::Label::new(Some(text))
+            .measure(gtk::Orientation::Vertical, -1)
+            .1 as f32;
+        let end_height = text_height + 16.0;
+        let max_width = (content_right - 12.0).max(120.0);
+        let end_width = (text_natural + 24.0).clamp(96.0, max_width);
+        let end_x = (content_right - end_width).max(12.0);
+        let end_y = (list_bottom - end_height - 6.0).max(6.0);
+        graphene::Rect::new(end_x, end_y, end_width, end_height)
     }
 
     pub(crate) fn focus_message(&self, message_id: i64) {

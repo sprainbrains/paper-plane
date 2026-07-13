@@ -462,11 +462,14 @@ impl ChatActionBar {
             let result =
                 tdlib::functions::send_message(chat_id, None, reply_to, None, message, client_id)
                     .await;
-            if let Err(e) = result {
-                log::warn!("Error sending a message: {e:?}");
-            } else if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) {
-                let start = self.imp().message_entry.compute_bounds(&chat_history);
-                chat_history.play_send_animation(&ghost_text, start);
+            match result {
+                Err(e) => log::warn!("Error sending a message: {e:?}"),
+                Ok(tdlib::enums::Message::Message(message)) => {
+                    if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) {
+                        let start = self.imp().message_entry.compute_bounds(&chat_history);
+                        chat_history.play_send_animation(&ghost_text, start, message.id);
+                    }
+                }
             }
 
             self.reset();
