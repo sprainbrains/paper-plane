@@ -142,9 +142,8 @@ impl GifCell {
             return;
         };
         if let Some(mini) = &animation.minithumbnail
-            && let Ok(texture) = gdk::Texture::from_bytes(&glib::Bytes::from_owned(
-                glib::base64_decode(&mini.data),
-            ))
+            && let Ok(texture) =
+                gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(&mini.data)))
         {
             picture.set_paintable(Some(&texture));
         } else {
@@ -207,10 +206,7 @@ impl GifCell {
     }
 }
 
-async fn gif_path(
-    file: tdlib::types::File,
-    session: &model::ClientStateSession,
-) -> Option<String> {
+async fn gif_path(file: tdlib::types::File, session: &model::ClientStateSession) -> Option<String> {
     if file.local.is_downloading_completed {
         return Some(file.local.path);
     }

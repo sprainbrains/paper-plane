@@ -314,7 +314,9 @@ impl Row {
                 .is_some_and(|m| m.can_be_deleted_for_all_users()),
             // Only location/venue message rows install `message-row.open`.
             "message-row.open" => matches!(
-                self.message().downcast_ref::<model::Message>().map(|m| m.content().0),
+                self.message()
+                    .downcast_ref::<model::Message>()
+                    .map(|m| m.content().0),
                 Some(
                     tdlib::enums::MessageContent::MessageLocation(_)
                         | tdlib::enums::MessageContent::MessageVenue(_)

@@ -749,14 +749,24 @@ impl ContentPicker {
         let recent = utils::PaperPlaneSettings::default().strv("recent-emojis");
         if !recent.is_empty() {
             let values: Vec<String> = recent.iter().map(|value| value.to_string()).collect();
-            push_emoji_section(&mut rows, &gettext("Recently Used"), "Recently-Used", &values);
+            push_emoji_section(
+                &mut rows,
+                &gettext("Recently Used"),
+                "Recently-Used",
+                &values,
+            );
         }
         for (title, _, emojis) in EMOJI_SECTIONS {
             if emojis.is_empty() {
                 continue;
             }
             let values: Vec<String> = emojis.split_whitespace().map(str::to_owned).collect();
-            push_emoji_section(&mut rows, &gettext(*title), &title.replace(' ', "-"), &values);
+            push_emoji_section(
+                &mut rows,
+                &gettext(*title),
+                &title.replace(' ', "-"),
+                &values,
+            );
         }
         let model = self.emoji_model();
         model.remove_all();
@@ -801,7 +811,12 @@ impl ContentPicker {
         let mut new_rows: Vec<glib::BoxedAnyObject> = Vec::new();
         if !recent.is_empty() {
             let values: Vec<String> = recent.iter().map(|value| value.to_string()).collect();
-            push_emoji_section(&mut new_rows, &gettext("Recently Used"), "Recently-Used", &values);
+            push_emoji_section(
+                &mut new_rows,
+                &gettext("Recently Used"),
+                "Recently-Used",
+                &values,
+            );
         }
         model.splice(0, old_len, &new_rows);
     }
@@ -830,11 +845,12 @@ impl ContentPicker {
                 // Fetch several packs concurrently (each get_sticker_set is a TDLib
                 // round-trip); append their (cheap) model rows one pack at a time,
                 // yielding between packs. Widgets are only built for visible rows.
-                let mut packs = futures::stream::iter(data.sets.into_iter().map(move |info| async move {
-                    let set = tdlib::functions::get_sticker_set(info.id, client_id).await;
-                    (info, set)
-                }))
-                .buffered(4);
+                let mut packs =
+                    futures::stream::iter(data.sets.into_iter().map(move |info| async move {
+                        let set = tdlib::functions::get_sticker_set(info.id, client_id).await;
+                        (info, set)
+                    }))
+                    .buffered(4);
                 while let Some((info, set)) = packs.next().await {
                     if obj.imp().custom_emoji_generation.get() != generation {
                         return;
@@ -930,7 +946,8 @@ impl ContentPicker {
             let Some(item) = model.item(position).and_downcast::<glib::BoxedAnyObject>() else {
                 continue;
             };
-            if matches!(&*item.borrow::<EmojiRow>(), EmojiRow::Header { name: n, .. } if n == name) {
+            if matches!(&*item.borrow::<EmojiRow>(), EmojiRow::Header { name: n, .. } if n == name)
+            {
                 self.imp()
                     .emoji_list
                     .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
@@ -1179,8 +1196,13 @@ impl ContentPicker {
                     let result = if let Some(cover) = cover {
                         ui::load_picker_preview(&cover, preview_pixel_size, &session, demand).await
                     } else if let Some(thumbnail) = thumbnail {
-                        ui::load_picker_file_preview(thumbnail, preview_pixel_size, &session, demand)
-                            .await
+                        ui::load_picker_file_preview(
+                            thumbnail,
+                            preview_pixel_size,
+                            &session,
+                            demand,
+                        )
+                        .await
                     } else {
                         return;
                     };
@@ -1251,14 +1273,8 @@ impl ContentPicker {
                 if !obj.sticker_generation_is(generation) {
                     return;
                 }
-                obj.populate_stickers(
-                    generation,
-                    favorites.ok(),
-                    recent.ok(),
-                    sets.ok(),
-                    None,
-                )
-                .await;
+                obj.populate_stickers(generation, favorites.ok(), recent.ok(), sets.ok(), None)
+                    .await;
                 log::info!(
                     target: "paper_plane::content_picker",
                     "TDLib sticker load and widget population finished in {:?}; total_stickers={}",
@@ -1896,11 +1912,11 @@ fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>)
             picker,
             move |_| {
                 if picker.imp().mode.get() == PickerMode::Reaction {
-                    let reaction_type = model::BoxedReactionType(tdlib::enums::ReactionType::Emoji(
-                        tdlib::types::ReactionTypeEmoji {
+                    let reaction_type = model::BoxedReactionType(
+                        tdlib::enums::ReactionType::Emoji(tdlib::types::ReactionTypeEmoji {
                             emoji: value.clone(),
-                        },
-                    ));
+                        }),
+                    );
                     picker.emit_by_name::<()>("reaction-picked", &[&reaction_type]);
                 } else {
                     picker.remember_emoji(&value);

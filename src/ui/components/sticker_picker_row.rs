@@ -392,7 +392,10 @@ impl StickerPickerRow {
             utils::spawn(async move {
                 // Defer while the list is scrolling, but abandon the load if the row
                 // was dropped (its demand flag is cleared on dispose).
-                while scrolling_task.as_ref().is_some_and(|scrolling| scrolling.get()) {
+                while scrolling_task
+                    .as_ref()
+                    .is_some_and(|scrolling| scrolling.get())
+                {
                     if !demand_task.get() {
                         return;
                     }
@@ -484,7 +487,10 @@ impl StickerPickerRow {
             utils::spawn(async move {
                 // Defer downloading/parsing new animations while scrolling — already
                 // loaded rows keep playing; rows scrolled past are dropped and bail.
-                while scrolling_task.as_ref().is_some_and(|scrolling| scrolling.get()) {
+                while scrolling_task
+                    .as_ref()
+                    .is_some_and(|scrolling| scrolling.get())
+                {
                     if !demand_task.get() {
                         return;
                     }
@@ -626,8 +632,8 @@ pub(crate) fn prefetch_sticker_previews(
         let sticker = sticker.clone();
         let session = session.clone();
         utils::spawn(async move {
-            let _ =
-                super::load_picker_preview(&sticker, size, &session, Rc::new(Cell::new(true))).await;
+            let _ = super::load_picker_preview(&sticker, size, &session, Rc::new(Cell::new(true)))
+                .await;
         });
     }
 }

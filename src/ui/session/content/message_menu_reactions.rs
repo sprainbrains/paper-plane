@@ -89,7 +89,9 @@ impl MessageMenuReactions {
                 )
                 .await
                 {
-                    Ok(tdlib::enums::AvailableReactions::AvailableReactions(available)) => available,
+                    Ok(tdlib::enums::AvailableReactions::AvailableReactions(available)) => {
+                        available
+                    }
                     Err(e) => {
                         log::warn!("Failed to get available reactions: {e:?}");
                         obj.set_visible(false);

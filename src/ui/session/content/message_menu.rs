@@ -19,15 +19,60 @@ struct MenuEntry {
 /// — the reactions bar above the menu (and its chevron to the full picker) fully
 /// replaces it.
 const PRIMARY: &[MenuEntry] = &[
-    MenuEntry { action: "message-row.reply", icon: "mail-reply-sender-symbolic", label: "Reply", destructive: false },
-    MenuEntry { action: "message-row.forward", icon: "mail-forward-symbolic", label: "Forward", destructive: false },
-    MenuEntry { action: "message-row.copy", icon: "edit-copy-symbolic", label: "Copy Text", destructive: false },
-    MenuEntry { action: "message-row.copy-link", icon: "chain-link-symbolic", label: "Copy Link", destructive: false },
-    MenuEntry { action: "message-row.pin", icon: "view-pin-symbolic", label: "Pin", destructive: false },
-    MenuEntry { action: "message-row.edit", icon: "edit-symbolic", label: "Edit", destructive: false },
-    MenuEntry { action: "message-row.open", icon: "find-location-symbolic", label: "Open", destructive: false },
-    MenuEntry { action: "message-row.revoke-delete", icon: "user-trash-symbolic", label: "Delete for Everyone", destructive: true },
-    MenuEntry { action: "message-row.delete", icon: "user-trash-symbolic", label: "Delete for Me", destructive: true },
+    MenuEntry {
+        action: "message-row.reply",
+        icon: "mail-reply-sender-symbolic",
+        label: "Reply",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.forward",
+        icon: "mail-forward-symbolic",
+        label: "Forward",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.copy",
+        icon: "edit-copy-symbolic",
+        label: "Copy Text",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.copy-link",
+        icon: "chain-link-symbolic",
+        label: "Copy Link",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.pin",
+        icon: "view-pin-symbolic",
+        label: "Pin",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.edit",
+        icon: "edit-symbolic",
+        label: "Edit",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.open",
+        icon: "find-location-symbolic",
+        label: "Open",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.revoke-delete",
+        icon: "user-trash-symbolic",
+        label: "Delete for Everyone",
+        destructive: true,
+    },
+    MenuEntry {
+        action: "message-row.delete",
+        icon: "user-trash-symbolic",
+        label: "Delete for Me",
+        destructive: true,
+    },
 ];
 
 /// Development-only tools, shown below a separator.

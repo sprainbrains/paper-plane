@@ -218,7 +218,7 @@ impl Sticker {
             #[weak]
             session,
             async move {
-                if let Some(path) = download_sticker_path(file,&session).await {
+                if let Some(path) = download_sticker_path(file, &session).await {
                     obj.install_full_media(path, file_id, generation, looped, format)
                         .await;
                 }
@@ -539,7 +539,7 @@ async fn load_preview_texture_uncached(
     let total_started = Instant::now();
     async {
         let download_started = Instant::now();
-        let path = download_sticker_path(file,session)
+        let path = download_sticker_path(file, session)
             .await
             .ok_or_else(|| "download failed".to_string())?;
         let download_elapsed = download_started.elapsed();
