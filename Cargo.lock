@@ -701,7 +701,6 @@ dependencies = [
 [[package]]
 name = "gtk-rlottie"
 version = "0.10.0"
-source = "git+https://github.com/Yach0/gtk-rlottie-rs.git?tag=v0.10.0#31a1cc26ebd88f9555387d88026ceb329924c80d"
 dependencies = [
  "async-channel",
  "flate2",

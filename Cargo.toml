@@ -32,3 +32,6 @@ thiserror = "2"
 [profile.release]
 lto = true
 codegen-units = 1
+
+[patch."https://github.com/Yach0/gtk-rlottie-rs.git"]
+gtk-rlottie = { path = "vendor/gtk-rlottie" }

@@ -28,6 +28,7 @@ pub(crate) use self::message_entry::MessageEntry;
 pub(crate) use self::phone_number_input::PhoneNumberInput;
 pub(crate) use self::snow::Snow;
 pub(crate) use self::sticker::Sticker;
+pub(crate) use self::sticker::download_sticker_path;
 pub(crate) use self::sticker::load_picker_file_preview;
 pub(crate) use self::sticker::load_picker_preview;
 pub(crate) use self::sticker_picker_row::StickerPickerRow;

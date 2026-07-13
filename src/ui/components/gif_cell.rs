@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
@@ -15,12 +17,16 @@ use crate::utils;
 const CELL_WIDTH: i32 = 104;
 const CELL_HEIGHT: i32 = 88;
 
+/// Number of live GIF `MediaFile` pipelines — a resource-usage gauge; bounded by
+/// [`MAX_CONCURRENT_GIFS`].
+static LIVE_GIFS: AtomicUsize = AtomicUsize::new(0);
+
 /// Maximum number of GIFs downloading and playing (each a `gtk::MediaFile` /
-/// GStreamer pipeline) at once. Unbounded playback opens a file descriptor and a
-/// GWakeup pipe per pipeline and floods the TDLib download queue, which exhausts
-/// the process's file-descriptor limit ("Too many open files"). Cells past the cap
-/// keep showing their static minithumbnail until a slot frees.
-const MAX_CONCURRENT_GIFS: usize = 4;
+/// GStreamer pipeline) at once. Sized to cover a viewport (~3 columns × a few rows)
+/// so every visible GIF plays, while still bounding live pipelines — unbounded
+/// playback opens a file descriptor + GWakeup pipe per pipeline and floods the TDLib
+/// download queue, exhausting the fd limit ("Too many open files").
+const MAX_CONCURRENT_GIFS: usize = 16;
 
 fn gif_limiter() -> &'static (async_channel::Sender<()>, async_channel::Receiver<()>) {
     static LIMITER: OnceLock<(async_channel::Sender<()>, async_channel::Receiver<()>)> =
@@ -172,6 +178,8 @@ impl GifCell {
                     picture.set_paintable(Some(&media));
                 }
                 *obj.imp().media.borrow_mut() = Some(media);
+                let live = LIVE_GIFS.fetch_add(1, Ordering::Relaxed) + 1;
+                log::debug!(target: "paper_plane::content_picker", "gif playing; live_gifs={live}");
                 // Hold the slot until playback is torn down (stop_media).
                 *obj.imp().permit.borrow_mut() = Some(permit);
             }
@@ -192,6 +200,7 @@ impl GifCell {
     fn stop_media(&self) {
         if let Some(media) = self.imp().media.borrow_mut().take() {
             media.pause();
+            LIVE_GIFS.fetch_sub(1, Ordering::Relaxed);
         }
         // Release the playback slot so another cell can start.
         self.imp().permit.borrow_mut().take();

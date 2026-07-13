@@ -55,6 +55,36 @@ real account for automated login testing.
 - Keep user-visible strings translatable with the existing gettext helpers.
 - Do not hand-edit generated `src/config.rs`.
 
+## Virtualized lists and off-screen work
+
+`GtkListView`/`GtkGridView` virtualize, but you cannot assume an off-screen row
+is cheap or gone. Two behaviors bite hard:
+
+- On its **first layout** a `GtkListView` has no realized rows, so its unknown
+  row-height estimate is `0` (median of an empty set). Every row is then placed
+  at `y = 0`, the visible range spans the *entire* model, and it realizes **all**
+  rows in one pass. This is normally transient, but with an incrementally
+  populated model — and a `ScrolledWindow` that absorbs the list's growth, so it
+  is never re-allocated to trigger a cull — it can stay massively over-realized.
+- A row that is recycled or scrolled away may be **unbound but not immediately
+  disposed** (held briefly by GTK internals or in-flight work). It is unparented,
+  hence **unmapped**, but still alive.
+
+**Rule: gate all per-row work on `map`/`unmap`, never on construct/dispose.**
+Start preview decodes, media downloads, `add_tick_callback` animation, and any
+recurring work when the row is **mapped**, and stop/cancel it on **unmap** (a
+tick callback should check `is_mapped()` and return `Break`; async tasks should
+check a shared demand flag that `unmap` clears). An off-screen cell must do zero
+work. Do not start expensive work in a widget's constructor, and do not rely on
+`dispose` (a leaked row never disposes) or on the ListView culling to bound cost.
+This mirrors Telegram Desktop, where only on-screen cells load and animate. See
+`StickerPickerRow` (`start_row_work`/`stop_row_work`) for the reference pattern.
+
+Debugging note: overriding `WidgetImpl::size_allocate` on a widget that uses a
+template `layout-manager` may not fire as expected — probe from a widget that is
+actually in the tree (e.g. `connect_map`) or walk ancestors, not from an
+allocation override.
+
 ## Changes and commits
 
 Preserve unrelated working-tree changes. Keep fixes focused and add regression

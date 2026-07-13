@@ -48,13 +48,9 @@ template $PaplContentPicker : Widget {
     ScrolledWindow emoji_page {
       hscrollbar-policy: never;
 
-      Box emoji_sections {
-        orientation: vertical;
-        spacing: 12;
-        margin-start: 12;
-        margin-end: 12;
-        margin-top: 6;
-        margin-bottom: 12;
+      ListView emoji_list {
+        single-click-activate: false;
+        styles ["emoji-picker-list"]
       }
     }
 

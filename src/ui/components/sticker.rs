@@ -218,7 +218,7 @@ impl Sticker {
             #[weak]
             session,
             async move {
-                if let Some(path) = download_path(file, &session).await {
+                if let Some(path) = download_sticker_path(file,&session).await {
                     obj.install_full_media(path, file_id, generation, looped, format)
                         .await;
                 }
@@ -399,7 +399,9 @@ fn thumbnail_is_sufficient(
     accept_small_thumbnail || width.max(height) >= target_size
 }
 
-async fn download_path(
+/// Downloads a sticker's file (bounded by the shared download limiter) and returns
+/// its local path. Shared by the sticker widget and the picker rows.
+pub(crate) async fn download_sticker_path(
     file: tdlib::types::File,
     session: &model::ClientStateSession,
 ) -> Option<String> {
@@ -537,7 +539,7 @@ async fn load_preview_texture_uncached(
     let total_started = Instant::now();
     async {
         let download_started = Instant::now();
-        let path = download_path(file, session)
+        let path = download_sticker_path(file,session)
             .await
             .ok_or_else(|| "download failed".to_string())?;
         let download_elapsed = download_started.elapsed();

@@ -627,6 +627,27 @@ contentpicker.content-picker {
   padding: 0;
 }
 
+/* The emoji page is a virtualized ListView; give its rows the horizontal insets
+   the old Box had, and drop the default list row styling. */
+.emoji-picker-list {
+  background: none;
+}
+
+.emoji-picker-list > row {
+  padding: 2px 12px;
+}
+
+/* The picker lists never select/activate rows (the cells handle their own clicks),
+   so suppress the default list row hover/selection background. */
+.emoji-picker-list > row:hover,
+.emoji-picker-list > row:selected,
+.emoji-picker-list > row:active,
+.sticker-picker-list > row:hover,
+.sticker-picker-list > row:selected,
+.sticker-picker-list > row:active {
+  background: none;
+}
+
 .sticker-picker-item {
   min-width: 68px;
   min-height: 68px;

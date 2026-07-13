@@ -90,28 +90,17 @@ mod imp {
         pub(super) emoji_search_active: Cell<bool>,
         pub(super) sticker_generation: Cell<u64>,
         /// Bumped whenever the emoji page is rebuilt, so an in-flight custom-emoji
-        /// section load from a previous build stops appending to the cleared page.
+        /// load from a previous build stops appending to the model.
         pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
+        pub(super) emoji_model: OnceCell<gio::ListStore>,
         pub(super) sticker_model: OnceCell<gio::ListStore>,
         pub(super) gif_model: OnceCell<gio::ListStore>,
         pub(super) rail_covers: RefCell<Vec<RailCover>>,
-        /// Maps each content section's widget name to its rail button, so the rail
-        /// can highlight the section currently in view.
+        /// Maps each content section's name to its rail button, so the rail can
+        /// highlight the clicked section.
         pub(super) rail_sections: RefCell<Vec<(String, glib::WeakRef<gtk::Button>)>>,
-        /// The lazy custom-emoji rows on the emoji page; their previews are loaded
-        /// only while scrolled into view (poor man's virtualization for the
-        /// non-virtualized emoji Box).
-        pub(super) custom_emoji_rows: RefCell<Vec<glib::WeakRef<ui::StickerPickerRow>>>,
-        /// Debounce guard so a burst of appends/relayouts triggers a single viewport
-        /// demand sweep rather than one per event.
-        pub(super) demand_scheduled: Cell<bool>,
-        /// True while custom-emoji packs are still streaming in. Demand sweeps are
-        /// suppressed until the build finishes, since the page geometry is unstable
-        /// mid-build and would otherwise demand (and decode) rows that aren't really
-        /// on screen yet.
-        pub(super) custom_emoji_loading: Cell<bool>,
         pub(super) animations: RefCell<Vec<tdlib::types::Animation>>,
         #[template_child]
         pub(super) emoji_tab: TemplateChild<gtk::ToggleButton>,
@@ -130,7 +119,7 @@ mod imp {
         #[template_child]
         pub(super) gif_page: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
-        pub(super) emoji_sections: TemplateChild<gtk::Box>,
+        pub(super) emoji_list: TemplateChild<gtk::ListView>,
         #[template_child]
         pub(super) sticker_list: TemplateChild<gtk::ListView>,
         #[template_child]
@@ -198,6 +187,7 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
+            obj.setup_emoji_list();
             obj.setup_sticker_list();
             obj.setup_sticker_scrolling();
             obj.setup_gif_grid();
@@ -235,7 +225,7 @@ mod imp {
             if let Some(source) = self.scroll_timeout.borrow_mut().take() {
                 source.remove();
             }
-            self.emoji_sections.unparent();
+            self.emoji_list.unparent();
             self.sticker_list.unparent();
             self.gif_grid.unparent();
             self.navigation_rail.unparent();
@@ -288,13 +278,50 @@ enum StickerRow {
     Error { set_id: i64, title: String },
 }
 
+/// A row in the virtualized emoji `ListView`. The emoji page is a `GtkListView` so
+/// only on-screen rows are ever built/decoded/animated — the standard-emoji wall of
+/// buttons and every off-screen custom-emoji pack cost nothing until scrolled to.
+#[derive(Debug, Clone)]
+enum EmojiRow {
+    /// A section heading; `name` is the rail key used to scroll to it.
+    Header { title: String, name: String },
+    /// A row of standard emoji characters.
+    Emoji(Vec<String>),
+    /// A row of custom-emoji stickers.
+    CustomEmoji(Vec<tdlib::types::Sticker>),
+}
+
 const STICKER_SET_CACHE_VERSION: u32 = 1;
+
+/// Emoji per row on the emoji page (standard and custom alike).
+const EMOJI_ROW_LEN: usize = 8;
 
 /// Layout of custom-emoji rows in the emoji page, chosen to match the standard
 /// emoji grid's density rather than the larger sticker cells.
 const CUSTOM_EMOJI_COLUMNS: i32 = 8;
 const CUSTOM_EMOJI_CELL_SIZE: i32 = 44;
 const CUSTOM_EMOJI_SIZE: i32 = 30;
+
+/// glib qdata key under which each realized picker row stashes its section's rail key,
+/// so the scroll handler can tell which section a visible row belongs to.
+const RAIL_SECTION_KEY: &str = "papl-rail-section";
+
+/// Records `section` (a rail key) on a freshly built picker row.
+fn tag_rail_section(widget: &impl IsA<gtk::Widget>, section: String) {
+    // Safe: only ever a `String` is stored under this key, and the row is a fresh widget
+    // dropped on unbind, so the data is cleared along with it.
+    unsafe { widget.set_data(RAIL_SECTION_KEY, section) };
+}
+
+/// Reads back the rail key stashed by [`tag_rail_section`], if any.
+fn widget_rail_section(widget: &gtk::Widget) -> Option<String> {
+    // Safe: the only writer (`tag_rail_section`) always stores a `String`.
+    unsafe {
+        widget
+            .data::<String>(RAIL_SECTION_KEY)
+            .map(|value| value.as_ref().clone())
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct StickerSetSignature {
@@ -334,6 +361,73 @@ struct StickerSetCache {
 }
 
 impl ContentPicker {
+    fn emoji_model(&self) -> &gio::ListStore {
+        self.imp().emoji_model.get().unwrap()
+    }
+
+    fn setup_emoji_list(&self) {
+        let model = gio::ListStore::new::<glib::BoxedAnyObject>();
+        let selection = gtk::NoSelection::new(Some(model.clone()));
+        self.imp().emoji_list.set_model(Some(&selection));
+        self.imp().emoji_model.set(model).unwrap();
+
+        let factory = gtk::SignalListItemFactory::new();
+        factory.connect_setup(setup_unselectable_item);
+        factory.connect_bind(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_, item| {
+                let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+                let row = item.item().and_downcast::<glib::BoxedAnyObject>().unwrap();
+                let child: gtk::Widget = match &*row.borrow::<EmojiRow>() {
+                    EmojiRow::Header { title, .. } => section_title(title).upcast(),
+                    EmojiRow::Emoji(emojis) => obj.build_emoji_row(emojis),
+                    EmojiRow::CustomEmoji(stickers) => obj.build_custom_emoji_row(stickers),
+                };
+                item.set_child(Some(&child));
+                if let Some(section) = obj.emoji_section_name_at(item.position()) {
+                    tag_rail_section(&child, section);
+                }
+            }
+        ));
+        factory.connect_unbind(|_, item| {
+            item.downcast_ref::<gtk::ListItem>()
+                .unwrap()
+                .set_child(gtk::Widget::NONE);
+        });
+        self.imp().emoji_list.set_factory(Some(&factory));
+    }
+
+    /// A row of standard-emoji buttons (built on bind, so only visible rows exist).
+    fn build_emoji_row(&self, emojis: &[String]) -> gtk::Widget {
+        emoji_grid(self, emojis.iter().map(String::as_str)).upcast()
+    }
+
+    /// A row of custom-emoji stickers. The `ListView` only binds visible rows, so
+    /// these load and animate only while on screen and are torn down on unbind.
+    fn build_custom_emoji_row(&self, stickers: &[tdlib::types::Sticker]) -> gtk::Widget {
+        let Some(session) = self.imp().session.upgrade() else {
+            return gtk::Box::new(gtk::Orientation::Horizontal, 0).upcast();
+        };
+        ui::StickerPickerRow::new_sized(
+            stickers,
+            &session,
+            self.imp().sticker_scrolling.clone(),
+            CUSTOM_EMOJI_CELL_SIZE,
+            CUSTOM_EMOJI_SIZE,
+            CUSTOM_EMOJI_COLUMNS,
+            // No outlines (dense); animated (frames come from the shared cache).
+            false,
+            true,
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |sticker| obj.activate_sticker(sticker)
+            ),
+        )
+        .upcast()
+    }
+
     fn sticker_model(&self) -> &gio::ListStore {
         self.imp().sticker_model.get().unwrap()
     }
@@ -345,6 +439,7 @@ impl ContentPicker {
         self.imp().sticker_model.set(model).unwrap();
 
         let factory = gtk::SignalListItemFactory::new();
+        factory.connect_setup(setup_unselectable_item);
         factory.connect_bind(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -374,6 +469,9 @@ impl ContentPicker {
                     }
                 };
                 item.set_child(Some(&child));
+                if let Some(section) = obj.sticker_section_name_at(item.position()) {
+                    tag_rail_section(&child, section);
+                }
             }
         ));
         factory.connect_unbind(|_, item| {
@@ -404,16 +502,97 @@ impl ContentPicker {
     fn setup_sticker_scrolling(&self) {
         // Both the sticker list and the emoji page host `StickerPickerRow`s (the
         // emoji page now embeds custom-emoji packs), so pause preview loading and
-        // animation while either is scrolling.
-        for adjustment in [
-            self.imp().sticker_page.vadjustment(),
-            self.imp().emoji_page.vadjustment(),
+        // animation while either is scrolling. Scrolling also moves the active rail
+        // entry to the section now at the top of the viewport.
+        for (page, list) in [
+            (self.imp().emoji_page.get(), self.imp().emoji_list.get()),
+            (self.imp().sticker_page.get(), self.imp().sticker_list.get()),
         ] {
+            let adjustment = page.vadjustment();
             adjustment.connect_value_changed(clone!(
                 #[weak(rename_to = obj)]
                 self,
-                move |_| obj.mark_scrolling()
+                #[weak]
+                page,
+                #[weak]
+                list,
+                move |_| {
+                    obj.mark_scrolling();
+                    obj.update_active_rail_for(&list, &page);
+                }
             ));
+            // `changed` fires when the content is (re)allocated — after a pack loads or
+            // the page is first shown — so the highlight is correct without scrolling.
+            adjustment.connect_changed(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[weak]
+                page,
+                #[weak]
+                list,
+                move |_| obj.update_active_rail_for(&list, &page)
+            ));
+        }
+    }
+
+    /// The section rail key for the row at `position`: its own name if it is a header,
+    /// else the nearest header above it. Used to tag rows so the rail follows scroll.
+    fn emoji_section_name_at(&self, position: u32) -> Option<String> {
+        let model = self.emoji_model();
+        (0..=position).rev().find_map(|p| {
+            let item = model.item(p).and_downcast::<glib::BoxedAnyObject>()?;
+            match &*item.borrow::<EmojiRow>() {
+                EmojiRow::Header { name, .. } => Some(name.clone()),
+                _ => None,
+            }
+        })
+    }
+
+    fn sticker_section_name_at(&self, position: u32) -> Option<String> {
+        let model = self.sticker_model();
+        (0..=position).rev().find_map(|p| {
+            let item = model.item(p).and_downcast::<glib::BoxedAnyObject>()?;
+            match &*item.borrow::<StickerRow>() {
+                StickerRow::Header { title, .. } => Some(title.clone()),
+                _ => None,
+            }
+        })
+    }
+
+    /// Highlights the rail entry for the section whose row occupies the top of the
+    /// visible page, so the active rail icon follows the scroll position.
+    fn update_active_rail_for(&self, list: &gtk::ListView, page: &gtk::ScrolledWindow) {
+        // A hidden page (e.g. stickers loading in the background) must not steal the
+        // visible page's rail highlight.
+        if !self
+            .imp()
+            .content_stack
+            .visible_child()
+            .is_some_and(|visible| &visible == page.upcast_ref::<gtk::Widget>())
+        {
+            return;
+        }
+        let viewport_height = page.height() as f32;
+        let mut top_section: Option<(f32, String)> = None;
+        for item_widget in utils::ChildIter::from(list.upcast_ref::<gtk::Widget>()) {
+            let Some(bounds) = item_widget.compute_bounds(page) else {
+                continue;
+            };
+            let top = bounds.y();
+            let bottom = top + bounds.height();
+            // Skip rows fully above the viewport top (overdraw) or fully below it.
+            if bottom <= 1.0 || top >= viewport_height {
+                continue;
+            }
+            if top_section.as_ref().is_none_or(|(t, _)| top < *t)
+                && let Some(row) = item_widget.first_child()
+                && let Some(section) = widget_rail_section(&row)
+            {
+                top_section = Some((top, section));
+            }
+        }
+        if let Some((_, section)) = top_section {
+            self.set_active_rail(&section);
         }
     }
 
@@ -433,12 +612,7 @@ impl ContentPicker {
                     imp.scroll_timeout.borrow_mut().take();
                     imp.sticker_scrolling.set(false);
                     imp.sticker_list.queue_draw();
-                    imp.emoji_sections.queue_draw();
-                    // Now that scrolling stopped, (un)load custom-emoji rows for the
-                    // new viewport and update the rail highlight — both too costly to
-                    // run on every scroll frame.
-                    obj.update_custom_emoji_demand();
-                    obj.update_active_rail_item();
+                    imp.emoji_list.queue_draw();
                 }
             ),
         );
@@ -538,38 +712,32 @@ impl ContentPicker {
 
     fn build_emoji_page(&self) {
         let started = Instant::now();
-        // Cancel any custom-emoji load still appending to the old page.
+        // Cancel any custom-emoji load still appending to the old model.
         self.imp()
             .custom_emoji_generation
             .set(self.imp().custom_emoji_generation.get().wrapping_add(1));
-        self.imp().custom_emoji_rows.borrow_mut().clear();
-        clear_box(&self.imp().emoji_sections);
-        let settings = utils::PaperPlaneSettings::default();
-        let recent = settings.strv("recent-emojis");
+
+        let mut rows: Vec<glib::BoxedAnyObject> = Vec::new();
+        let recent = utils::PaperPlaneSettings::default().strv("recent-emojis");
         if !recent.is_empty() {
-            self.imp()
-                .emoji_sections
-                .append(&section_title(&gettext("Recently Used")));
-            let values: Vec<&str> = recent.iter().map(|value| value.as_str()).collect();
-            let grid = emoji_grid(self, values.into_iter());
-            grid.set_widget_name("Recently-Used");
-            self.imp().emoji_sections.append(&grid);
+            let values: Vec<String> = recent.iter().map(|value| value.to_string()).collect();
+            push_emoji_section(&mut rows, &gettext("Recently Used"), "Recently-Used", &values);
         }
         for (title, _, emojis) in EMOJI_SECTIONS {
             if emojis.is_empty() {
                 continue;
             }
-            self.imp()
-                .emoji_sections
-                .append(&section_title(&gettext(*title)));
-            let grid = emoji_grid(self, emojis.split_whitespace());
-            grid.set_widget_name(&title.replace(' ', "-"));
-            self.imp().emoji_sections.append(&grid);
+            let values: Vec<String> = emojis.split_whitespace().map(str::to_owned).collect();
+            push_emoji_section(&mut rows, &gettext(*title), &title.replace(' ', "-"), &values);
         }
+        let model = self.emoji_model();
+        model.remove_all();
+        model.splice(0, 0, &rows);
+
         self.rebuild_rail(PickerPage::Emoji);
         // Append the user's custom-emoji packs after the standard emoji sections,
         // tdesktop-style — so custom emoji live in the emoji panel rather than a
-        // separate tab.
+        // separate tab. Only visible rows are built by the ListView.
         self.load_custom_emoji_sections();
         // Consider the page built only once a session is available to load custom
         // emoji; otherwise the next refresh rebuilds so they still appear.
@@ -584,35 +752,40 @@ impl ContentPicker {
         );
     }
 
-    /// Updates just the "Recently Used" emoji section in place, leaving the (heavy)
-    /// standard and custom-emoji sections untouched.
+    /// Updates just the "Recently Used" rows at the head of the emoji model,
+    /// leaving the standard and custom-emoji sections untouched.
     fn refresh_recent_emoji(&self) {
-        let sections = self.imp().emoji_sections.get();
-        if let Some(grid) = find_named_child(&sections, "Recently-Used") {
-            if let Some(title) = grid.prev_sibling() {
-                sections.remove(&title);
+        let model = self.emoji_model();
+        // Count the existing "Recently Used" rows (header + emoji rows) at the head.
+        let mut old_len = 0u32;
+        if let Some(first) = model.item(0).and_downcast::<glib::BoxedAnyObject>()
+            && matches!(&*first.borrow::<EmojiRow>(), EmojiRow::Header { name, .. } if name == "Recently-Used")
+        {
+            old_len = 1;
+            while let Some(item) = model.item(old_len).and_downcast::<glib::BoxedAnyObject>() {
+                if matches!(&*item.borrow::<EmojiRow>(), EmojiRow::Header { .. }) {
+                    break;
+                }
+                old_len += 1;
             }
-            sections.remove(&grid);
         }
         let recent = utils::PaperPlaneSettings::default().strv("recent-emojis");
+        let mut new_rows: Vec<glib::BoxedAnyObject> = Vec::new();
         if !recent.is_empty() {
-            let values: Vec<&str> = recent.iter().map(|value| value.as_str()).collect();
-            let grid = emoji_grid(self, values.into_iter());
-            grid.set_widget_name("Recently-Used");
-            sections.prepend(&grid);
-            sections.prepend(&section_title(&gettext("Recently Used")));
+            let values: Vec<String> = recent.iter().map(|value| value.to_string()).collect();
+            push_emoji_section(&mut new_rows, &gettext("Recently Used"), "Recently-Used", &values);
         }
+        model.splice(0, old_len, &new_rows);
     }
 
     /// Loads the installed custom-emoji sticker sets and appends each as a section
-    /// in the emoji page, with a matching pack icon in the navigation rail.
+    /// of rows to the emoji model, with a matching pack icon in the navigation rail.
     fn load_custom_emoji_sections(&self) {
         let Some(session) = self.imp().session.upgrade() else {
             return;
         };
         let client_id = session.client_().id();
         let generation = self.imp().custom_emoji_generation.get();
-        self.imp().custom_emoji_loading.set(true);
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -624,12 +797,11 @@ impl ContentPicker {
                     )
                     .await
                 else {
-                    obj.imp().custom_emoji_loading.set(false);
                     return;
                 };
                 // Fetch several packs concurrently (each get_sticker_set is a TDLib
-                // round-trip), but append them one at a time, yielding to the main loop
-                // between packs so the UI never freezes while the page fills in.
+                // round-trip); append their (cheap) model rows one pack at a time,
+                // yielding between packs. Widgets are only built for visible rows.
                 let mut packs = futures::stream::iter(data.sets.into_iter().map(move |info| async move {
                     let set = tdlib::functions::get_sticker_set(info.id, client_id).await;
                     (info, set)
@@ -650,62 +822,30 @@ impl ContentPicker {
                             info.id,
                         ),
                     }
-                    // Yield so pending redraws/input are processed before the next pack.
                     glib::timeout_future(std::time::Duration::from_millis(0)).await;
-                }
-                // Build finished: allow demand sweeps and run one now that the layout
-                // is stable, so whatever is actually on screen starts loading.
-                if obj.imp().custom_emoji_generation.get() == generation {
-                    obj.imp().custom_emoji_loading.set(false);
-                    obj.schedule_custom_emoji_demand();
                 }
             }
         ));
     }
 
-    /// Appends one custom-emoji pack (header + `StickerPickerRow`s) to the emoji
-    /// page, wrapped in a named box so the rail can scroll to it.
+    /// Appends one custom-emoji pack (a header row + custom-emoji rows) to the emoji
+    /// model.
     fn append_custom_emoji_section(
         &self,
         set_id: i64,
         title: &str,
         stickers: Vec<tdlib::types::Sticker>,
     ) {
-        let Some(session) = self.imp().session.upgrade() else {
-            return;
-        };
-        let container = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(6)
-            .name(custom_emoji_section_name(set_id))
-            .build();
-        container.append(&section_title(title));
-        // Render custom emoji at (roughly) emoji size, 8 per row, so they blend into
-        // the emoji grid instead of towering over it like stickers.
-        for chunk in stickers.chunks(CUSTOM_EMOJI_COLUMNS as usize) {
-            let preview = ui::StickerPickerRow::new_sized(
-                chunk,
-                &session,
-                self.imp().sticker_scrolling.clone(),
-                CUSTOM_EMOJI_CELL_SIZE,
-                CUSTOM_EMOJI_SIZE,
-                CUSTOM_EMOJI_COLUMNS,
-                false,
-                true,
-                false,
-                clone!(
-                    #[weak(rename_to = obj)]
-                    self,
-                    move |sticker| obj.activate_sticker(sticker)
-                ),
-            );
-            self.imp()
-                .custom_emoji_rows
-                .borrow_mut()
-                .push(preview.downgrade());
-            container.append(&preview);
+        let model = self.emoji_model();
+        model.append(&glib::BoxedAnyObject::new(EmojiRow::Header {
+            title: title.to_owned(),
+            name: custom_emoji_section_name(set_id),
+        }));
+        for chunk in stickers.chunks(EMOJI_ROW_LEN) {
+            model.append(&glib::BoxedAnyObject::new(EmojiRow::CustomEmoji(
+                chunk.to_vec(),
+            )));
         }
-        self.imp().emoji_sections.append(&container);
     }
 
     /// Adds a custom-emoji pack's cover to the emoji navigation rail.
@@ -755,16 +895,19 @@ impl ContentPicker {
         self.update_rail_covers();
     }
 
-    /// Scrolls the emoji page to the section whose widget name matches `name`.
+    /// Scrolls the emoji list to the header row whose section name matches `name`.
     fn scroll_emoji_to_section(&self, name: &str) {
-        let sections = self.imp().emoji_sections.get();
-        if let Some(child) = find_named_child(&sections, name)
-            && let Some(point) = child.compute_point(&sections, &gtk::graphene::Point::zero())
-        {
-            self.imp()
-                .emoji_page
-                .vadjustment()
-                .set_value(point.y() as f64);
+        let model = self.emoji_model();
+        for position in 0..model.n_items() {
+            let Some(item) = model.item(position).and_downcast::<glib::BoxedAnyObject>() else {
+                continue;
+            };
+            if matches!(&*item.borrow::<EmojiRow>(), EmojiRow::Header { name: n, .. } if n == name) {
+                self.imp()
+                    .emoji_list
+                    .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+                break;
+            }
         }
     }
 
@@ -826,6 +969,17 @@ impl ContentPicker {
                 button.add_css_class("active");
                 self.imp().navigation_rail.append(&button);
             }
+        }
+        // Default the highlight to the first section until a scroll refines it (the GIF
+        // page registers no sections and keeps its own always-active button).
+        let first = self
+            .imp()
+            .rail_sections
+            .borrow()
+            .first()
+            .map(|(name, _)| name.clone());
+        if let Some(name) = first {
+            self.set_active_rail(&name);
         }
     }
 
@@ -916,20 +1070,6 @@ impl ContentPicker {
             self,
             move |_| obj.update_rail_covers()
         ));
-
-        // The rail highlight (update_active_rail_item) and custom-emoji demand both
-        // run on scroll-settle (see mark_scrolling), not per frame — a compute_point
-        // sweep over every section each frame stutters scrolling.
-
-        // Drive lazy custom-emoji loading from the emoji page's viewport. Only on
-        // `changed` (content relaid out) here; the per-frame `value_changed` case is
-        // handled once scrolling settles (see mark_scrolling), avoiding a
-        // compute_bounds sweep over every row each frame.
-        self.imp().emoji_page.vadjustment().connect_changed(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move |_| obj.schedule_custom_emoji_demand()
-        ));
     }
 
     /// Registers a rail button as the entry for the content section named `name`,
@@ -952,98 +1092,6 @@ impl ContentPicker {
                     button.remove_css_class("active");
                 }
             }
-        }
-    }
-
-    /// Loads previews only for the custom-emoji rows near the viewport, dropping
-    /// off-screen ones. This keeps thousands of off-screen custom emoji out of the
-    /// (4-slot) decode queue, so the visible ones appear immediately.
-    /// Coalesces demand updates: a burst of appends/relayouts runs a single sweep
-    /// ~150 ms later instead of one O(rows) sweep per event.
-    fn schedule_custom_emoji_demand(&self) {
-        if self.imp().demand_scheduled.replace(true) {
-            return;
-        }
-        glib::timeout_add_local_once(
-            std::time::Duration::from_millis(150),
-            clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move || {
-                    obj.imp().demand_scheduled.set(false);
-                    obj.update_custom_emoji_demand();
-                }
-            ),
-        );
-    }
-
-    fn update_custom_emoji_demand(&self) {
-        if !self.imp().emoji_tab.is_active() || self.imp().custom_emoji_loading.get() {
-            return;
-        }
-        let sections = self.imp().emoji_sections.get();
-        let adjustment = self.imp().emoji_page.vadjustment();
-        let top = adjustment.value();
-        let viewport = if adjustment.page_size() > 0.0 {
-            adjustment.page_size()
-        } else {
-            self.imp().emoji_page.height() as f64
-        };
-        let bottom = top + viewport;
-        // Preload a fixed, modest band beyond the viewport (not a full viewport,
-        // which on a tall sidebar would demand hundreds of extra off-screen emoji).
-        let margin = 300.0;
-        let mut demanded = 0usize;
-        let mut total = 0usize;
-        for weak in self.imp().custom_emoji_rows.borrow().iter() {
-            let Some(row) = weak.upgrade() else {
-                continue;
-            };
-            total += 1;
-            let Some(bounds) = row.compute_bounds(&sections) else {
-                row.set_demanded(false);
-                continue;
-            };
-            let row_top = bounds.y() as f64;
-            let row_bottom = row_top + bounds.height() as f64;
-            let visible = row_bottom >= top - margin && row_top <= bottom + margin;
-            if visible {
-                demanded += 1;
-            }
-            row.set_demanded(visible);
-        }
-        log::info!(
-            target: "paper_plane::content_picker",
-            "custom-emoji demand sweep; demanded={demanded}/{total} rows viewport={viewport:.0} scroll_top={top:.0}",
-        );
-    }
-
-    /// Highlights the rail entry for the section at the top of the visible content.
-    fn update_active_rail_item(&self) {
-        // Only the emoji page exposes its sections as named boxes we can measure;
-        // the sticker list virtualizes, so it relies on click-to-highlight.
-        if !self.imp().emoji_tab.is_active() {
-            return;
-        }
-        let sections = self.imp().emoji_sections.get();
-        let value = self.imp().emoji_page.vadjustment().value();
-        let mut current: Option<String> = None;
-        let mut child = sections.first_child();
-        while let Some(node) = child {
-            let name = node.widget_name();
-            if !name.is_empty()
-                && let Some(point) = node.compute_point(&sections, &gtk::graphene::Point::zero())
-            {
-                if point.y() as f64 <= value + 8.0 {
-                    current = Some(name.to_string());
-                } else {
-                    break;
-                }
-            }
-            child = node.next_sibling();
-        }
-        if let Some(name) = current {
-            self.set_active_rail(&name);
         }
     }
 
@@ -1610,14 +1658,16 @@ impl ContentPicker {
                                     emojis.push(item.emoji);
                                 }
                             }
-                            clear_box(&obj.imp().emoji_sections);
-                            obj.imp()
-                                .emoji_sections
-                                .append(&section_title(&gettext("Search Results")));
-                            let values: Vec<&str> = emojis.iter().map(String::as_str).collect();
-                            obj.imp()
-                                .emoji_sections
-                                .append(&emoji_grid(&obj, values.into_iter()));
+                            let mut rows: Vec<glib::BoxedAnyObject> = Vec::new();
+                            push_emoji_section(
+                                &mut rows,
+                                &gettext("Search Results"),
+                                "Search-Results",
+                                &emojis,
+                            );
+                            let model = obj.emoji_model();
+                            model.remove_all();
+                            model.splice(0, 0, &rows);
                         }
                     }
                 ));
@@ -1678,21 +1728,28 @@ fn log_tdlib_result<T>(label: &str, started: Instant, result: &Result<T, tdlib::
     }
 }
 
-/// The widget name of a custom-emoji pack's section box in the emoji page.
+/// The section name of a custom-emoji pack in the emoji model.
 fn custom_emoji_section_name(set_id: i64) -> String {
     format!("custom-emoji-{set_id}")
 }
 
-/// Finds the direct child of `container` whose widget name equals `name`.
-fn find_named_child(container: &gtk::Box, name: &str) -> Option<gtk::Widget> {
-    let mut child = container.first_child();
-    while let Some(current) = child {
-        if current.widget_name() == name {
-            return Some(current);
-        }
-        child = current.next_sibling();
+/// Pushes a section (header row + chunked emoji rows) onto the emoji model rows.
+fn push_emoji_section(
+    rows: &mut Vec<glib::BoxedAnyObject>,
+    title: &str,
+    name: &str,
+    emojis: &[String],
+) {
+    rows.push(glib::BoxedAnyObject::new(EmojiRow::Header {
+        title: title.to_owned(),
+        name: name.to_owned(),
+    }));
+    // The whole section is one grid row (rendered as an 8-column GtkGrid), so every
+    // line has a consistent 8 columns. Standard emoji are cheap text labels, and the
+    // ListView still only realizes the visible sections.
+    if !emojis.is_empty() {
+        rows.push(glib::BoxedAnyObject::new(EmojiRow::Emoji(emojis.to_vec())));
     }
-    None
 }
 
 fn sticker_set_cache_path(session: &model::ClientStateSession) -> PathBuf {
@@ -1796,16 +1853,12 @@ fn status_row(title: &str, message: &str, retry: Option<Box<dyn Fn()>>) -> gtk::
     row.upcast()
 }
 
-fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>) -> gtk::FlowBox {
-    let grid = gtk::FlowBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .max_children_per_line(8)
-        .min_children_per_line(6)
-        .row_spacing(2)
-        .column_spacing(2)
-        .build();
-    for emoji in emojis {
+/// A fixed `EMOJI_ROW_LEN`-column grid of emoji buttons. A column-homogeneous
+/// `GtkGrid` guarantees exactly that many per line (unlike a `FlowBox`, whose
+/// homogeneous natural width dropped the 8th column to a new line).
+fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>) -> gtk::Grid {
+    let grid = gtk::Grid::builder().column_homogeneous(true).build();
+    for (i, emoji) in emojis.enumerate() {
         let button = gtk::Button::with_label(emoji);
         button.add_css_class("flat");
         button.add_css_class("emoji-picker-item");
@@ -1828,9 +1881,20 @@ fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>)
                 picker.emit_by_name::<()>("content-picked", &[]);
             }
         ));
-        grid.insert(&button, -1);
+        let column = (i % EMOJI_ROW_LEN) as i32;
+        let row = (i / EMOJI_ROW_LEN) as i32;
+        grid.attach(&button, column, row, 1, 1);
     }
     grid
+}
+
+/// Factory setup that makes a list item non-selectable and non-activatable, so the
+/// `ListView` draws no row hover/selection background under the emoji/sticker cells.
+fn setup_unselectable_item(_: &gtk::SignalListItemFactory, item: &glib::Object) {
+    if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+        item.set_activatable(false);
+        item.set_selectable(false);
+    }
 }
 
 impl ContentPicker {
