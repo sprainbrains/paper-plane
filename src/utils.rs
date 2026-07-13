@@ -311,3 +311,69 @@ impl Iterator for ChildIter {
         r
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entity(
+        offset: i32,
+        length: i32,
+        r#type: tdlib::enums::TextEntityType,
+    ) -> tdlib::types::TextEntity {
+        tdlib::types::TextEntity {
+            offset,
+            length,
+            r#type,
+        }
+    }
+
+    #[test]
+    fn formatted_text_uses_utf16_entity_offsets() {
+        use tdlib::enums::TextEntityType::Bold;
+        use tdlib::enums::TextEntityType::Italic;
+
+        let cases = [
+            ("a😀b", vec![entity(1, 2, Bold)], "a<b>😀</b>b"),
+            (
+                "😀bolditalic",
+                vec![entity(2, 4, Bold), entity(6, 6, Italic)],
+                "😀<b>bold</b><i>italic</i>",
+            ),
+            (
+                "😀 plain 𝄞bold<&",
+                vec![entity(11, 6, Bold)],
+                "😀 plain 𝄞<b>bold&lt;&amp;</b>",
+            ),
+        ];
+
+        for (text, entities, expected) in cases {
+            let formatted_text = tdlib::types::FormattedText {
+                text: text.to_owned(),
+                entities,
+            };
+
+            assert_eq!(parse_formatted_text(formatted_text), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn duration_formatting_boundary_cases() {
+        let cases = [
+            (-1, "-1 s"),
+            (0, "0 s"),
+            (59, "59 s"),
+            (60, "1 min"),
+            (61, "1 min 1 s"),
+            (3_599, "59 min 59 s"),
+            (3_600, "1 h 0 s"),
+            (3_601, "1 h 1 s"),
+            (3_660, "1 h 1 min 0 s"),
+            (3_661, "1 h 1 min 1 s"),
+        ];
+
+        for (seconds, expected) in cases {
+            assert_eq!(human_friendly_duration(seconds), expected, "{seconds}");
+        }
+    }
+}
