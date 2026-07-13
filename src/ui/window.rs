@@ -1,3 +1,4 @@
+use adw::prelude::AdwDialogExt;
 use adw::subclass::prelude::*;
 use gettextrs::gettext;
 use glib::clone;
@@ -36,6 +37,9 @@ mod imp {
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
             klass.bind_template_callbacks();
+            klass.install_action("win.show-shortcuts", None, |window, _, _| {
+                window.show_shortcuts();
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -117,6 +121,14 @@ glib::wrapper! {
 }
 
 impl Window {
+    fn show_shortcuts(&self) {
+        let builder = gtk::Builder::from_resource("/app/drey/paper-plane/ui/shortcuts.ui");
+        let dialog = builder
+            .object::<adw::Dialog>("shortcuts_dialog")
+            .expect("shortcuts resource must contain an AdwShortcutsDialog");
+        dialog.present(Some(self));
+    }
+
     pub(crate) fn new(app: &Application) -> Self {
         glib::Object::builder().property("application", app).build()
     }

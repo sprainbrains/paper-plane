@@ -1,52 +1,46 @@
 using Gtk 4.0;
+using Adw 1;
 
-ShortcutsWindow help_overlay {
-  modal: true;
+Adw.ShortcutsDialog shortcuts_dialog {
+  Adw.ShortcutsSection {
+    title: C_("shortcut window", "General");
 
-  ShortcutsSection {
-    section-name: "shortcuts";
-    max-height: 10;
-
-    ShortcutsGroup {
-      title: C_("shortcut window", "General");
-
-      ShortcutsShortcut {
-        title: C_("shortcut window", "Show Shortcuts");
-        action-name: "win.show-help-overlay";
-      }
-
-      ShortcutsShortcut {
-        title: C_("shortcut window", "Quit");
-        action-name: "app.quit";
-      }
-
-      ShortcutsShortcut {
-        title: C_("shortcut window", "Close Window");
-        accelerator: "<ctrl>w";
-      }
-
-      ShortcutsShortcut {
-        title: C_("shortcut window", "Close Dialog");
-        accelerator: "Escape";
-      }
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Show Shortcuts");
+      action-name: "win.show-shortcuts";
     }
 
-    ShortcutsGroup {
-      title: C_("shortcut window", "Chat List");
-
-      ShortcutsShortcut {
-        title: C_("shortcut window", "Search Chats");
-        accelerator: "<ctrl><shift>f";
-      }
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Quit");
+      action-name: "app.quit";
     }
 
-    ShortcutsGroup {
-      title: C_("shortcut window", "Chat History");
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Close Window");
+      accelerator: "<ctrl>w";
+    }
 
-      ShortcutsShortcut {
-        title: C_("shortcut window", "Send Photo from Clipboard");
-        accelerator: "<ctrl>v";
-      }
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Close Dialog");
+      accelerator: "Escape";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: C_("shortcut window", "Chat List");
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Search Chats");
+      accelerator: "<ctrl><shift>f";
+    }
+  }
+
+  Adw.ShortcutsSection {
+    title: C_("shortcut window", "Chat History");
+
+    Adw.ShortcutsItem {
+      title: C_("shortcut window", "Send Photo from Clipboard");
+      accelerator: "<ctrl>v";
     }
   }
 }

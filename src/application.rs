@@ -162,6 +162,7 @@ impl Application {
     // Sets up keyboard shortcuts
     fn setup_accels(&self) {
         self.set_accels_for_action("app.quit", &["<primary>q"]);
+        self.set_accels_for_action("win.show-shortcuts", &["<primary>question"]);
     }
 
     fn load_color_scheme(&self) {

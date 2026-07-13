@@ -16,7 +16,7 @@ template $Session : Adw.Bin {
 
         child: $PaplSidebar sidebar {
           compact: bind split_view.collapsed;
-          selected-chat: bind-property content.chat bidirectional;
+          selected-chat: bind content.chat bidirectional;
           session: bind template.model;
         };
       };
