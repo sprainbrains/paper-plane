@@ -36,7 +36,7 @@ template $Session : Adw.Bin {
         child: Adw.OverlaySplitView content_picker_split {
           sidebar-position: end;
           show-sidebar: false;
-          min-sidebar-width: 360;
+          min-sidebar-width: 320;
           max-sidebar-width: 420;
           sidebar-width-fraction: 0.35;
 
@@ -53,7 +53,7 @@ template $Session : Adw.Bin {
 
             $PaplContentPicker content_picker {
               hexpand: true;
-              width-request: 360;
+              width-request: 320;
               show-window-controls: true;
               session: bind template.model;
               chat: bind content.chat;

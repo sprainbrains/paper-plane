@@ -60,9 +60,8 @@ mod imp {
         pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
-        /// Last emoji column count applied, so a resize only rebuilds the grids when the
-        /// number of columns actually changes (debounced onto idle via reflow_source).
-        pub(super) emoji_columns: Cell<usize>,
+        /// Last sticker column count applied, so a resize only re-chunks when the number of
+        /// columns actually changes (debounced onto idle via reflow_source).
         pub(super) sticker_columns: Cell<usize>,
         pub(super) reflow_source: RefCell<Option<glib::SourceId>>,
         pub(super) emoji_model: OnceCell<gio::ListStore>,
@@ -309,18 +308,8 @@ impl ContentPicker {
         self.imp().emoji_list.set_factory(Some(&factory));
     }
 
-    /// The column count for the standard-emoji grids, derived from the panel width.
-    fn emoji_columns(&self) -> usize {
-        let width = self.imp().emoji_list.width();
-        if width <= 0 {
-            return EMOJI_ROW_LEN;
-        }
-        // Subtract the list rows' horizontal padding before dividing into cells.
-        (((width - 24).max(EMOJI_CELL_SIZE) / EMOJI_CELL_SIZE) as usize).max(1)
-    }
-
-    /// Schedules a reflow after the current allocation (rebuilding the factory mid-allocate
-    /// is unsafe); debounced so a stream of resize allocations collapses to one rebuild.
+    /// Schedules a reflow after the current allocation (re-chunking mid-allocate is unsafe);
+    /// debounced so a stream of resize allocations collapses to one rebuild.
     fn queue_reflow(&self) {
         if self.imp().reflow_source.borrow().is_some() {
             return;
@@ -336,16 +325,9 @@ impl ContentPicker {
         self.imp().reflow_source.replace(Some(source));
     }
 
-    /// Rebuilds the emoji grids and re-chunks the sticker rows when the panel width now
-    /// fits a different column count.
+    /// Re-chunks the sticker rows when the panel width now fits a different column count.
+    /// (Emoji reflow themselves via their FlowBox and need no rebuild here.)
     fn apply_reflow(&self) {
-        let emoji_columns = self.emoji_columns();
-        if emoji_columns != self.imp().emoji_columns.get() && self.imp().emoji_model.get().is_some()
-        {
-            self.imp().emoji_columns.set(emoji_columns);
-            self.set_emoji_factory();
-        }
-
         let sticker_columns = self.sticker_columns_target();
         if sticker_columns != self.sticker_columns() && self.imp().sticker_model.get().is_some() {
             self.imp().sticker_columns.set(sticker_columns);
@@ -396,12 +378,7 @@ impl ContentPicker {
 
     /// A row of standard-emoji buttons (built on bind, so only visible rows exist).
     fn build_emoji_row(&self, emojis: &[String]) -> gtk::Widget {
-        emoji_grid(
-            self,
-            emojis.iter().map(String::as_str),
-            self.emoji_columns(),
-        )
-        .upcast()
+        emoji_grid(self, emojis.iter().map(String::as_str)).upcast()
     }
 
     /// A row of custom-emoji stickers. The `ListView` only binds visible rows, so
