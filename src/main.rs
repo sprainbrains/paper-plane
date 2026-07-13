@@ -28,7 +28,9 @@ mod automation;
 mod ui;
 #[rustfmt::skip]
 #[allow(clippy::all)]
-mod config;
+mod config {
+    include!(env!("PAPER_PLANE_CONFIG_RS"));
+}
 mod expressions;
 mod i18n;
 mod model;

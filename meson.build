@@ -2,7 +2,7 @@ project(
   'paper-plane',
   'rust',
   version: '0.1.0-beta.5',
-  meson_version: '>= 0.59',
+  meson_version: '>= 1.4',
 )
 
 i18n = import('i18n')

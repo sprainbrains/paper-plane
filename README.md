@@ -88,7 +88,7 @@ Using Gnome Builder is the easiest way to get the app built without even using t
 
 The following tools and development packages are required to build Paper Plane:
 
-- Meson >= 0.59
+- Meson >= 1.4
 - Ninja
 - Rust and Cargo 1.97.0 (see `rust-toolchain.toml`)
 - Blueprint Compiler

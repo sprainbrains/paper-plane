@@ -32,8 +32,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly-2026-07-01
         with:
           components: rustfmt
-      - name: Create blank versions of configured file
-        run: echo -e "" >> src/config.rs
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
 

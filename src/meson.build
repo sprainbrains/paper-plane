@@ -14,13 +14,6 @@ config = configure_file(
   output: 'config.rs',
   configuration: global_conf
 )
-# Copy the config.rs output to the source directory.
-run_command(
-  'cp',
-  meson.project_build_root() / 'src' / 'config.rs',
-  meson.project_source_root() / 'src' / 'config.rs',
-  check: true
-)
 
 cargo_options = [ '--manifest-path', meson.project_source_root() / 'Cargo.toml' ]
 cargo_options += [ '--target-dir', meson.project_build_root() / 'src' ]
@@ -34,7 +27,10 @@ else
   message('Building in debug mode')
 endif
 
-cargo_env = [ 'CARGO_HOME=' + meson.project_build_root() / 'cargo-home' ]
+cargo_env = [
+  'CARGO_HOME=' + meson.project_build_root() / 'cargo-home',
+  'PAPER_PLANE_CONFIG_RS=' + config.full_path(),
+]
 cargo_build = find_program('../build-aux/cargo-build.sh')
 
 custom_target(
@@ -69,6 +65,7 @@ test (
   ],
   env: [
     'CARGO_HOME=@0@'.format(cargo_home),
+    'PAPER_PLANE_CONFIG_RS=@0@'.format(config.full_path()),
   ],
   is_parallel: false,
   timeout: 300,
@@ -86,6 +83,7 @@ test (
   ],
   env: [
     'CARGO_HOME=@0@'.format(cargo_home),
+    'PAPER_PLANE_CONFIG_RS=@0@'.format(config.full_path()),
   ],
   is_parallel: false,
   timeout: 300, # Give cargo more time
@@ -101,6 +99,7 @@ test(
   ],
   env: [
     'CARGO_HOME=@0@'.format(cargo_home),
+    'PAPER_PLANE_CONFIG_RS=@0@'.format(config.full_path()),
   ],
   timeout: 60,
 )
