@@ -24,6 +24,21 @@ pub(crate) fn ancestor<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -> 
     widget.ancestor(T::static_type()).and_downcast::<T>()
 }
 
+/// Returns the first descendant of `widget` (depth-first) that is a `T`.
+pub(crate) fn descendant<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -> Option<T> {
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Ok(found) = widget.clone().downcast::<T>() {
+            return Some(found);
+        }
+        if let Some(found) = descendant::<_, T>(&widget) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
 #[allow(dead_code)]
 pub(crate) struct ChildIter(Option<gtk::Widget>);
 
