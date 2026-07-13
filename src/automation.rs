@@ -80,13 +80,23 @@ impl Application {
         self.add_auto_action(
             "auto-list-messages",
             Some(glib::VariantTy::INT64),
-            |app, p| app.auto_list_messages(p.unwrap().get::<i64>().unwrap()),
+            |app, p| {
+                let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
+                    log::warn!("auto-list-messages: missing or invalid parameters");
+                    return;
+                };
+                app.auto_list_messages(chat_id);
+            },
         );
         self.add_auto_action(
             "auto-describe-message",
             Some(glib::VariantTy::new("(xx)").unwrap()),
             |app, p| {
-                let (chat_id, message_id) = p.unwrap().get::<(i64, i64)>().unwrap();
+                let Some((chat_id, message_id)) = p.and_then(glib::Variant::get::<(i64, i64)>)
+                else {
+                    log::warn!("auto-describe-message: missing or invalid parameters");
+                    return;
+                };
                 app.auto_describe_message(chat_id, message_id);
             },
         );
@@ -99,33 +109,52 @@ impl Application {
             "auto-submit-phone",
             Some(glib::VariantTy::STRING),
             |app, p| {
-                app.auto_submit_phone(p.unwrap().get::<String>().unwrap());
+                let Some(phone) = p.and_then(glib::Variant::get::<String>) else {
+                    log::warn!("auto-submit-phone: missing or invalid parameters");
+                    return;
+                };
+                app.auto_submit_phone(phone);
             },
         );
         self.add_auto_action(
             "auto-submit-code",
             Some(glib::VariantTy::STRING),
             |app, p| {
-                app.auto_submit_code(p.unwrap().get::<String>().unwrap());
+                let Some(code) = p.and_then(glib::Variant::get::<String>) else {
+                    log::warn!("auto-submit-code: missing or invalid parameters");
+                    return;
+                };
+                app.auto_submit_code(code);
             },
         );
         self.add_auto_action(
             "auto-submit-password",
             Some(glib::VariantTy::STRING),
             |app, p| {
-                app.auto_submit_password(p.unwrap().get::<String>().unwrap());
+                let Some(password) = p.and_then(glib::Variant::get::<String>) else {
+                    log::warn!("auto-submit-password: missing or invalid parameters");
+                    return;
+                };
+                app.auto_submit_password(password);
             },
         );
 
         // Navigation & write actions.
         self.add_auto_action("auto-open-chat", Some(glib::VariantTy::INT64), |app, p| {
-            app.auto_open_chat(p.unwrap().get::<i64>().unwrap());
+            let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
+                log::warn!("auto-open-chat: missing or invalid parameters");
+                return;
+            };
+            app.auto_open_chat(chat_id);
         });
         self.add_auto_action(
             "auto-send-text",
             Some(glib::VariantTy::new("(xs)").unwrap()),
             |app, p| {
-                let (chat_id, text) = p.unwrap().get::<(i64, String)>().unwrap();
+                let Some((chat_id, text)) = p.and_then(glib::Variant::get::<(i64, String)>) else {
+                    log::warn!("auto-send-text: missing or invalid parameters");
+                    return;
+                };
                 app.auto_send_text(chat_id, text);
             },
         );
@@ -133,7 +162,12 @@ impl Application {
             "auto-react",
             Some(glib::VariantTy::new("(xxs)").unwrap()),
             |app, p| {
-                let (chat_id, message_id, emoji) = p.unwrap().get::<(i64, i64, String)>().unwrap();
+                let Some((chat_id, message_id, emoji)) =
+                    p.and_then(glib::Variant::get::<(i64, i64, String)>)
+                else {
+                    log::warn!("auto-react: missing or invalid parameters");
+                    return;
+                };
                 app.auto_react(chat_id, message_id, emoji);
             },
         );
