@@ -89,7 +89,7 @@ mod imp {
             let obj = &*self.obj();
 
             let width = obj.width_request();
-            let height = obj.width_request();
+            let height = obj.height_request();
 
             let size = std::cmp::max(16, std::cmp::min(width, height));
 
