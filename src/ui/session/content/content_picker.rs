@@ -296,6 +296,10 @@ const STICKER_SET_CACHE_VERSION: u32 = 1;
 /// Emoji per row on the emoji page (standard and custom alike).
 const EMOJI_ROW_LEN: usize = 8;
 
+/// How many sticker rows past the just-bound one to warm the preview cache for, so a
+/// small buffer below the viewport is already decoded when scrolled into view.
+const PICKER_PRELOAD_ROWS: u32 = 3;
+
 /// Layout of custom-emoji rows in the emoji page, chosen to match the standard
 /// emoji grid's density rather than the larger sticker cells.
 const CUSTOM_EMOJI_COLUMNS: i32 = 8;
@@ -472,6 +476,9 @@ impl ContentPicker {
                 if let Some(section) = obj.sticker_section_name_at(item.position()) {
                     tag_rail_section(&child, section);
                 }
+                // Rows bind just ahead of the viewport; warm the next few rows' preview
+                // caches so they are already decoded when scrolled into view.
+                obj.prefetch_sticker_rows(item.position());
             }
         ));
         factory.connect_unbind(|_, item| {
@@ -557,6 +564,25 @@ impl ContentPicker {
                 _ => None,
             }
         })
+    }
+
+    /// Warms the preview cache for the few sticker rows just after `position`, so rows
+    /// about to scroll into view are already decoded. Cheap: `load_picker_preview`
+    /// deduplicates against its cache and in-flight decodes.
+    fn prefetch_sticker_rows(&self, position: u32) {
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let model = self.sticker_model();
+        let scale = self.scale_factor().max(1);
+        let end = (position + 1 + PICKER_PRELOAD_ROWS).min(model.n_items());
+        for pos in (position + 1)..end {
+            if let Some(item) = model.item(pos).and_downcast::<glib::BoxedAnyObject>()
+                && let StickerRow::Stickers(stickers) = &*item.borrow::<StickerRow>()
+            {
+                ui::prefetch_sticker_previews(stickers, &session, scale);
+            }
+        }
     }
 
     /// Highlights the rail entry for the section whose row occupies the top of the

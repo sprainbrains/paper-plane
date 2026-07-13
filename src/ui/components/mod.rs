@@ -32,3 +32,4 @@ pub(crate) use self::sticker::download_sticker_path;
 pub(crate) use self::sticker::load_picker_file_preview;
 pub(crate) use self::sticker::load_picker_preview;
 pub(crate) use self::sticker_picker_row::StickerPickerRow;
+pub(crate) use self::sticker_picker_row::prefetch_sticker_previews;

@@ -26,6 +26,7 @@ pub(crate) use self::components::Sticker;
 pub(crate) use self::components::StickerPickerRow;
 pub(crate) use self::components::load_picker_file_preview;
 pub(crate) use self::components::load_picker_preview;
+pub(crate) use self::components::prefetch_sticker_previews;
 pub(crate) use self::login::Code as LoginCode;
 pub(crate) use self::login::Login;
 pub(crate) use self::login::OtherDevice as LoginOtherDevice;

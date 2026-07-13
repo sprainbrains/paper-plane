@@ -613,6 +613,25 @@ impl StickerPickerRow {
     }
 }
 
+/// Fire-and-forget decode of `stickers` at the sticker-picker preview size, so rows
+/// about to scroll into view are already in the shared preview cache and appear
+/// instantly. Results are cached by `load_picker_preview`; failures are ignored.
+pub(crate) fn prefetch_sticker_previews(
+    stickers: &[tdlib::types::Sticker],
+    session: &model::ClientStateSession,
+    scale: i32,
+) {
+    let size = DEFAULT_STICKER_SIZE * scale.max(1);
+    for sticker in stickers {
+        let sticker = sticker.clone();
+        let session = session.clone();
+        utils::spawn(async move {
+            let _ =
+                super::load_picker_preview(&sticker, size, &session, Rc::new(Cell::new(true))).await;
+        });
+    }
+}
+
 /// A single process-wide origin so all animations are phase-consistent for free.
 fn animation_origin() -> i64 {
     static ORIGIN: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
