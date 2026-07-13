@@ -13,14 +13,10 @@ use crate::types::MessageId;
 pub(crate) enum MessageForwardOrigin {
     User(model::User),
     Chat {
-        // author_signature: String,
         chat: model::Chat,
     },
     Channel {
-        // author_signature: String,
         chat: model::Chat,
-        // Using a WeakRef here as messages can be deleted.
-        // message: WeakRef<Message>,
     },
     HiddenUser {
         sender_name: String,
@@ -87,21 +83,11 @@ impl MessageForwardInfo {
         let origin = match forward_info.origin {
             User(data) => MessageForwardOrigin::User(chat.session_().user(data.sender_user_id)),
             Chat(data) => MessageForwardOrigin::Chat {
-                // author_signature: data.author_signature,
                 chat: chat.session_().chat(data.sender_chat_id),
             },
             Channel(data) => {
                 let chat = chat.session_().chat(data.chat_id);
-                // let message = {
-                //     let weak = glib::WeakRef::new();
-                //     weak.set(chat.history().message_by_id(data.message_id).as_ref());
-                //     weak
-                // };
-                MessageForwardOrigin::Channel {
-                    // author_signature: data.author_signature,
-                    chat,
-                    // message,
-                }
+                MessageForwardOrigin::Channel { chat }
             }
             HiddenUser(data) => MessageForwardOrigin::HiddenUser {
                 sender_name: data.sender_name,
