@@ -115,13 +115,13 @@ impl ChatFolderList {
     pub(crate) fn get_or_create(&self, id: ChatFolderId) -> model::ChatList {
         let mut list = self.imp().list.borrow_mut();
         list.iter()
-            .find(|chat_list| chat_list.list_type().chat_folder_id().unwrap() == id)
+            .find(|chat_list| chat_list.list_type().chat_folder_id().unwrap() == id.get())
             .cloned()
             .unwrap_or_else(|| {
                 let chat_list = model::ChatList::new(
                     &self.session_(),
                     tdlib::enums::ChatList::Folder(tdlib::types::ChatListFolder {
-                        chat_folder_id: id,
+                        chat_folder_id: id.get(),
                     }),
                 );
 
@@ -145,7 +145,7 @@ impl ChatFolderList {
             .iter()
             .cloned()
             .enumerate()
-            .find(|(_, chat_list)| chat_list.list_type().chat_folder_id().unwrap() == id)
+            .find(|(_, chat_list)| chat_list.list_type().chat_folder_id().unwrap() == id.get())
         {
             Some((old_position, chat_list)) => {
                 if position as usize != old_position {
@@ -167,7 +167,7 @@ impl ChatFolderList {
                 let chat_list = model::ChatList::new(
                     &self.session_(),
                     tdlib::enums::ChatList::Folder(tdlib::types::ChatListFolder {
-                        chat_folder_id: id,
+                        chat_folder_id: id.get(),
                     }),
                 );
 
@@ -230,7 +230,7 @@ impl ChatFolderList {
                 .into_iter()
                 .enumerate()
                 .for_each(|(position, info)| {
-                    let chat_list = self.internal_get_or_create(info.id, position as u32);
+                    let chat_list = self.internal_get_or_create(info.id.into(), position as u32);
 
                     chat_list.set_title(info.name.text.text.as_str());
                     chat_list.set_icon(info.icon.name.as_str());

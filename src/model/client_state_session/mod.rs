@@ -27,7 +27,7 @@ mod imp {
         pub(super) users: RefCell<HashMap<i64, model::User>>,
         pub(super) basic_groups: RefCell<HashMap<i64, model::BasicGroup>>,
         pub(super) supergroups: RefCell<HashMap<i64, model::Supergroup>>,
-        pub(super) secret_chats: RefCell<HashMap<i32, model::SecretChat>>,
+        pub(super) secret_chats: RefCell<HashMap<SecretChatId, model::SecretChat>>,
         pub(super) downloading_files:
             RefCell<HashMap<i32, Vec<async_channel::Sender<tdlib::types::File>>>>,
 
@@ -143,9 +143,9 @@ impl ClientStateSession {
         match chat_list {
             tdlib::enums::ChatList::Main => self.main_chat_list(),
             tdlib::enums::ChatList::Archive => self.archive_chat_list(),
-            tdlib::enums::ChatList::Folder(folder) => {
-                self.chat_folder_list().get_or_create(folder.chat_folder_id)
-            }
+            tdlib::enums::ChatList::Folder(folder) => self
+                .chat_folder_list()
+                .get_or_create(folder.chat_folder_id.into()),
         }
     }
 
@@ -353,7 +353,7 @@ impl ClientStateSession {
             }
             Folder(data) => {
                 self.chat_folder_list()
-                    .get_or_create(data.chat_folder_id)
+                    .get_or_create(data.chat_folder_id.into())
                     .update_chat_position(chat, position);
             }
         }
@@ -433,7 +433,7 @@ impl ClientStateSession {
             }
             SecretChat(data) => {
                 let mut secret_chats = self.imp().secret_chats.borrow_mut();
-                match secret_chats.entry(data.secret_chat.id) {
+                match secret_chats.entry(data.secret_chat.id.into()) {
                     Entry::Occupied(entry) => entry.get().update(data.secret_chat),
                     Entry::Vacant(entry) => {
                         entry.insert(model::SecretChat::new(

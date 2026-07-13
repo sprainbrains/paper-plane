@@ -44,7 +44,7 @@ impl ChatType {
                 Self::Supergroup(supergroup)
             }
             Secret(data) => {
-                let secret_chat = session.secret_chat(data.secret_chat_id);
+                let secret_chat = session.secret_chat(data.secret_chat_id.into());
                 Self::Secret(secret_chat)
             }
         }
