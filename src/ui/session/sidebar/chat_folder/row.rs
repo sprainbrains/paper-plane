@@ -43,6 +43,13 @@ mod imp {
             klass.install_action_async("chat-folder-row.remove", None, |widget, _, _| async move {
                 widget.remove_chat_folder().await;
             });
+            klass.install_action_async(
+                "chat-folder-row.mark-read",
+                None,
+                |widget, _, _| async move {
+                    widget.mark_all_as_read().await;
+                },
+            );
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -168,6 +175,25 @@ impl Row {
                     &[("error", &e.to_string())],
                 ),
             );
+        }
+    }
+
+    /// Marks every currently-loaded chat in this folder as read. TDLib has no folder-level
+    /// operation, so this iterates the folder's chat list (the loaded, visible chats).
+    pub(crate) async fn mark_all_as_read(&self) {
+        let Some(chat_list) = self.chat_list() else {
+            return;
+        };
+        for position in 0..chat_list.n_items() {
+            if let Some(chat) = chat_list
+                .item(position)
+                .and_downcast::<model::ChatListItem>()
+                .and_then(|item| item.chat())
+                && (chat.unread_count() > 0 || chat.is_marked_as_unread())
+                && let Err(e) = chat.mark_as_read().await
+            {
+                log::warn!("Failed to mark a chat as read: {e:?}");
+            }
         }
     }
 

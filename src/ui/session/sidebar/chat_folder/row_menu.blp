@@ -3,6 +3,13 @@ using Gtk 4.0;
 menu menu {
   section {
     item {
+      label: _("Mark All as Read");
+      action: "chat-folder-row.mark-read";
+    }
+  }
+
+  section {
+    item {
       label: _("_Remove");
       action: "chat-folder-row.remove";
     }
