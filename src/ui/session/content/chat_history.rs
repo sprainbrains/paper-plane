@@ -77,10 +77,12 @@ mod imp {
         #[template_child]
         pub(super) header_typing_label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub(super) send_overlay: TemplateChild<gtk::Overlay>,
+        #[template_child]
         pub(super) content_overlay: TemplateChild<gtk::Overlay>,
         #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
-        pub(super) send_animation: RefCell<Option<adw::TimedAnimation>>,
+        pub(super) send_animation: RefCell<Option<adw::SpringAnimation>>,
         #[template_child]
         pub(super) scrolled_window: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
@@ -1210,51 +1212,84 @@ impl ChatHistory {
 
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
     /// it — used when following a reply, jump, or link so the user can spot the target.
-    /// Plays a short "send" flourish: a bubble-shaped ghost of the just-sent text rises
-    /// from the composer into the history and fades, so the message appears to fly up into
-    /// place. The real message arrives separately via the new-message handler.
-    pub(crate) fn play_send_animation(&self, text: &str) {
+    /// Morphs the just-sent text out of the composer and up into the history: a ghost that
+    /// starts as the grey composer field springs upward, narrows to a bubble, and tints to
+    /// the accent colour — so the message appears to fly into its place. `start` is the
+    /// composer's rectangle in this widget's coordinates. The real message arrives
+    /// separately via the new-message handler.
+    pub(crate) fn play_send_animation(&self, text: &str, start: Option<graphene::Rect>) {
         let text = text.trim();
-        if text.is_empty() {
+        let Some(start) = start.filter(|_| !text.is_empty()) else {
             return;
-        }
+        };
         let imp = self.imp();
 
-        let ghost = gtk::Label::builder()
-            .label(text)
-            .halign(gtk::Align::End)
-            .valign(gtk::Align::End)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
-            .max_width_chars(24)
-            .margin_end(12)
+        // Two stacked layers with the same text: a grey "field" underneath and an accent
+        // "bubble" on top whose opacity is animated in, cross-fading grey → blue.
+        let make_label = |class: &str| {
+            let label = gtk::Label::builder()
+                .label(text)
+                .xalign(0.0)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            layer.set_hexpand(true);
+            layer.set_vexpand(true);
+            layer.add_css_class(class);
+            layer.append(&label);
+            layer
+        };
+        let base = make_label("send-ghost-base");
+        let accent = make_label("send-ghost-accent");
+        accent.set_opacity(0.0);
+
+        let ghost = gtk::Overlay::builder()
+            .halign(gtk::Align::Start)
+            .valign(gtk::Align::Start)
             .can_target(false)
+            .child(&base)
             .build();
-        ghost.add_css_class("send-ghost");
-        imp.content_overlay.add_overlay(&ghost);
+        ghost.add_overlay(&accent);
+        ghost.set_margin_start(start.x() as i32);
+        ghost.set_margin_top(start.y() as i32);
+        ghost.set_size_request(start.width() as i32, start.height() as i32);
+        imp.send_overlay.add_overlay(&ghost);
+
+        // Target: a right-aligned, text-width bubble a little way up into the history.
+        let overlay_width = imp.send_overlay.width() as f32;
+        let end_width = start.width().min(320.0).max(96.0);
+        let end_x = (overlay_width - end_width - 12.0).max(12.0);
+        let end_y = (start.y() - 96.0).max(6.0);
+        let end_height = start.height();
 
         let target = adw::CallbackAnimationTarget::new(clone!(
             #[weak]
             ghost,
+            #[weak]
+            accent,
             move |value| {
-                ghost.set_margin_bottom((value * 72.0) as i32);
-                ghost.set_opacity(1.0 - value);
+                let progress = value as f32;
+                let lerp = |a: f32, b: f32| a + (b - a) * progress;
+                ghost.set_margin_start(lerp(start.x(), end_x) as i32);
+                ghost.set_margin_top(lerp(start.y(), end_y) as i32);
+                ghost.set_size_request(
+                    lerp(start.width(), end_width) as i32,
+                    lerp(start.height(), end_height) as i32,
+                );
+                accent.set_opacity(value.clamp(0.0, 1.0));
             }
         ));
-        let animation = adw::TimedAnimation::builder()
-            .widget(&ghost)
-            .value_from(0.0)
-            .value_to(1.0)
-            .duration(320)
-            .easing(adw::Easing::EaseOutCubic)
-            .target(&target)
-            .build();
+        // A springy, macOS-like motion: underdamped so it settles with a soft bounce.
+        let params = adw::SpringParams::new(0.45, 3.3, 100.0);
+        let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, params, target);
+        animation.set_initial_velocity(10.0);
         animation.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
             #[weak]
             ghost,
             move |_| {
-                obj.imp().content_overlay.remove_overlay(&ghost);
+                obj.imp().send_overlay.remove_overlay(&ghost);
                 obj.imp().send_animation.replace(None);
             }
         ));

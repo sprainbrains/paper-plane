@@ -93,7 +93,7 @@ pub(super) fn emoji_grid<'a>(
     let grid = gtk::FlowBox::builder()
         .homogeneous(true)
         .selection_mode(gtk::SelectionMode::None)
-        .min_children_per_line(1)
+        .min_children_per_line(4)
         .max_children_per_line(64)
         .build();
     for emoji in emojis {

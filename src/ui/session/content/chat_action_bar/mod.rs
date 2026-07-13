@@ -465,7 +465,8 @@ impl ChatActionBar {
             if let Err(e) = result {
                 log::warn!("Error sending a message: {e:?}");
             } else if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) {
-                chat_history.play_send_animation(&ghost_text);
+                let start = self.imp().message_entry.compute_bounds(&chat_history);
+                chat_history.play_send_animation(&ghost_text, start);
             }
 
             self.reset();

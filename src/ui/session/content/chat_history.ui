@@ -3,7 +3,9 @@
 
   <template class="PaplChatHistory" parent="AdwBin">
     <child>
-      <object class="AdwToolbarView">
+      <object class="GtkOverlay" id="send_overlay">
+        <child>
+          <object class="AdwToolbarView">
         <child type="top">
           <object class="GtkOverlay">
             <child>
@@ -293,6 +295,8 @@
                 </binding>
               </object>
             </property>
+          </object>
+        </child>
           </object>
         </child>
       </object>

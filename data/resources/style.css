@@ -236,14 +236,22 @@ messagebubble {
   box-shadow: 0 1px alpha(black, 0.1);
 }
 
-/* The transient "ghost" bubble shown flying up from the composer when a message is
-   sent (see ChatHistory::play_send_animation). */
-.send-ghost {
+/* The transient "ghost" shown morphing up from the composer when a message is sent
+   (see ChatHistory::play_send_animation). Two stacked layers cross-fade grey → accent
+   as the ghost springs up and narrows into a bubble. */
+.send-ghost-base {
+  background-color: mix(@window_bg_color, @window_fg_color, 0.1);
+  color: @window_fg_color;
+  border-radius: 14px;
+  padding: 8px 12px;
+}
+
+.send-ghost-accent {
   background-color: @accent_bg_color;
   color: @accent_fg_color;
   border-radius: 14px;
-  padding: 6px 12px;
-  box-shadow: 0 1px 3px alpha(black, 0.2);
+  padding: 8px 12px;
+  box-shadow: 0 2px 6px alpha(black, 0.25);
 }
 
 /* A subtle accent tint over a message row picked in multi-select mode. */

@@ -508,7 +508,7 @@ impl ContentPicker {
         }
         (((width - 24).max(ui::StickerPickerRow::CELL_SIZE) / ui::StickerPickerRow::CELL_SIZE)
             as usize)
-            .max(1)
+            .max(3)
     }
 
     fn setup_sticker_scrolling(&self) {
