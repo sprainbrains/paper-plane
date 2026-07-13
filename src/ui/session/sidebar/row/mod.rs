@@ -152,6 +152,14 @@ mod imp {
 
         fn dispose(&self) {
             self.dispose_template();
+            // dispose_template leaves the template's unnamed root children (the avatar and
+            // the content box) parented, which warns and leaks on finalize; unparent
+            // whatever remains.
+            let mut child = self.obj().first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                widget.unparent();
+            }
         }
     }
 
