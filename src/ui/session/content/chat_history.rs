@@ -1255,12 +1255,29 @@ impl ChatHistory {
         ghost.set_size_request(start.width() as i32, start.height() as i32);
         imp.send_overlay.add_overlay(&ghost);
 
-        // Target: a right-aligned, text-width bubble a little way up into the history.
+        // Target the real bubble's place: a text-width bubble at the bottom-right of the
+        // (clamped, max-800) message column, just above the composer — where the sent
+        // message actually lands.
         let overlay_width = imp.send_overlay.width() as f32;
-        let end_width = start.width().min(320.0).max(96.0);
-        let end_x = (overlay_width - end_width - 12.0).max(12.0);
-        let end_y = (start.y() - 96.0).max(6.0);
+        let text_natural = gtk::Label::new(Some(text))
+            .measure(gtk::Orientation::Horizontal, -1)
+            .1 as f32;
+        let (content_right, list_bottom) =
+            match imp.scrolled_window.compute_bounds(&*imp.send_overlay) {
+                Some(bounds) => {
+                    let content_width = bounds.width().min(800.0);
+                    let content_right = bounds.x() + (bounds.width() + content_width) / 2.0;
+                    // Leave the row's small trailing margin, matching an outgoing bubble.
+                    (content_right - 8.0, bounds.y() + bounds.height())
+                }
+                None => (overlay_width - 12.0, start.y()),
+            };
         let end_height = start.height();
+        let max_width = (content_right - 12.0).max(120.0);
+        // The ghost's two layers add 24px of horizontal padding around the text.
+        let end_width = (text_natural + 24.0).clamp(96.0, max_width);
+        let end_x = (content_right - end_width).max(12.0);
+        let end_y = (list_bottom - end_height - 6.0).max(6.0);
 
         let target = adw::CallbackAnimationTarget::new(clone!(
             #[weak]

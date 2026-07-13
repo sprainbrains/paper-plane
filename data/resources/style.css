@@ -312,7 +312,8 @@ messagebubble {
 }
 
 messagebubble.outgoing {
-  background-color: #ddecff;
+  background-color: @accent_bg_color;
+  color: @accent_fg_color;
 }
 
 messagebubble:not(.outgoing):dir(ltr),
@@ -327,7 +328,7 @@ messagebubble:not(.outgoing):dir(rtl) {
 
 messagebubble.outgoing link,
 messagebubble.outgoing messagereply label.message {
-  color: @window_fg_color;
+  color: @accent_fg_color;
 }
 
 messagebubble messageindicators {
