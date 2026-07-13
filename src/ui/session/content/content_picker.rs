@@ -67,6 +67,10 @@ mod imp {
         /// Maps each content section's name to its rail button, so the rail can
         /// highlight the clicked section.
         pub(super) rail_sections: RefCell<Vec<(String, glib::WeakRef<gtk::Button>)>>,
+        /// The currently highlighted rail section, so the rail only re-scrolls when the
+        /// active section actually changes; the animation keeps that scroll smooth.
+        pub(super) active_rail: RefCell<Option<String>>,
+        pub(super) rail_scroll_animation: RefCell<Option<adw::TimedAnimation>>,
         /// The loaded custom-emoji pack infos, kept so their rail covers can be re-added
         /// when the shared rail is rebuilt on a tab switch (the model rows persist).
         pub(super) custom_emoji_infos: RefCell<Vec<tdlib::types::StickerSetInfo>>,
@@ -820,6 +824,7 @@ impl ContentPicker {
         clear_box(&self.imp().navigation_rail);
         self.imp().rail_covers.borrow_mut().clear();
         self.imp().rail_sections.borrow_mut().clear();
+        self.imp().active_rail.replace(None);
         match page {
             PickerPage::Emoji => {
                 for (title, icon, emojis) in EMOJI_SECTIONS {
@@ -996,15 +1001,57 @@ impl ContentPicker {
 
     /// Marks `name`'s rail button active and clears the others.
     fn set_active_rail(&self, name: &str) {
+        let mut active_button = None;
         for (section, button) in self.imp().rail_sections.borrow().iter() {
             if let Some(button) = button.upgrade() {
                 if section == name {
                     button.add_css_class("active");
+                    active_button = Some(button);
                 } else {
                     button.remove_css_class("active");
                 }
             }
         }
+
+        // Only re-scroll when the active section actually changes, so a stationary view
+        // doesn't restart the animation on every scroll tick.
+        if self.imp().active_rail.borrow().as_deref() == Some(name) {
+            return;
+        }
+        self.imp().active_rail.replace(Some(name.to_owned()));
+        if let Some(button) = active_button {
+            self.scroll_rail_to_active(&button);
+        }
+    }
+
+    /// Smoothly scrolls the navigation rail so the active section is centred, revealing the
+    /// sections just before and after the current view.
+    fn scroll_rail_to_active(&self, button: &gtk::Button) {
+        let imp = self.imp();
+        let scroll = imp.navigation_rail_scroll.get();
+        let hadj = scroll.hadjustment();
+
+        let Some(bounds) = button.compute_bounds(&imp.navigation_rail.get()) else {
+            return;
+        };
+        let center = bounds.x() as f64 + bounds.width() as f64 / 2.0;
+        let page = hadj.page_size();
+        let target =
+            (center - page / 2.0).clamp(hadj.lower(), (hadj.upper() - page).max(hadj.lower()));
+
+        if (target - hadj.value()).abs() < 1.0 {
+            return;
+        }
+
+        let animation = adw::TimedAnimation::builder()
+            .widget(&scroll)
+            .value_from(hadj.value())
+            .value_to(target)
+            .duration(350)
+            .target(&adw::PropertyAnimationTarget::new(&hadj, "value"))
+            .build();
+        animation.play();
+        imp.rail_scroll_animation.replace(Some(animation));
     }
 
     fn update_rail_covers(&self) {
