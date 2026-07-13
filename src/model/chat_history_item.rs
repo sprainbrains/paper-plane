@@ -12,6 +12,9 @@ use crate::model;
 pub(crate) enum ChatHistoryItemType {
     Message(model::Message),
     DayDivider(glib::DateTime),
+    /// A "unread messages" separator placed before the first unread message. Carries
+    /// the `last_read_inbox_message_id` boundary it was created for.
+    UnreadDivider(i64),
 }
 
 mod imp {
@@ -53,6 +56,11 @@ impl ChatHistoryItem {
 
     pub(crate) fn for_day_divider(day: glib::DateTime) -> Self {
         let type_ = ChatHistoryItemType::DayDivider(day);
+        glib::Object::builder().property("type", type_).build()
+    }
+
+    pub(crate) fn for_unread_divider(last_read_message_id: i64) -> Self {
+        let type_ = ChatHistoryItemType::UnreadDivider(last_read_message_id);
         glib::Object::builder().property("type", type_).build()
     }
 

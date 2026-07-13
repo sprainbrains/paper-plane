@@ -95,6 +95,8 @@ mod imp {
         #[property(get)]
         pub(super) last_read_outbox_message_id: Cell<MessageId>,
         #[property(get)]
+        pub(super) last_read_inbox_message_id: Cell<MessageId>,
+        #[property(get)]
         pub(super) is_marked_as_unread: Cell<bool>,
         #[property(get)]
         pub(super) last_message: RefCell<Option<model::Message>>,
@@ -110,6 +112,9 @@ mod imp {
         pub(super) actions: OnceCell<model::ChatActionList>,
         #[property(get)]
         pub(super) permissions: RefCell<model::BoxedChatPermissions>,
+        /// Which reactions the chat allows (`All` vs a restricted `Some(list)`); used to
+        /// constrain the reaction picker so it never offers a disallowed reaction.
+        pub(super) available_reactions: RefCell<Option<tdlib::enums::ChatAvailableReactions>>,
     }
 
     #[glib::object_subclass]
@@ -178,6 +183,8 @@ impl Chat {
         imp.avatar.replace(td_chat.photo.map(model::Avatar::from));
         imp.last_read_outbox_message_id
             .set(td_chat.last_read_outbox_message_id);
+        imp.last_read_inbox_message_id
+            .set(td_chat.last_read_inbox_message_id);
         imp.is_marked_as_unread.set(td_chat.is_marked_as_unread);
         imp.last_message.replace(
             td_chat
@@ -194,6 +201,8 @@ impl Chat {
             ));
         imp.permissions
             .replace(model::BoxedChatPermissions(td_chat.permissions));
+        imp.available_reactions
+            .replace(Some(td_chat.available_reactions));
 
         obj
     }
@@ -228,8 +237,16 @@ impl Chat {
             ChatPermissions(update) => {
                 self.set_permissions(model::BoxedChatPermissions(update.permissions))
             }
+            ChatAvailableReactions(update) => {
+                self.imp()
+                    .available_reactions
+                    .replace(Some(update.available_reactions));
+            }
             ChatPhoto(update) => self.set_avatar(update.photo.map(Into::into)),
-            ChatReadInbox(update) => self.set_unread_count(update.unread_count),
+            ChatReadInbox(update) => {
+                self.set_last_read_inbox_message_id(update.last_read_inbox_message_id);
+                self.set_unread_count(update.unread_count);
+            }
             ChatReadOutbox(update) => {
                 self.set_last_read_outbox_message_id(update.last_read_outbox_message_id);
             }
@@ -338,6 +355,14 @@ impl Chat {
         self.notify_last_read_outbox_message_id();
     }
 
+    fn set_last_read_inbox_message_id(&self, id: MessageId) {
+        if self.last_read_inbox_message_id() == id {
+            return;
+        }
+        self.imp().last_read_inbox_message_id.set(id);
+        self.notify_last_read_inbox_message_id();
+    }
+
     fn set_marked_as_unread(&self, is_marked_as_unread: bool) {
         if self.is_marked_as_unread() == is_marked_as_unread {
             return;
@@ -393,6 +418,10 @@ impl Chat {
 
     pub(crate) fn is_own_chat(&self) -> bool {
         self.chat_type().user() == Some(self.session_().me_())
+    }
+
+    pub(crate) fn available_reactions(&self) -> Option<tdlib::enums::ChatAvailableReactions> {
+        self.imp().available_reactions.borrow().clone()
     }
 
     fn set_permissions(&self, permissions: model::BoxedChatPermissions) {

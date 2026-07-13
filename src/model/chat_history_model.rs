@@ -163,6 +163,81 @@ impl ChatHistoryModel {
             .items_changed(position, removed, added);
     }
 
+    /// For a message `item`, reports whether it is the first (topmost) and/or last
+    /// (bottommost) message of a run of consecutive messages from the same sender, so
+    /// the row can suppress the repeated avatar/name and tighten the shared corners.
+    /// Non-message items and unknown items are treated as standalone `(true, true)`.
+    pub(crate) fn group_flags(&self, item: &model::ChatHistoryItem) -> (bool, bool) {
+        let list = self.imp().list.borrow();
+        let Some(index) = list.iter().position(|candidate| candidate == item) else {
+            return (true, true);
+        };
+        let Some(message) = list[index].message() else {
+            return (true, true);
+        };
+        let groups_with = |other: Option<&model::ChatHistoryItem>| {
+            other
+                .and_then(model::ChatHistoryItem::message)
+                .is_some_and(|other| {
+                    other.sender().id() == message.sender().id()
+                        && other.is_outgoing() == message.is_outgoing()
+                })
+        };
+        // The list runs newest (index 0) to oldest, so the visually-above (older)
+        // neighbour is at index + 1 and the visually-below (newer) one at index - 1.
+        let is_start = !groups_with(list.get(index + 1));
+        let is_end = !groups_with(index.checked_sub(1).and_then(|i| list.get(i)));
+        (is_start, is_end)
+    }
+
+    /// Inserts an "Unread messages" divider just before the first unread message (the
+    /// oldest message with id greater than `last_read_id`), if the read/unread boundary
+    /// is present in the currently loaded range and no divider exists yet.
+    ///
+    /// Returns `true` once a divider is present (either freshly inserted or already
+    /// there), so callers can stop loading older messages.
+    pub(crate) fn insert_unread_divider(&self, last_read_id: i64) -> bool {
+        let imp = self.imp();
+
+        let position = {
+            let list = imp.list.borrow();
+            if list
+                .iter()
+                .any(|item| matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_)))
+            {
+                return true;
+            }
+            // The list runs newest (index 0) to oldest, so unread messages come first.
+            // Find the first already-read message that follows an unread one — the
+            // divider goes right before it.
+            let mut seen_unread = false;
+            let mut boundary = None;
+            for (index, item) in list.iter().enumerate() {
+                if let model::ChatHistoryItemType::Message(message) = item.type_() {
+                    if message.id() > last_read_id {
+                        seen_unread = true;
+                    } else if seen_unread {
+                        boundary = Some(index);
+                        break;
+                    }
+                }
+            }
+            boundary
+        };
+
+        let Some(position) = position else {
+            return false;
+        };
+
+        imp.list.borrow_mut().insert(
+            position,
+            model::ChatHistoryItem::for_unread_divider(last_read_id),
+        );
+        self.upcast_ref::<gio::ListModel>()
+            .items_changed(position as u32, 0, 1);
+        true
+    }
+
     fn push_front(&self, message: model::Message) {
         self.imp()
             .list
@@ -211,6 +286,20 @@ impl ChatHistoryModel {
                             // We found the day divider of the message. Therefore, the message
                             // must be among the following elements.
                             Ordering::Greater
+                        } else {
+                            ordering
+                        }
+                    }
+                    model::ChatHistoryItemType::UnreadDivider(boundary_id) => {
+                        // The divider sits just above the boundary message (the read
+                        // message with id == boundary, at the next-higher index). Never
+                        // report Equal so the search can't match the divider itself; on
+                        // an exact-boundary target report `Less`, routing the search
+                        // toward that message (a higher index) to keep the comparator
+                        // monotonic, rather than away from it.
+                        let ordering = message.id().cmp(boundary_id);
+                        if ordering == Ordering::Equal {
+                            Ordering::Less
                         } else {
                             ordering
                         }
