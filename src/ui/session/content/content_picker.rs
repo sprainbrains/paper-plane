@@ -60,6 +60,11 @@ mod imp {
         pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
+        /// Last emoji column count applied, so a resize only rebuilds the grids when the
+        /// number of columns actually changes (debounced onto idle via reflow_source).
+        pub(super) emoji_columns: Cell<usize>,
+        pub(super) sticker_columns: Cell<usize>,
+        pub(super) reflow_source: RefCell<Option<glib::SourceId>>,
         pub(super) emoji_model: OnceCell<gio::ListStore>,
         pub(super) sticker_model: OnceCell<gio::ListStore>,
         pub(super) gif_model: OnceCell<gio::ListStore>,
@@ -188,6 +193,9 @@ mod imp {
             if let Some(source) = self.scroll_timeout.borrow_mut().take() {
                 source.remove();
             }
+            if let Some(source) = self.reflow_source.borrow_mut().take() {
+                source.remove();
+            }
             // Unparent every direct child (header bar, search entry, stack, separator,
             // rail scroll); each disposes its own nested widgets. Unparenting only the
             // nested lists left the direct children dangling, which crashed on finalize
@@ -200,7 +208,12 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for ContentPicker {}
+    impl WidgetImpl for ContentPicker {
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            self.parent_size_allocate(width, height, baseline);
+            self.obj().queue_reflow();
+        }
+    }
 }
 
 glib::wrapper! {
@@ -263,6 +276,12 @@ impl ContentPicker {
         self.imp().emoji_list.set_model(Some(&selection));
         self.imp().emoji_model.set(model).unwrap();
 
+        self.set_emoji_factory();
+    }
+
+    /// (Re)creates the emoji list factory. Called again when the panel width changes so the
+    /// standard-emoji grids rebuild at a new column count.
+    fn set_emoji_factory(&self) {
         let factory = gtk::SignalListItemFactory::new();
         factory.connect_setup(setup_unselectable_item);
         factory.connect_bind(clone!(
@@ -290,9 +309,99 @@ impl ContentPicker {
         self.imp().emoji_list.set_factory(Some(&factory));
     }
 
+    /// The column count for the standard-emoji grids, derived from the panel width.
+    fn emoji_columns(&self) -> usize {
+        let width = self.imp().emoji_list.width();
+        if width <= 0 {
+            return EMOJI_ROW_LEN;
+        }
+        // Subtract the list rows' horizontal padding before dividing into cells.
+        (((width - 24).max(EMOJI_CELL_SIZE) / EMOJI_CELL_SIZE) as usize).max(1)
+    }
+
+    /// Schedules a reflow after the current allocation (rebuilding the factory mid-allocate
+    /// is unsafe); debounced so a stream of resize allocations collapses to one rebuild.
+    fn queue_reflow(&self) {
+        if self.imp().reflow_source.borrow().is_some() {
+            return;
+        }
+        let source = glib::idle_add_local_once(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move || {
+                obj.imp().reflow_source.replace(None);
+                obj.apply_reflow();
+            }
+        ));
+        self.imp().reflow_source.replace(Some(source));
+    }
+
+    /// Rebuilds the emoji grids and re-chunks the sticker rows when the panel width now
+    /// fits a different column count.
+    fn apply_reflow(&self) {
+        let emoji_columns = self.emoji_columns();
+        if emoji_columns != self.imp().emoji_columns.get() && self.imp().emoji_model.get().is_some()
+        {
+            self.imp().emoji_columns.set(emoji_columns);
+            self.set_emoji_factory();
+        }
+
+        let sticker_columns = self.sticker_columns_target();
+        if sticker_columns != self.sticker_columns() && self.imp().sticker_model.get().is_some() {
+            self.imp().sticker_columns.set(sticker_columns);
+            self.rechunk_sticker_model(sticker_columns);
+        }
+    }
+
+    /// Re-chunks the sticker model's sticker rows to `columns` per row (headers and status
+    /// rows are kept as-is), so widening/narrowing the panel changes how many stickers sit
+    /// per row. The splice rebinds the rows, which rebuild at the matching column count.
+    fn rechunk_sticker_model(&self, columns: usize) {
+        let model = self.sticker_model();
+        let mut new_rows: Vec<glib::BoxedAnyObject> = Vec::new();
+        let mut pending: Vec<tdlib::types::Sticker> = Vec::new();
+
+        let flush = |pending: &mut Vec<tdlib::types::Sticker>,
+                     out: &mut Vec<glib::BoxedAnyObject>| {
+            for chunk in pending.chunks(columns) {
+                out.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
+                    chunk.to_vec(),
+                )));
+            }
+            pending.clear();
+        };
+
+        for position in 0..model.n_items() {
+            let item = model
+                .item(position)
+                .and_downcast::<glib::BoxedAnyObject>()
+                .unwrap();
+            let stickers = match &*item.borrow::<StickerRow>() {
+                StickerRow::Stickers(stickers) => Some(stickers.clone()),
+                _ => None,
+            };
+            match stickers {
+                Some(stickers) => pending.extend(stickers),
+                None => {
+                    flush(&mut pending, &mut new_rows);
+                    new_rows.push(item);
+                }
+            }
+        }
+        flush(&mut pending, &mut new_rows);
+
+        model.remove_all();
+        model.splice(0, 0, &new_rows);
+    }
+
     /// A row of standard-emoji buttons (built on bind, so only visible rows exist).
     fn build_emoji_row(&self, emojis: &[String]) -> gtk::Widget {
-        emoji_grid(self, emojis.iter().map(String::as_str)).upcast()
+        emoji_grid(
+            self,
+            emojis.iter().map(String::as_str),
+            self.emoji_columns(),
+        )
+        .upcast()
     }
 
     /// A row of custom-emoji stickers. The `ListView` only binds visible rows, so
@@ -384,10 +493,15 @@ impl ContentPicker {
 
     fn build_sticker_row(&self, stickers: &[tdlib::types::Sticker]) -> gtk::Box {
         let session = self.imp().session.upgrade().unwrap();
-        let preview = ui::StickerPickerRow::new(
+        let preview = ui::StickerPickerRow::new_sized(
             stickers,
             &session,
             self.imp().sticker_scrolling.clone(),
+            ui::StickerPickerRow::CELL_SIZE,
+            ui::StickerPickerRow::STICKER_SIZE,
+            self.sticker_columns() as i32,
+            true,
+            true,
             clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -397,6 +511,27 @@ impl ContentPicker {
         let row = gtk::Box::builder().margin_start(12).margin_end(12).build();
         row.append(&preview);
         row
+    }
+
+    /// The column count sticker rows are currently chunked/rendered at (the applied value,
+    /// or the default until the first reflow). Used by both the model chunking and the row
+    /// widgets so they always agree.
+    fn sticker_columns(&self) -> usize {
+        match self.imp().sticker_columns.get() {
+            0 => ui::StickerPickerRow::COLUMNS as usize,
+            columns => columns,
+        }
+    }
+
+    /// The column count that would fit the current panel width.
+    fn sticker_columns_target(&self) -> usize {
+        let width = self.imp().sticker_list.width();
+        if width <= 0 {
+            return self.sticker_columns();
+        }
+        (((width - 24).max(ui::StickerPickerRow::CELL_SIZE) / ui::StickerPickerRow::CELL_SIZE)
+            as usize)
+            .max(1)
     }
 
     fn setup_sticker_scrolling(&self) {
@@ -1182,7 +1317,7 @@ impl ContentPicker {
                                 title: set.title.clone(),
                                 is_installed: set.is_installed,
                             })];
-                        for chunk in set.stickers.chunks(5) {
+                        for chunk in set.stickers.chunks(obj.sticker_columns()) {
                             rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
                                 chunk.to_vec(),
                             )));
@@ -1585,7 +1720,7 @@ impl ContentPicker {
             title: title.to_string(),
             set_id,
         })];
-        for row in stickers.chunks(5) {
+        for row in stickers.chunks(self.sticker_columns()) {
             rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
                 row.to_vec(),
             )));

@@ -170,28 +170,14 @@ glib::wrapper! {
 }
 
 impl StickerPickerRow {
-    pub(crate) fn new(
-        stickers: &[tdlib::types::Sticker],
-        session: &model::ClientStateSession,
-        scrolling: Rc<Cell<bool>>,
-        activate: impl Fn(tdlib::types::Sticker) + 'static,
-    ) -> Self {
-        Self::new_sized(
-            stickers,
-            session,
-            scrolling,
-            DEFAULT_CELL_SIZE,
-            DEFAULT_STICKER_SIZE,
-            DEFAULT_COLUMNS,
-            true,
-            true,
-            activate,
-        )
-    }
+    /// The default sticker cell size / glyph size / column count, exposed so the picker can
+    /// derive a column count from the available width and re-chunk to match.
+    pub(crate) const CELL_SIZE: i32 = DEFAULT_CELL_SIZE;
+    pub(crate) const STICKER_SIZE: i32 = DEFAULT_STICKER_SIZE;
+    pub(crate) const COLUMNS: i32 = DEFAULT_COLUMNS;
 
-    /// Like [`Self::new`], but with a custom cell size, sticker size, and column
-    /// count — used to render custom emoji at emoji size in the emoji picker.
-    /// `load_outlines` should be `false` for dense custom-emoji rows; `animate`
+    /// Builds a row that draws `stickers` at a custom cell size, sticker size, and column
+    /// count. `load_outlines` should be `false` for dense custom-emoji rows; `animate`
     /// controls whether `.tgs` cells play.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_sized(

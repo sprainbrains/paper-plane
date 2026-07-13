@@ -54,6 +54,8 @@ pub(super) const EMOJI_SECTIONS: &[(&str, &str, &str)] = &[
 ];
 
 pub(super) const EMOJI_ROW_LEN: usize = 8;
+/// Approximate width of one emoji cell, used to pick a column count from the panel width.
+pub(super) const EMOJI_CELL_SIZE: i32 = 40;
 pub(super) const CUSTOM_EMOJI_COLUMNS: i32 = 8;
 pub(super) const CUSTOM_EMOJI_CELL_SIZE: i32 = 44;
 pub(super) const CUSTOM_EMOJI_SIZE: i32 = 30;
@@ -87,7 +89,9 @@ pub(super) fn push_emoji_section(
 pub(super) fn emoji_grid<'a>(
     picker: &ContentPicker,
     emojis: impl Iterator<Item = &'a str>,
+    columns: usize,
 ) -> gtk::Grid {
+    let columns = columns.max(1);
     let grid = gtk::Grid::builder().column_homogeneous(true).build();
     for (i, emoji) in emojis.enumerate() {
         let button = gtk::Button::with_label(emoji);
@@ -114,8 +118,8 @@ pub(super) fn emoji_grid<'a>(
                 picker.emit_by_name::<()>("content-picked", &[]);
             }
         ));
-        let column = (i % EMOJI_ROW_LEN) as i32;
-        let row = (i / EMOJI_ROW_LEN) as i32;
+        let column = (i % columns) as i32;
+        let row = (i / columns) as i32;
         grid.attach(&button, column, row, 1, 1);
     }
     grid
