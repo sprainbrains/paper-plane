@@ -186,7 +186,7 @@
           </object>
         </child>
         <property name="content">
-          <object class="GtkOverlay">
+          <object class="GtkOverlay" id="content_overlay">
             <child type="overlay">
               <object class="GtkRevealer">
                 <property name="transition-type">slide-up</property>

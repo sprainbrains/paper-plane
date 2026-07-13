@@ -430,6 +430,14 @@ impl ChatActionBar {
     }
 
     async fn send_text_message(&self) {
+        // Capture the plain text up front for the send flourish (compose/reset clears it).
+        let ghost_text = self
+            .imp()
+            .message_entry
+            .formatted_text()
+            .map(|formatted| formatted.0.text)
+            .unwrap_or_default();
+
         if let Some(chat) = self.chat()
             && let Some(message) = self.compose_text_message().await
         {
@@ -456,6 +464,8 @@ impl ChatActionBar {
                     .await;
             if let Err(e) = result {
                 log::warn!("Error sending a message: {e:?}");
+            } else if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) {
+                chat_history.play_send_animation(&ghost_text);
             }
 
             self.reset();

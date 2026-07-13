@@ -77,7 +77,10 @@ mod imp {
         #[template_child]
         pub(super) header_typing_label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub(super) content_overlay: TemplateChild<gtk::Overlay>,
+        #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
+        pub(super) send_animation: RefCell<Option<adw::TimedAnimation>>,
         #[template_child]
         pub(super) scrolled_window: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
@@ -1207,6 +1210,58 @@ impl ChatHistory {
 
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
     /// it — used when following a reply, jump, or link so the user can spot the target.
+    /// Plays a short "send" flourish: a bubble-shaped ghost of the just-sent text rises
+    /// from the composer into the history and fades, so the message appears to fly up into
+    /// place. The real message arrives separately via the new-message handler.
+    pub(crate) fn play_send_animation(&self, text: &str) {
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        let imp = self.imp();
+
+        let ghost = gtk::Label::builder()
+            .label(text)
+            .halign(gtk::Align::End)
+            .valign(gtk::Align::End)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .max_width_chars(24)
+            .margin_end(12)
+            .can_target(false)
+            .build();
+        ghost.add_css_class("send-ghost");
+        imp.content_overlay.add_overlay(&ghost);
+
+        let target = adw::CallbackAnimationTarget::new(clone!(
+            #[weak]
+            ghost,
+            move |value| {
+                ghost.set_margin_bottom((value * 72.0) as i32);
+                ghost.set_opacity(1.0 - value);
+            }
+        ));
+        let animation = adw::TimedAnimation::builder()
+            .widget(&ghost)
+            .value_from(0.0)
+            .value_to(1.0)
+            .duration(320)
+            .easing(adw::Easing::EaseOutCubic)
+            .target(&target)
+            .build();
+        animation.connect_done(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            ghost,
+            move |_| {
+                obj.imp().content_overlay.remove_overlay(&ghost);
+                obj.imp().send_animation.replace(None);
+            }
+        ));
+        animation.play();
+        imp.send_animation.replace(Some(animation));
+    }
+
     pub(crate) fn focus_message(&self, message_id: i64) {
         let Some(position) = self.message_position(message_id) else {
             return;
