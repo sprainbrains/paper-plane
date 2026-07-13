@@ -558,10 +558,13 @@ impl ChatActionBar {
 
     pub(crate) fn reply_to_message_id(&self, id: MessageId) {
         self.set_state(ChatActionBarState::Replying(id));
+        // Focus the composer so the user can start typing the reply immediately.
+        self.imp().message_entry.grab_focus();
     }
 
     pub(crate) fn edit_message_id(&self, id: MessageId) {
         self.set_state(ChatActionBarState::Editing(id));
+        self.imp().message_entry.grab_focus();
     }
 
     fn update_stack_page(&self) {

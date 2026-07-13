@@ -216,6 +216,15 @@ impl MessageLabel {
         self.imp().label.add_css_class(class);
     }
 
+    /// Toggles caret text selection. Disabled while the chat is in multi-select mode, so
+    /// clicks toggle message selection instead of placing a text cursor.
+    pub(crate) fn set_text_selectable(&self, selectable: bool) {
+        let label = &self.imp().label;
+        if label.is_selectable() != selectable {
+            label.set_selectable(selectable);
+        }
+    }
+
     pub(crate) fn indicators(&self) -> Option<ui::MessageIndicators> {
         self.imp().indicators.borrow().clone()
     }

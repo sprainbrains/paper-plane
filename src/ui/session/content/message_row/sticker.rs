@@ -5,6 +5,7 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
+use crate::utils;
 
 const MAX_REPLY_CHAR_WIDTH: i32 = 18;
 
@@ -72,11 +73,30 @@ mod imp {
 
         #[template_callback]
         fn on_pressed(&self, _n_press: i32, _x: f64, _y: f64) {
-            // TODO: animated emoji needs to play
-            // effect when someone clicks on it
             self.sticker.play_animation();
+
+            // Clicking a sticker reveals its pack (in the sidebar or a popup).
+            if let Some(message) = self.message.upgrade()
+                && let Some(set_id) = sticker_set_id(&message)
+                && let Some(session) = utils::ancestor::<_, ui::Session>(&*self.obj())
+            {
+                session.show_sticker_pack(set_id);
+            }
         }
     }
+}
+
+/// The sticker set id of a sticker/animated-emoji message, or `None` if it belongs to
+/// no set.
+fn sticker_set_id(message: &model::Message) -> Option<i64> {
+    let set_id = match message.content().0 {
+        tdlib::enums::MessageContent::MessageSticker(data) => data.sticker.set_id,
+        tdlib::enums::MessageContent::MessageAnimatedEmoji(data) => {
+            data.animated_emoji.sticker.map(|sticker| sticker.set_id)?
+        }
+        _ => return None,
+    };
+    (set_id != 0).then_some(set_id)
 }
 
 glib::wrapper! {

@@ -30,7 +30,9 @@ template $PaplMessageEntry {
           top-margin: 6;
           bottom-margin: 6;
           wrap-mode: word_char;
-          valign: center;
+          // `fill` keeps the text top-anchored; `center` clips the first line and
+          // leaves the bottom empty once the content grows past one line.
+          valign: fill;
 
           GestureClick {
             pressed => $on_gesture_click_pressed();

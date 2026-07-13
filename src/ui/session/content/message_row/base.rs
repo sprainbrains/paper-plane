@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
@@ -53,12 +54,9 @@ mod imp {
     #[gtk::template_callbacks]
     impl MessageBase {
         #[template_callback]
-        fn on_pressed(&self, _n_press: i32, x: f64, y: f64) {
-            self.show_message_menu(x as i32, y as i32);
-        }
-
-        #[template_callback]
         fn on_long_pressed(&self, x: f64, y: f64) {
+            // On touch, press-and-hold opens the message menu (which offers "Select" to
+            // start multi-selection); selection dragging itself is mouse-only.
             self.show_message_menu(x as i32, y as i32);
         }
 
@@ -80,9 +78,48 @@ mod imp {
             menu.set_parent(obj);
             menu.popup();
         }
+
+        /// Whether the point (in this widget's coordinates) is over selected bubble text —
+        /// where a right click should reach the label's own text menu rather than ours.
+        fn point_over_selected_text(&self, x: f64, y: f64) -> bool {
+            let mut widget = self.obj().pick(x, y, gtk::PickFlags::DEFAULT);
+            while let Some(w) = widget {
+                if w.downcast_ref::<gtk::Label>().is_some_and(|label| {
+                    label.is_selectable() && label.selection_bounds().is_some()
+                }) {
+                    return true;
+                }
+                widget = w.parent();
+            }
+            false
+        }
     }
 
     impl ObjectImpl for MessageBase {
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            // Right click opens the message menu. Handled in the capture phase (before the
+            // selectable text label's own menu) so plain text and empty bubble areas get
+            // the message menu; only a click on already-selected text falls through to the
+            // label's text menu.
+            let click = gtk::GestureClick::new();
+            click.set_button(3);
+            click.set_propagation_phase(gtk::PropagationPhase::Capture);
+            click.connect_pressed(clone!(
+                #[weak(rename_to = imp)]
+                self,
+                move |gesture, _, x, y| {
+                    if imp.point_over_selected_text(x, y) {
+                        return;
+                    }
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    imp.show_message_menu(x as i32, y as i32);
+                }
+            ));
+            self.obj().add_controller(click);
+        }
+
         fn dispose(&self) {
             let mut child = self.obj().first_child();
             while let Some(child_) = child {

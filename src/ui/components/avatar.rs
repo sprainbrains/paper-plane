@@ -235,13 +235,18 @@ impl Avatar {
 
         if let Some(item) = self.item() {
             if let Some(user) = item.downcast_ref::<model::User>() {
-                imp.avatar
-                    .set_text(Some(&strings::user_display_name(user, true)));
+                let name = strings::user_display_name(user, true);
+                imp.avatar.set_text(Some(&name));
+                // Hovering the avatar reveals the name as a tooltip.
+                self.set_tooltip_text(Some(&name));
             } else if let Some(chat) = item.downcast_ref::<model::Chat>() {
                 if chat.is_own_chat() {
                     imp.avatar.set_text(Some("-"));
+                    self.set_tooltip_text(None);
                 } else {
-                    imp.avatar.set_text(Some(chat.title().as_ref()));
+                    let title = chat.title();
+                    imp.avatar.set_text(Some(&title));
+                    self.set_tooltip_text(Some(&title));
                 };
             }
         }

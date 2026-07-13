@@ -10,8 +10,11 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
+use std::cell::Cell;
+
 use crate::model;
 use crate::strings;
+use crate::ui;
 use crate::utils;
 
 mod imp {
@@ -23,6 +26,9 @@ mod imp {
     pub(crate) struct MessageReply {
         pub(super) sender_color_class: RefCell<Option<String>>,
         pub(super) bindings: RefCell<Vec<gtk::ExpressionWatch>>,
+        /// The replied-to message id when it's in the same chat (0 otherwise), so
+        /// clicking the preview can jump to it.
+        pub(super) replied_message_id: Cell<i64>,
 
         #[property(get, set, construct_only)]
         pub(super) message: glib::WeakRef<model::Message>,
@@ -70,6 +76,25 @@ mod imp {
             self.message_label.set_label(&gettext("Loading…"));
 
             let obj = self.obj();
+
+            // Clicking the reply preview jumps to the original message.
+            obj.set_cursor_from_name(Some("pointer"));
+            let click = gtk::GestureClick::new();
+            click.connect_released(clone!(
+                #[weak]
+                obj,
+                move |gesture, _, _, _| {
+                    let message_id = obj.imp().replied_message_id.get();
+                    if message_id != 0
+                        && let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&obj)
+                    {
+                        chat_history.focus_message(message_id);
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                    }
+                }
+            ));
+            obj.add_controller(click);
+
             utils::spawn(clone!(
                 #[weak]
                 obj,
@@ -111,6 +136,11 @@ impl MessageReply {
                 } else {
                     message.chat_()
                 };
+
+                // Only same-chat replies can be focused in the current history.
+                if reply_to.chat_id == 0 || reply_to.chat_id == message.chat_().id() {
+                    imp.replied_message_id.set(reply_to.message_id);
+                }
 
                 match chat.fetch_message(reply_to.message_id).await {
                     Ok(message) => self.update_from_message(&message, is_outgoing),
