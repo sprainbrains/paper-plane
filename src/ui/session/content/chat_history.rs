@@ -1272,7 +1272,12 @@ impl ChatHistory {
                 }
                 None => (overlay_width - 12.0, start.y()),
             };
-        let end_height = start.height();
+        // A one-line bubble is much shorter than the composer; size the end to the text
+        // (+ the ghost's 16px vertical padding), not the tall entry.
+        let text_height = gtk::Label::new(Some(text))
+            .measure(gtk::Orientation::Vertical, -1)
+            .1 as f32;
+        let end_height = text_height + 16.0;
         let max_width = (content_right - 12.0).max(120.0);
         // The ghost's two layers add 24px of horizontal padding around the text.
         let end_width = (text_natural + 24.0).clamp(96.0, max_width);
@@ -1296,10 +1301,12 @@ impl ChatHistory {
                 accent.set_opacity(value.clamp(0.0, 1.0));
             }
         ));
-        // A springy, macOS-like motion: underdamped so it settles with a soft bounce.
+        // A springy, macOS-like motion: underdamped so it settles with a soft bounce. The
+        // progress runs 0..1, so a large initial velocity would fling the ghost far past
+        // the target; keep it small so the overshoot stays a gentle bounce near the bubble.
         let params = adw::SpringParams::new(0.45, 3.3, 100.0);
         let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, params, target);
-        animation.set_initial_velocity(10.0);
+        animation.set_initial_velocity(0.5);
         animation.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
