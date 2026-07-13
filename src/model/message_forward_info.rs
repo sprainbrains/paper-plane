@@ -81,7 +81,11 @@ impl MessageForwardInfo {
         use tdlib::enums::MessageOrigin::*;
 
         let origin = match forward_info.origin {
-            User(data) => MessageForwardOrigin::User(chat.session_().user(data.sender_user_id)),
+            // Resolve the forward sender like the message sender (message.rs): a user id
+            // may not be loaded yet (getChatHistory), so fetch-or-placeholder.
+            User(data) => {
+                MessageForwardOrigin::User(chat.session_().user_or_fetch(data.sender_user_id))
+            }
             Chat(data) => MessageForwardOrigin::Chat {
                 chat: chat.session_().chat(data.sender_chat_id),
             },
