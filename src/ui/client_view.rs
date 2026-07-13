@@ -84,7 +84,7 @@ impl ClientView {
                 } else if let Some(state) = state.downcast_ref::<model::ClientStateSession>() {
                     ui::Session::from(state).upcast::<gtk::Widget>()
                 } else {
-                    panic!();
+                    unreachable!("Unexpected client state: {:?}", state)
                 }
             }))
             .bind(&*self.imp().bin, "child", Some(self));
