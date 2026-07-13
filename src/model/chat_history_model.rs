@@ -2,10 +2,10 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
-use std::sync::OnceLock;
 
 use gio::prelude::*;
 use gio::subclass::prelude::*;
+use glib::Properties;
 use glib::clone;
 use gtk::gio;
 use gtk::glib;
@@ -26,8 +26,10 @@ pub(crate) enum ChatHistoryError {
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default)]
+    #[derive(Debug, Default, Properties)]
+    #[properties(wrapper_type = super::ChatHistoryModel)]
     pub(crate) struct ChatHistoryModel {
+        #[property(get)]
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) is_loading: Cell<bool>,
         pub(super) list: RefCell<VecDeque<model::ChatHistoryItem>>,
@@ -42,23 +44,11 @@ mod imp {
 
     impl ObjectImpl for ChatHistoryModel {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<model::Chat>("chat")
-                        .read_only()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            let obj = self.obj();
-
-            match pspec.name() {
-                "chat" => obj.chat().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
         }
     }
 
@@ -148,114 +138,25 @@ impl ChatHistoryModel {
     fn emit_items_changed_with_dividers(&self, position: u32, removed: u32, added: u32) {
         let imp = self.imp();
 
-        // Insert day dividers where needed
         let added = {
             let position = position as usize;
             let added = added as usize;
 
             let mut list = imp.list.borrow_mut();
-            let Some(end) = position.checked_add(added) else {
-                log::warn!("Chat history change range overflowed");
+            let Some(added) = insert_day_dividers(&mut list, position, added) else {
                 return;
             };
-            if end > list.len() {
-                log::warn!(
-                    "Chat history change range {position}..{end} exceeds list length {}",
-                    list.len()
-                );
-                return;
-            }
-            let mut previous_timestamp = if position + 1 < list.len() {
-                list.get(position + 1)
-                    .and_then(|item| item.message_timestamp())
-            } else {
-                None
-            };
-            let mut dividers: Vec<(usize, model::ChatHistoryItem)> = vec![];
-
-            for (index, current) in list.range(position..end).enumerate().rev() {
-                if let Some(current_timestamp) = current.message_timestamp()
-                    && Some(current_timestamp.ymd()) != previous_timestamp.as_ref().map(|t| t.ymd())
-                {
-                    let divider_pos = position + index + 1;
-                    dividers.push((
-                        divider_pos,
-                        model::ChatHistoryItem::for_day_divider(current_timestamp.clone()),
-                    ));
-                    previous_timestamp = Some(current_timestamp);
-                }
-            }
-
-            let dividers_len = dividers.len();
-            for (position, item) in dividers {
-                list.insert(position, item);
-            }
-
-            (added + dividers_len) as u32
+            added as u32
         };
 
-        // Check and remove no more needed day divider after removing messages
         let removed = {
-            let mut removed = removed as usize;
-
-            if removed > 0 {
-                let mut list = imp.list.borrow_mut();
-                let position = position as usize;
-                let item_before_removed = list.get(position);
-
-                if let Some(model::ChatHistoryItemType::DayDivider(_)) =
-                    item_before_removed.map(|i| i.type_())
-                {
-                    let item_after_removed = if position > 0 {
-                        list.get(position - 1)
-                    } else {
-                        None
-                    };
-
-                    match item_after_removed.map(|item| item.type_()) {
-                        None | Some(model::ChatHistoryItemType::DayDivider(_)) => {
-                            let divider_position = position.saturating_add(removed);
-                            if divider_position < list.len() {
-                                list.remove(divider_position);
-                                removed += 1;
-                            } else {
-                                log::warn!("Missing trailing chat history day divider");
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-
-            removed as u32
+            let mut list = imp.list.borrow_mut();
+            remove_trailing_day_divider(&mut list, position as usize, removed as usize) as u32
         };
 
-        // Check and remove no more needed day divider after adding messages
         let (position, removed) = {
-            let mut removed = removed;
-            let mut position = position as usize;
-
-            if added > 0 && position > 0 {
-                let mut list = imp.list.borrow_mut();
-                let last_added_timestamp = list
-                    .get(position)
-                    .and_then(model::ChatHistoryItem::message_timestamp);
-                let next_item = list.get(position - 1);
-
-                if let Some(model::ChatHistoryItemType::DayDivider(date)) =
-                    next_item.map(|item| item.type_())
-                    && last_added_timestamp
-                        .as_ref()
-                        .is_some_and(|timestamp| date.ymd() == timestamp.ymd())
-                {
-                    list.remove(position - 1);
-
-                    removed += 1;
-                    position -= 1;
-                }
-            }
-
-            (position as u32, removed)
+            let mut list = imp.list.borrow_mut();
+            remove_duplicate_day_divider(&mut list, position as usize, removed, added)
         };
 
         self.upcast_ref::<gio::ListModel>()
@@ -335,8 +236,137 @@ impl ChatHistoryModel {
 
         self.emit_items_changed_with_dividers(index, 1, 0);
     }
+}
 
-    pub(crate) fn chat(&self) -> Option<model::Chat> {
-        self.imp().chat.upgrade()
+fn insert_day_dividers(
+    list: &mut VecDeque<model::ChatHistoryItem>,
+    position: usize,
+    added: usize,
+) -> Option<usize> {
+    let Some(end) = position.checked_add(added) else {
+        log::warn!("Chat history change range overflowed");
+        return None;
+    };
+    if end > list.len() {
+        log::warn!(
+            "Chat history change range {position}..{end} exceeds list length {}",
+            list.len()
+        );
+        return None;
+    }
+
+    let previous_day = list
+        .get(position.saturating_add(1))
+        .and_then(model::ChatHistoryItem::message_timestamp)
+        .map(|timestamp| timestamp.ymd());
+    let days = list
+        .range(position..end)
+        .map(|item| item.message_timestamp().map(|timestamp| timestamp.ymd()))
+        .collect::<Vec<_>>();
+    let divider_offsets = day_divider_offsets(&days, previous_day);
+
+    for offset in divider_offsets.iter().copied() {
+        let timestamp = list[position + offset]
+            .message_timestamp()
+            .expect("divider offsets only identify messages");
+        list.insert(
+            position + offset + 1,
+            model::ChatHistoryItem::for_day_divider(timestamp),
+        );
+    }
+
+    Some(added + divider_offsets.len())
+}
+
+fn remove_trailing_day_divider(
+    list: &mut VecDeque<model::ChatHistoryItem>,
+    position: usize,
+    mut removed: usize,
+) -> usize {
+    if removed == 0
+        || !matches!(
+            list.get(position).map(model::ChatHistoryItem::type_),
+            Some(model::ChatHistoryItemType::DayDivider(_))
+        )
+        || matches!(
+            position
+                .checked_sub(1)
+                .and_then(|index| list.get(index))
+                .map(model::ChatHistoryItem::type_),
+            Some(model::ChatHistoryItemType::Message(_))
+        )
+    {
+        return removed;
+    }
+
+    let divider_position = position.saturating_add(removed);
+    if divider_position < list.len() {
+        list.remove(divider_position);
+        removed += 1;
+    } else {
+        log::warn!("Missing trailing chat history day divider");
+    }
+    removed
+}
+
+fn remove_duplicate_day_divider(
+    list: &mut VecDeque<model::ChatHistoryItem>,
+    mut position: usize,
+    mut removed: u32,
+    added: u32,
+) -> (u32, u32) {
+    if added > 0 && position > 0 {
+        let last_added_day = list
+            .get(position)
+            .and_then(model::ChatHistoryItem::message_timestamp)
+            .map(|timestamp| timestamp.ymd());
+        let divider_day = match list.get(position - 1).map(model::ChatHistoryItem::type_) {
+            Some(model::ChatHistoryItemType::DayDivider(date)) => Some(date.ymd()),
+            _ => None,
+        };
+
+        if last_added_day.is_some() && last_added_day == divider_day {
+            list.remove(position - 1);
+            removed += 1;
+            position -= 1;
+        }
+    }
+
+    (position as u32, removed)
+}
+
+fn day_divider_offsets(
+    days: &[Option<(i32, i32, i32)>],
+    mut previous_day: Option<(i32, i32, i32)>,
+) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    for (offset, day) in days.iter().enumerate().rev() {
+        if day.is_some() && *day != previous_day {
+            offsets.push(offset);
+            previous_day = *day;
+        }
+    }
+    offsets
+}
+
+#[cfg(test)]
+mod tests {
+    use super::day_divider_offsets;
+
+    #[test]
+    fn divider_offsets_mark_each_day_boundary_from_oldest_to_newest() {
+        let first = (2026, 7, 13);
+        let second = (2026, 7, 12);
+        let days = [Some(first), Some(first), Some(second), Some(second)];
+
+        assert_eq!(day_divider_offsets(&days, None), [3, 1]);
+        assert_eq!(day_divider_offsets(&days, Some(second)), [1]);
+    }
+
+    #[test]
+    fn divider_offsets_ignore_non_messages() {
+        let day = (2026, 7, 13);
+
+        assert_eq!(day_divider_offsets(&[Some(day), None], None), [0]);
     }
 }

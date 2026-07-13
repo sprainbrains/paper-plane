@@ -156,9 +156,7 @@ impl Message {
         obj
     }
 
-    pub(crate) fn chat_(&self) -> model::Chat {
-        self.chat().unwrap()
-    }
+    weak_getter!(chat_, chat, model::Chat);
 
     pub(crate) fn handle_update(&self, update: tdlib::enums::Update) {
         use tdlib::enums::Update::*;

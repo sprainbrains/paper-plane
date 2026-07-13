@@ -82,9 +82,7 @@ impl SecretChat {
         obj
     }
 
-    pub(crate) fn user_(&self) -> model::User {
-        self.user().unwrap()
-    }
+    weak_getter!(user_, user, model::User);
 
     fn set_state(&self, state: SecretChatState) {
         if self.state() == state {

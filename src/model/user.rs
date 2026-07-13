@@ -96,9 +96,7 @@ impl User {
             .build()
     }
 
-    pub(crate) fn session_(&self) -> model::ClientStateSession {
-        self.session().unwrap()
-    }
+    weak_getter!(session_, session, model::ClientStateSession);
 
     fn set_type(&self, user_type: model::BoxedUserType) {
         if self.user_type() == user_type {

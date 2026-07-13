@@ -1,3 +1,12 @@
+macro_rules! weak_getter {
+    ($name:ident, $property:ident, $type:ty) => {
+        pub(crate) fn $name(&self) -> $type {
+            self.$property()
+                .expect(concat!(stringify!($property), " is no longer available"))
+        }
+    };
+}
+
 mod avatar;
 mod basic_group;
 mod chat;

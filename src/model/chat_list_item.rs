@@ -62,9 +62,7 @@ impl ChatListItem {
         obj
     }
 
-    pub(crate) fn chat_(&self) -> model::Chat {
-        self.chat().unwrap()
-    }
+    weak_getter!(chat_, chat, model::Chat);
 
     fn set_is_pinned(&self, is_pinned: bool) {
         if self.is_pinned() == is_pinned {

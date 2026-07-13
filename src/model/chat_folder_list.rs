@@ -1,6 +1,6 @@
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::sync::OnceLock;
+use std::marker::PhantomData;
 
 use gio::subclass::prelude::*;
 use glib::Properties;
@@ -24,6 +24,8 @@ mod imp {
         pub(super) main_chat_list: glib::WeakRef<model::ChatList>,
         #[property(get)]
         pub(super) main_chat_list_position: Cell<i32>,
+        #[property(get = |this: &Self| !this.list.borrow().is_empty())]
+        pub(super) has_folders: PhantomData<bool>,
     }
 
     #[glib::object_subclass]
@@ -35,18 +37,7 @@ mod imp {
 
     impl ObjectImpl for ChatFolderList {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                Self::derived_properties()
-                    .iter()
-                    .cloned()
-                    .chain(Some(
-                        glib::ParamSpecBoolean::builder("has-folders")
-                            .read_only()
-                            .build(),
-                    ))
-                    .collect::<Vec<_>>()
-            })
+            Self::derived_properties()
         }
 
         fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
@@ -54,10 +45,7 @@ mod imp {
         }
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "has-folders" => self.obj().has_folders().to_value(),
-                _ => self.derived_property(id, pspec),
-            }
+            self.derived_property(id, pspec)
         }
 
         fn constructed(&self) {
@@ -122,13 +110,7 @@ impl From<&model::ClientStateSession> for ChatFolderList {
 }
 
 impl ChatFolderList {
-    pub(crate) fn has_folders(&self) -> bool {
-        self.n_items() > 1
-    }
-
-    pub(crate) fn session_(&self) -> model::ClientStateSession {
-        self.session().unwrap()
-    }
+    weak_getter!(session_, session, model::ClientStateSession);
 
     pub(crate) fn get_or_create(&self, id: ChatFolderId) -> model::ChatList {
         let mut list = self.imp().list.borrow_mut();

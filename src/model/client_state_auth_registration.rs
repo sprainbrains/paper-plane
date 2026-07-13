@@ -53,9 +53,7 @@ impl ClientStateAuthRegistration {
             .build()
     }
 
-    pub(crate) fn auth_(&self) -> model::ClientStateAuth {
-        self.auth().unwrap()
-    }
+    weak_getter!(auth_, auth, model::ClientStateAuth);
 
     pub(crate) async fn send_registration(
         &self,

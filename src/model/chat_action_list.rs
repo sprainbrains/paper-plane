@@ -74,9 +74,7 @@ impl From<&model::Chat> for ChatActionList {
 }
 
 impl ChatActionList {
-    pub(crate) fn chat_(&self) -> model::Chat {
-        self.chat().unwrap()
-    }
+    weak_getter!(chat_, chat, model::Chat);
 
     pub(crate) fn last(&self) -> Option<model::ChatAction> {
         self.imp()

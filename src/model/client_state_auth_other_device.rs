@@ -56,7 +56,5 @@ impl ClientStateAuthOtherDevice {
             .build()
     }
 
-    pub(crate) fn auth_(&self) -> model::ClientStateAuth {
-        self.auth().unwrap()
-    }
+    weak_getter!(auth_, auth, model::ClientStateAuth);
 }

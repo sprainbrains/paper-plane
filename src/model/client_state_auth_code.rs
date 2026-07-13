@@ -115,9 +115,7 @@ impl ClientStateAuthCode {
             .build()
     }
 
-    pub(crate) fn auth_(&self) -> model::ClientStateAuth {
-        self.auth().unwrap()
-    }
+    weak_getter!(auth_, auth, model::ClientStateAuth);
 
     pub(crate) async fn send_code(&self, code: String) -> Result<(), tdlib::types::Error> {
         match tdlib::functions::check_authentication_code(code, self.auth_().client_().id()).await {

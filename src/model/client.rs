@@ -106,9 +106,7 @@ impl Client {
             .build()
     }
 
-    pub(crate) fn client_manager_(&self) -> model::ClientManager {
-        self.client_manager().unwrap()
-    }
+    weak_getter!(client_manager_, client_manager, model::ClientManager);
 
     async fn init(&self) {
         if let Err(e) = tdlib::functions::set_log_verbosity_level(

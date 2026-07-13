@@ -57,9 +57,7 @@ impl From<&model::ClientStateAuth> for ClientStateAuthPhoneNumber {
 }
 
 impl ClientStateAuthPhoneNumber {
-    pub(crate) fn auth_(&self) -> model::ClientStateAuth {
-        self.auth().unwrap()
-    }
+    weak_getter!(auth_, auth, model::ClientStateAuth);
 
     pub(crate) async fn load_country_codes(&self) -> Result<(), tdlib::types::Error> {
         let client = self.auth_().client_();

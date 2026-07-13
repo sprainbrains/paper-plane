@@ -1,6 +1,6 @@
 use std::cell::OnceCell;
-use std::sync::OnceLock;
 
+use glib::Properties;
 use glib::prelude::*;
 use glib::subclass::prelude::*;
 use gtk::glib;
@@ -17,8 +17,10 @@ pub(crate) enum ChatHistoryItemType {
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default)]
+    #[derive(Debug, Default, Properties)]
+    #[properties(wrapper_type = super::ChatHistoryItem)]
     pub(crate) struct ChatHistoryItem {
+        #[property(set, construct_only)]
         pub(super) type_: OnceCell<ChatHistoryItemType>,
     }
 
@@ -30,25 +32,11 @@ mod imp {
 
     impl ObjectImpl for ChatHistoryItem {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecBoxed::builder::<ChatHistoryItemType>("type")
-                        .write_only()
-                        .construct_only()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            match pspec.name() {
-                "type" => {
-                    let type_ = value.get::<ChatHistoryItemType>().unwrap();
-                    self.type_.set(type_).unwrap();
-                }
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
         }
     }
 }

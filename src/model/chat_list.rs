@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::marker::PhantomData;
 
 use gettextrs::gettext;
 use glib::Properties;
@@ -10,6 +10,7 @@ use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
+use thiserror::Error;
 
 use crate::model;
 use crate::types::ChatId;
@@ -19,6 +20,14 @@ use crate::utils;
 const CHATS_FETCH_LIMIT: i32 = 20;
 /// Delay between batches, so chats stream in without blocking the UI.
 const CHATS_FETCH_INTERVAL_MS: u64 = 50;
+
+#[derive(Debug, Error)]
+pub(crate) enum ChatListError {
+    #[error("{0}")]
+    NotFolder(String),
+    #[error("TDLib error: {0:?}")]
+    Tdlib(tdlib::types::Error),
+}
 
 /// Sort key for a chat within the list: `(-order, chat_id)`. The negated order
 /// gives a descending sort, and the chat id breaks ties so chats sharing an
@@ -82,6 +91,8 @@ mod imp {
         // loading spinner.
         #[property(get, set)]
         pub(super) loading: Cell<bool>,
+        #[property(get = |this: &Self| this.list.borrow().len() as u32)]
+        pub(super) len: PhantomData<u32>,
         // Set once the list has been fully loaded, so re-displaying it does not
         // kick off a redundant fetch.
         pub(super) loaded: Cell<bool>,
@@ -96,16 +107,7 @@ mod imp {
 
     impl ObjectImpl for ChatList {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                Self::derived_properties()
-                    .iter()
-                    .cloned()
-                    .chain(Some(
-                        glib::ParamSpecUInt::builder("len").read_only().build(),
-                    ))
-                    .collect::<Vec<_>>()
-            })
+            Self::derived_properties()
         }
 
         fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
@@ -113,10 +115,7 @@ mod imp {
         }
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "len" => self.obj().len().to_value(),
-                _ => self.derived_property(id, pspec),
-            }
+            self.derived_property(id, pspec)
         }
 
         fn constructed(&self) {
@@ -161,13 +160,7 @@ impl ChatList {
             .build()
     }
 
-    pub(crate) fn len(&self) -> u32 {
-        self.n_items()
-    }
-
-    pub(crate) fn session_(&self) -> model::ClientStateSession {
-        self.session().unwrap()
-    }
+    weak_getter!(session_, session, model::ClientStateSession);
 
     pub(crate) fn fetch(&self) {
         // Load each list only once, and never run two loaders concurrently. The flag
@@ -203,7 +196,7 @@ impl ChatList {
                         // Error 404 means that all chats have been loaded.
                         Err(err) => {
                             if err.code != 404 {
-                                log::error!("Received an error for LoadChats: {}", err.code);
+                                log::error!("LoadChats failed: {err:?}");
                             }
                             break;
                         }
@@ -293,7 +286,7 @@ impl ChatList {
         self.items_changed(position as u32, 0, 1);
     }
 
-    pub(crate) async fn delete(&self) -> anyhow::Result<()> {
+    pub(crate) async fn delete(&self) -> Result<(), ChatListError> {
         match self.list_type().0 {
             tdlib::enums::ChatList::Folder(tdlib::types::ChatListFolder { chat_folder_id }) => {
                 tdlib::functions::delete_chat_folder(
@@ -302,9 +295,11 @@ impl ChatList {
                     self.session_().client_().id(),
                 )
                 .await
-                .map_err(|e| anyhow::Error::msg(e.message))
+                .map_err(ChatListError::Tdlib)
             }
-            _ => Err(anyhow::Error::msg(gettext("Only folders can be deleted."))),
+            _ => Err(ChatListError::NotFolder(gettext(
+                "Only folders can be deleted.",
+            ))),
         }
     }
 }

@@ -297,9 +297,7 @@ impl Chat {
         }
     }
 
-    pub(crate) fn session_(&self) -> model::ClientStateSession {
-        self.session().unwrap()
-    }
+    weak_getter!(session_, session, model::ClientStateSession);
 
     pub(crate) fn is_blocked(&self) -> bool {
         matches!(

@@ -50,9 +50,7 @@ impl From<&model::Client> for ClientStateAuth {
 }
 
 impl ClientStateAuth {
-    pub(crate) fn client_(&self) -> model::Client {
-        self.client().unwrap()
-    }
+    weak_getter!(client_, client, model::Client);
 
     fn set_state(&self, state: Option<glib::Object>) {
         if self.state() == state {

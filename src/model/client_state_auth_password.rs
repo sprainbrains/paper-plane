@@ -61,12 +61,10 @@ impl ClientStateAuthPassword {
             .build()
     }
 
-    pub(crate) fn auth_(&self) -> model::ClientStateAuth {
-        self.auth().unwrap()
-    }
+    weak_getter!(auth_, auth, model::ClientStateAuth);
 
     pub(crate) async fn send_password(&self, password: String) -> Result<(), tdlib::types::Error> {
-        let client = self.auth().unwrap().client().unwrap();
+        let client = self.auth_().client_();
         match tdlib::functions::check_authentication_password(password, client.id()).await {
             Ok(_) => Ok(()),
             Err(e) => {
@@ -83,7 +81,7 @@ impl ClientStateAuthPassword {
             return Ok(());
         }
 
-        let client = self.auth_().client().unwrap();
+        let client = self.auth_().client_();
 
         let result = tdlib::functions::request_authentication_password_recovery(client.id()).await;
         if let Err(ref e) = result {
@@ -98,7 +96,7 @@ impl ClientStateAuthPassword {
         &self,
         recovery_code: String,
     ) -> SendPasswordRecoveryCodeResult {
-        let client = self.auth_().client().unwrap();
+        let client = self.auth_().client_();
 
         let result = tdlib::functions::recover_authentication_password(
             recovery_code,

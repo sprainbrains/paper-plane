@@ -93,10 +93,7 @@ mod imp {
                     )
                     .await
                     {
-                        log::warn!(
-                            "Error setting the notification_group_count_max option: {:?}",
-                            e
-                        );
+                        log::warn!("Error setting the notification_group_count_max option: {e:?}");
                     }
 
                     obj.fetch_chats();
@@ -139,12 +136,17 @@ impl ClientStateSession {
         obj
     }
 
-    pub(crate) fn client_(&self) -> model::Client {
-        self.client().unwrap()
-    }
+    weak_getter!(client_, client, model::Client);
+    weak_getter!(me_, me, model::User);
 
-    pub(crate) fn me_(&self) -> model::User {
-        self.me().unwrap()
+    fn chat_list(&self, chat_list: tdlib::enums::ChatList) -> model::ChatList {
+        match chat_list {
+            tdlib::enums::ChatList::Main => self.main_chat_list(),
+            tdlib::enums::ChatList::Archive => self.archive_chat_list(),
+            tdlib::enums::ChatList::Folder(folder) => {
+                self.chat_folder_list().get_or_create(folder.chat_folder_id)
+            }
+        }
     }
 
     /// Returns the `model::Chat` of the specified id, if present.
@@ -451,42 +453,12 @@ impl ClientStateSession {
                 }
             }
             UnreadChatCount(data) => {
-                use tdlib::enums::ChatList::*;
-
-                match data.chat_list {
-                    Main => {
-                        self.main_chat_list()
-                            .set_unread_chat_count(data.unread_count);
-                    }
-                    Archive => {
-                        self.archive_chat_list()
-                            .set_unread_chat_count(data.unread_count);
-                    }
-                    Folder(data_) => {
-                        self.chat_folder_list()
-                            .get_or_create(data_.chat_folder_id)
-                            .set_unread_chat_count(data.unread_count);
-                    }
-                }
+                self.chat_list(data.chat_list)
+                    .set_unread_chat_count(data.unread_count);
             }
             UnreadMessageCount(data) => {
-                use tdlib::enums::ChatList::*;
-
-                match data.chat_list {
-                    Main => {
-                        self.main_chat_list()
-                            .set_unread_message_count(data.unread_count);
-                    }
-                    Archive => {
-                        self.archive_chat_list()
-                            .set_unread_message_count(data.unread_count);
-                    }
-                    Folder(data_) => {
-                        self.chat_folder_list()
-                            .get_or_create(data_.chat_folder_id)
-                            .set_unread_message_count(data.unread_count);
-                    }
-                }
+                self.chat_list(data.chat_list)
+                    .set_unread_message_count(data.unread_count);
             }
             User(data) => {
                 self.upsert_user(data.user);
