@@ -1,40 +1,10 @@
-use std::future::Future;
-use std::ops::Deref;
-use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use gtk::gdk;
-use gtk::gio;
-use gtk::glib;
-use gtk::prelude::*;
-use image::ImageReader;
 use regex::Regex;
-use thiserror::Error;
-
-use crate::APPLICATION_OPTS;
-use crate::TEMP_DIR;
-use crate::config;
 
 fn protocol_re() -> &'static Regex {
     static PROTOCOL_RE: OnceLock<Regex> = OnceLock::new();
     PROTOCOL_RE.get_or_init(|| Regex::new(r"^\w+://").unwrap())
-}
-
-#[derive(Debug)]
-pub(crate) struct PaperPlaneSettings(gio::Settings);
-
-impl Default for PaperPlaneSettings {
-    fn default() -> Self {
-        Self(gio::Settings::new(config::APP_ID))
-    }
-}
-
-impl Deref for PaperPlaneSettings {
-    type Target = gio::Settings;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
 }
 
 pub(crate) fn escape(text: &str) -> String {
@@ -169,133 +139,6 @@ pub(crate) fn human_friendly_duration(mut seconds: i32) -> String {
         } else {
             gettext!("{} s", seconds)
         }
-    }
-}
-
-/// Returns the Paper Plane data directory (e.g. /home/bob/.local/share/paper-plane).
-pub(crate) fn data_dir() -> &'static PathBuf {
-    &APPLICATION_OPTS.get().unwrap().data_dir
-}
-
-/// Returns the Paper Plane temp directory (e.g. /tmp/paper-plane2-0).
-pub(crate) fn temp_dir() -> Option<&'static PathBuf> {
-    TEMP_DIR.get()
-}
-
-/// Spawn a future on the default `MainContext`
-pub(crate) fn spawn<F: Future<Output = ()> + 'static>(fut: F) {
-    let ctx = glib::MainContext::default();
-    ctx.spawn_local(fut);
-}
-
-#[derive(Error, Debug)]
-pub(crate) enum DecodeError {
-    #[error("I/O error: {0:?}")]
-    IoError(std::io::Error),
-    #[error("Image decoding error: {0:?}")]
-    ImageError(image::error::ImageError),
-    #[error("Decoding for this image format is not currently implemented")]
-    Unimplemented,
-}
-
-pub(crate) fn decode_image_from_path(path: &str) -> Result<gdk::MemoryTexture, DecodeError> {
-    decode_image_from_path_at_size(path, None)
-}
-
-pub(crate) fn decode_image_from_path_at_size(
-    path: &str,
-    maximum_size: Option<u32>,
-) -> Result<gdk::MemoryTexture, DecodeError> {
-    use image::DynamicImage::*;
-
-    let mut dynamic_image = ImageReader::open(path)
-        .map_err(DecodeError::IoError)?
-        .decode()
-        .map_err(DecodeError::ImageError)?;
-    if let Some(maximum_size) = maximum_size
-        && (dynamic_image.width() > maximum_size || dynamic_image.height() > maximum_size)
-    {
-        dynamic_image = dynamic_image.thumbnail(maximum_size, maximum_size);
-    }
-    let (memory_format, layout, data) = match dynamic_image {
-        ImageLuma8(_) => {
-            let buffer = dynamic_image.to_rgb8();
-            (
-                gdk::MemoryFormat::R8g8b8,
-                buffer.sample_layout(),
-                buffer.into_raw(),
-            )
-        }
-        ImageLumaA8(_) => {
-            let buffer = dynamic_image.to_rgba8();
-            (
-                gdk::MemoryFormat::R8g8b8a8,
-                buffer.sample_layout(),
-                buffer.into_raw(),
-            )
-        }
-        ImageRgb8(buffer) => (
-            gdk::MemoryFormat::R8g8b8,
-            buffer.sample_layout(),
-            buffer.into_raw(),
-        ),
-        ImageRgba8(buffer) => (
-            gdk::MemoryFormat::R8g8b8a8,
-            buffer.sample_layout(),
-            buffer.into_raw(),
-        ),
-        _ => return Err(DecodeError::Unimplemented),
-    };
-
-    let bytes = glib::Bytes::from_owned(data);
-    let texture = gdk::MemoryTexture::new(
-        layout.width as i32,
-        layout.height as i32,
-        memory_format,
-        &bytes,
-        layout.height_stride,
-    );
-
-    Ok(texture)
-}
-
-pub(crate) fn show_toast<W: IsA<gtk::Widget>>(widget: &W, title: impl Into<glib::GString>) {
-    let title = title.into();
-    let Some(overlay) = widget
-        .ancestor(adw::ToastOverlay::static_type())
-        .and_downcast::<adw::ToastOverlay>()
-    else {
-        log::warn!("Could not show toast without a ToastOverlay ancestor: {title}");
-        return;
-    };
-
-    overlay.add_toast(
-        adw::Toast::builder()
-            .title(title)
-            .timeout(3)
-            .priority(adw::ToastPriority::High)
-            .build(),
-    );
-}
-
-pub(crate) fn ancestor<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -> Option<T> {
-    widget.ancestor(T::static_type()).and_downcast::<T>()
-}
-
-#[allow(dead_code)]
-pub(crate) struct ChildIter(Option<gtk::Widget>);
-impl From<&gtk::Widget> for ChildIter {
-    fn from(widget: &gtk::Widget) -> Self {
-        Self(widget.first_child())
-    }
-}
-impl Iterator for ChildIter {
-    type Item = gtk::Widget;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let r = self.0.take();
-        self.0 = r.as_ref().and_then(|widget| widget.next_sibling());
-        r
     }
 }
 
