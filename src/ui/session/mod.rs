@@ -225,7 +225,7 @@ impl Session {
                             .imp()
                             .sidebar
                             .set_selected_chat(obj.model().unwrap().try_chat(data.id).as_ref()),
-                        Err(e) => log::warn!("Failed to create private chat: {:?}", e),
+                        Err(e) => log::warn!("Failed to create private chat: {e:?}"),
                     }
                 }
             )),

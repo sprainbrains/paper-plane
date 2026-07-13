@@ -60,7 +60,7 @@ mod imp {
                     if let Err(e) =
                         tdlib::functions::clear_recently_found_chats(session.client_().id()).await
                     {
-                        log::warn!("Failed to clear recently found chats: {:?}", e);
+                        log::warn!("Failed to clear recently found chats: {e:?}");
                     }
 
                     // Update search view
@@ -223,7 +223,7 @@ impl Search {
                 list.extend_from_slice(&chats);
             }
             Err(e) => {
-                log::warn!("Error searching chats: {:?}", e);
+                log::warn!("Error searching chats: {e:?}");
             }
             _ => {}
         }
@@ -268,7 +268,7 @@ impl Search {
                 list.extend_from_slice(&chats);
             }
             Err(e) => {
-                log::warn!("Error searching chats on server: {:?}", e);
+                log::warn!("Error searching chats on server: {e:?}");
             }
             _ => {}
         }
@@ -308,7 +308,7 @@ impl Search {
                 list.extend_from_slice(&users);
             }
             Err(e) => {
-                log::warn!("Error searching contacts: {:?}", e);
+                log::warn!("Error searching contacts: {e:?}");
             }
             _ => {}
         }
@@ -333,7 +333,7 @@ impl Search {
                 list.extend_from_slice(&chats);
             }
             Err(e) => {
-                log::warn!("Error searching public chats: {:?}", e);
+                log::warn!("Error searching public chats: {e:?}");
             }
             _ => {}
         }
@@ -353,7 +353,7 @@ impl Search {
             if let Err(e) =
                 tdlib::functions::add_recently_found_chat(chat.id(), session.client_().id()).await
             {
-                log::warn!("Failed to add recently found chat: {:?}", e);
+                log::warn!("Failed to add recently found chat: {e:?}");
             }
         } else if let Some(user) = item.downcast_ref::<model::User>() {
             // TODO
@@ -362,10 +362,10 @@ impl Search {
             if let Err(e) =
                 tdlib::functions::add_recently_found_chat(user.id(), session.client_().id()).await
             {
-                log::warn!("Failed to add recently found chat: {:?}", e);
+                log::warn!("Failed to add recently found chat: {e:?}");
             }
         } else {
-            log::warn!("Unexpected item type: {:?}", item);
+            log::warn!("Unexpected item type: {item:?}");
         }
 
         self.emit_by_name::<()>("close", &[]);

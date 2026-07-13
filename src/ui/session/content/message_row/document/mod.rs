@@ -232,7 +232,7 @@ impl MessageDocument {
                         &gio_file.uri(),
                         gio::AppLaunchContext::NONE,
                     ) {
-                        log::error!("Error: {}", err);
+                        log::error!("Error: {err}");
                     }
                 })
             }

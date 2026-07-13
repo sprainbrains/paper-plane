@@ -122,7 +122,7 @@ impl ContactsWindow {
                 self.imp().sort_model.set_model(Some(&list));
             }
             Err(e) => {
-                log::warn!("Error fetching contacts: {:?}", e)
+                log::warn!("Error fetching contacts: {e:?}")
             }
         }
     }

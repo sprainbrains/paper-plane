@@ -203,7 +203,7 @@ mod imp {
                                     if let Err(model::ChatHistoryError::Tdlib(e)) =
                                         model.load_older_messages(2).await
                                     {
-                                        log::warn!("Couldn't load more chat messages: {:?}", e);
+                                        log::warn!("Couldn't load more chat messages: {e:?}");
                                     }
                                 }
                             ));
@@ -304,7 +304,7 @@ impl ChatHistory {
                             sidebar.set_selected_chat(Option::<model::Chat>::None);
                         }
                     }
-                    Err(e) => log::warn!("Failed to leave chat: {:?}", e),
+                    Err(e) => log::warn!("Failed to leave chat: {e:?}"),
                 }
             }
         }
@@ -329,7 +329,7 @@ impl ChatHistory {
                     }
                     Err(e) => {
                         if e.code != 404 {
-                            log::warn!("Failed to request a SponsoredMessage: {:?}", e);
+                            log::warn!("Failed to request a SponsoredMessage: {e:?}");
                         }
                     }
                 }
@@ -460,7 +460,7 @@ impl ChatHistory {
                                 }
                             }
                             Err(e) => {
-                                log::warn!("Couldn't load initial history messages: {}", e);
+                                log::warn!("Couldn't load initial history messages: {e}");
                                 break;
                             }
                         }

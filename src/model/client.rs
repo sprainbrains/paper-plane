@@ -125,7 +125,7 @@ impl Client {
         )
         .await
         {
-            log::warn!("Error setting the tdlib log level: {:?}", e);
+            log::warn!("Error setting the tdlib log level: {e:?}");
         }
     }
 

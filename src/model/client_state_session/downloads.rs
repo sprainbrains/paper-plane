@@ -61,7 +61,7 @@ impl super::ClientStateSession {
                                 obj.handle_file_update(file);
                             }
                             Err(e) => {
-                                log::warn!("Error downloading a file: {:?}", e);
+                                log::warn!("Error downloading a file: {e:?}");
                             }
                         }
                     }
@@ -75,7 +75,7 @@ impl super::ClientStateSession {
         utils::spawn(async move {
             if let Err(e) = tdlib::functions::cancel_download_file(file_id, false, client_id).await
             {
-                log::warn!("Error canceling a file: {:?}", e);
+                log::warn!("Error canceling a file: {e:?}");
             }
         });
     }

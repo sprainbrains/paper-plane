@@ -168,7 +168,7 @@ impl ChatHistoryRow {
             } else if let Some(sponsored_message) = item.downcast_ref::<model::SponsoredMessage>() {
                 let content = &sponsored_message.content().0;
                 if !matches!(content, tdlib::enums::MessageContent::MessageText(_)) {
-                    log::warn!("Unexpected sponsored message of type: {:?}", content);
+                    log::warn!("Unexpected sponsored message of type: {content:?}");
                 }
 
                 self.update_or_create_message_row(sponsored_message.to_owned().upcast());

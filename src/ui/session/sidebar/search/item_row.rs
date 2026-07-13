@@ -109,7 +109,7 @@ impl ItemRow {
             imp.label.set_text(Some(""));
 
             if let Some(ref item) = item {
-                log::warn!("Unexpected item type {:?}", item);
+                log::warn!("Unexpected item type {item:?}");
             }
         }
 

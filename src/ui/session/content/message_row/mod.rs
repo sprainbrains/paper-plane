@@ -366,11 +366,7 @@ impl Row {
                     {
                         utils::spawn(async move {
                             if let Err(e) = message.delete(revoke).await {
-                                log::warn!(
-                                    "Error deleting a message (revoke = {}): {:?}",
-                                    revoke,
-                                    e
-                                );
+                                log::warn!("Error deleting a message (revoke = {revoke}): {e:?}");
                             }
                         });
                     }

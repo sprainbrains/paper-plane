@@ -1,6 +1,7 @@
 // TODO: This has been added because of the gettext macros. Remove this
 // when the macros are either fixed or removed (check #94).
 #![allow(clippy::format_push_string)]
+#![warn(clippy::uninlined_format_args)]
 
 /// Like `gettext`, but interpolates positional `{}` placeholders with the given
 /// arguments, in order.

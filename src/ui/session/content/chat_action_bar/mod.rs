@@ -143,7 +143,7 @@ mod imp {
                         )
                         .await;
                         if let Err(e) = result {
-                            log::warn!("Failed to unblock user: {:?}", e);
+                            log::warn!("Failed to unblock user: {e:?}");
                         }
                     }
                 },
@@ -422,7 +422,7 @@ impl ChatActionBar {
             };
 
             if let Err(e) = result {
-                log::warn!("Error editing a message: {:?}", e);
+                log::warn!("Error editing a message: {e:?}");
             }
 
             self.cancel_action();
@@ -455,7 +455,7 @@ impl ChatActionBar {
                 tdlib::functions::send_message(chat_id, None, reply_to, None, message, client_id)
                     .await;
             if let Err(e) = result {
-                log::warn!("Error sending a message: {:?}", e);
+                log::warn!("Error sending a message: {e:?}");
             }
 
             self.reset();
@@ -499,7 +499,7 @@ impl ChatActionBar {
         )
         .await;
         if let Err(e) = result {
-            log::warn!("Failed to unmute/mute chat: {:?}", e);
+            log::warn!("Failed to unmute/mute chat: {e:?}");
         }
     }
 

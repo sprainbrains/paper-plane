@@ -47,7 +47,7 @@ impl super::ChatActionBar {
                 tdlib::functions::set_chat_draft_message(chat_id, None, draft_message, client_id)
                     .await;
             if let Err(e) = result {
-                log::warn!("Error setting a draft message: {:?}", e);
+                log::warn!("Error setting a draft message: {e:?}");
             }
         }
     }
@@ -119,7 +119,7 @@ impl super::ChatActionBar {
                 self,
                 async move {
                     if let Err(e) = obj.handle_image_clipboard(chat).await {
-                        log::warn!("Error on pasting an image: {:?}", e);
+                        log::warn!("Error on pasting an image: {e:?}");
                     }
                 }
             ));

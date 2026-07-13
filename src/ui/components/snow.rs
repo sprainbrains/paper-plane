@@ -143,7 +143,7 @@ impl Snow {
                 match shader.compile(&renderer) {
                     Err(e) => {
                         // That shader isn't important
-                        log::error!("Couldn't compile snow shader: {}", e);
+                        log::error!("Couldn't compile snow shader: {e}");
                         self.set_visible(false);
                         None
                     }
