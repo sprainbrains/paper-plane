@@ -69,7 +69,6 @@ test (
   ],
   env: [
     'CARGO_HOME=@0@'.format(cargo_home),
-    'PATH=/app/bin:/usr/bin:/usr/lib/sdk/llvm20/bin:/usr/lib/sdk/rust-stable/bin',
   ],
   is_parallel: false,
   timeout: 300,
@@ -87,7 +86,6 @@ test (
   ],
   env: [
     'CARGO_HOME=@0@'.format(cargo_home),
-    'PATH=/app/bin:/usr/bin:/usr/lib/sdk/llvm20/bin:/usr/lib/sdk/rust-stable/bin',
   ],
   is_parallel: false,
   timeout: 300, # Give cargo more time
