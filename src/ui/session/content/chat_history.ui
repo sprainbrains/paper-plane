@@ -8,6 +8,12 @@
           <object class="GtkOverlay">
             <child>
               <object class="AdwHeaderBar">
+                <child type="start">
+                  <object class="PaplAvatar" id="header_avatar">
+                    <property name="size">28</property>
+                    <property name="valign">center</property>
+                  </object>
+                </child>
                 <child type="title">
                   <object class="AdwWindowTitle" id="window_title"/>
                 </child>

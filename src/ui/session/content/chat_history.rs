@@ -71,6 +71,8 @@ mod imp {
         #[template_child]
         pub(super) window_title: TemplateChild<adw::WindowTitle>,
         #[template_child]
+        pub(super) header_avatar: TemplateChild<ui::Avatar>,
+        #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
         #[template_child]
         pub(super) scrolled_window: TemplateChild<gtk::ScrolledWindow>,
@@ -433,6 +435,9 @@ impl ChatHistory {
             "title",
             Some(self),
         );
+
+        // Chat avatar in the header (also serves as identity when the sidebar is collapsed).
+        chat_expression.bind(&*self.imp().header_avatar, "item", Some(self));
     }
 
     fn open_info_dialog(&self) {
