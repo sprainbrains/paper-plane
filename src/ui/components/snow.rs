@@ -99,9 +99,9 @@ mod imp {
                 args_builder.set_float(0, time);
                 args_builder.set_vec4(1, &color);
 
-                let wigth = widget.width() as f32;
+                let width = widget.width() as f32;
                 let height = widget.height() as f32;
-                let bounds = graphene::Rect::new(0.0, 0.0, wigth, height);
+                let bounds = graphene::Rect::new(0.0, 0.0, width, height);
 
                 snapshot.push_gl_shader(shader, &bounds, args_builder.to_args());
                 snapshot.pop();
