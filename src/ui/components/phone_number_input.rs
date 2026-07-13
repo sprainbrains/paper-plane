@@ -16,6 +16,14 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 
+fn country_code_from_locale(locale: &str) -> Option<String> {
+    locale
+        .split('-')
+        .skip(1)
+        .find(|part| part.len() == 2 && part.bytes().all(|byte| byte.is_ascii_alphabetic()))
+        .map(str::to_ascii_uppercase)
+}
+
 mod imp {
     use super::*;
 
@@ -103,12 +111,9 @@ mod imp {
             // Set the system country code.
             self.system_country_code
                 .set(
-                    locale_config::Locale::current()
-                        .as_ref()
-                        .split(',')
-                        .next()
-                        .and_then(|lang_country| lang_country.split('-').nth(1))
-                        .map(str::to_string),
+                    sys_locale::get_locale()
+                        .as_deref()
+                        .and_then(country_code_from_locale),
                 )
                 .unwrap();
 

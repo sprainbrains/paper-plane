@@ -1,11 +1,23 @@
-use ellipse::Ellipse;
+use std::borrow::Cow;
+
 use gettextrs::gettext;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::i18n::gettext_f;
 use crate::model;
 use crate::strings::user_display_name;
 use crate::types::MessageId;
 use crate::utils;
+
+fn truncate_with_ellipsis(text: &str, len: usize) -> Cow<'_, str> {
+    if text.graphemes(true).count() <= len {
+        Cow::Borrowed(text)
+    } else if len == 0 {
+        Cow::Borrowed("")
+    } else {
+        Cow::Owned(text.graphemes(true).take(len).chain(["…"]).collect())
+    }
+}
 
 pub(crate) fn message_sender(sender: &model::MessageSender, use_full_name: bool) -> String {
     match sender {
@@ -404,11 +416,7 @@ fn message_pin_message(id: MessageId, chat: &model::Chat, sender: &model::Messag
         Some(message) => match message.content().0 {
             MessageText(data) => {
                 const TEXT_LENGTH: usize = 32;
-                let text = data
-                    .text
-                    .text
-                    .as_str()
-                    .truncate_ellipse_with(TEXT_LENGTH, "…");
+                let text = truncate_with_ellipsis(&data.text.text, TEXT_LENGTH);
 
                 gettext_f("{sender} pinned \"{text}\"", &[("text", &text)])
             }
@@ -432,4 +440,16 @@ fn message_pin_message(id: MessageId, chat: &model::Chat, sender: &model::Messag
 fn message_contact_registered(sender: &model::MessageSender) -> String {
     let sender = message_sender(sender, true);
     gettext_f("{sender} joined Telegram", &[("sender", &sender)])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_with_ellipsis;
+
+    #[test]
+    fn truncates_at_grapheme_boundaries() {
+        assert_eq!(truncate_with_ellipsis("🇩🇪🇬🇧🇮🇹", 2), "🇩🇪🇬🇧…");
+        assert_eq!(truncate_with_ellipsis("short", 32), "short");
+        assert_eq!(truncate_with_ellipsis("text", 0), "");
+    }
 }

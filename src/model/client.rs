@@ -138,14 +138,7 @@ impl Client {
     }
 
     pub(crate) async fn send_tdlib_parameters(&self) -> Result<(), tdlib::types::Error> {
-        let system_language_code = {
-            let locale = locale_config::Locale::current().to_string();
-            if !locale.is_empty() {
-                locale
-            } else {
-                "en_US".to_string()
-            }
-        };
+        let system_language_code = sys_locale::get_locale().unwrap_or_else(|| "en_US".to_string());
 
         let database_info = &self.database_info().0;
 
