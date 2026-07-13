@@ -1,9 +1,6 @@
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -17,56 +14,18 @@ use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::model;
 use crate::ui;
 use crate::utils;
 
-const EMOJI_SECTIONS: &[(&str, &str, &str)] = &[
-    ("Recently Used", "document-open-recent-symbolic", ""),
-    (
-        "Smileys & People",
-        "emoji-people-symbolic",
-        "😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🫣 🤭 🫢 🫡 🤫 🫠 🤥 😶 🫥 😐 🫤 😑 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕",
-    ),
-    (
-        "Animals & Nature",
-        "emoji-nature-symbolic",
-        "🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐻‍❄️ 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🙈 🙉 🙊 🐒 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🪱 🐛 🦋 🐌 🐞 🐜 🪰 🪲 🪳 🦟 🦗 🕷️ 🦂 🐢 🐍 🦎 🐙 🦑 🦀 🐠 🐟 🐬 🐳 🌵 🎄 🌲 🌳 🌴 🪴 🌱 🌿 ☘️ 🍀 🎍 🪺 🍁 🍄 🐚",
-    ),
-    (
-        "Food & Drink",
-        "emoji-food-symbolic",
-        "🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🍆 🥑 🥦 🥬 🥒 🌶️ 🫑 🌽 🥕 🫒 🧄 🧅 🥔 🍠 🥐 🥯 🍞 🥖 🥨 🧀 🥚 🍳 🧈 🥞 🧇 🥓 🥩 🍗 🍖 🌭 🍔 🍟 🍕 🥪 🥙 🧆 🌮 🌯 🥗 🍝 🍜 🍣 🍱 🥟 🍤 🍚 🍦 🍩 🍪 🎂 🍰 🧁 🍫 🍬 ☕️ 🫖 🧃 🥤 🍺 🍷",
-    ),
-    (
-        "Activities",
-        "emoji-activities-symbolic",
-        "⚽️ 🏀 🏈 ⚾️ 🥎 🎾 🏐 🏉 🥏 🎱 🪀 🏓 🏸 🏒 🏑 🥍 🏏 🪃 🥅 ⛳️ 🪁 🏹 🎣 🤿 🥊 🥋 🎽 🛹 🛼 🛷 ⛸️ 🥌 🎿 ⛷️ 🏂 🪂 🏋️ 🤼 🤸 ⛹️ 🤺 🤾 🏌️ 🏇 🧘 🏄 🏊 🤽 🚣 🧗 🚵 🚴 🏆 🥇 🥈 🥉 🎮 🕹️ 🎲 ♟️ 🎯 🎳 🎨 🎭 🎤 🎧 🎼 🎹 🥁 🎷 🎺 🎸 🎻",
-    ),
-    (
-        "Travel & Places",
-        "emoji-travel-symbolic",
-        "🚗 🚕 🚙 🚌 🚎 🏎️ 🚓 🚑 🚒 🚐 🛻 🚚 🚛 🚜 🛴 🚲 🛵 🏍️ 🚨 🚔 🚍 🚘 🚖 🚡 🚠 🚟 🚃 🚋 🚞 🚝 🚄 🚅 🚈 🚂 🚆 🚇 🚊 ✈️ 🛫 🛬 🛩️ 🚀 🛸 🚁 ⛵️ 🚤 🛥️ 🛳️ ⛴️ 🚢 ⚓️ ⛽️ 🚧 🚦 🗺️ 🗿 🗽 🗼 🏰 🏯 🏟️ 🎡 🎢 ⛲️ 🏖️ 🏝️ 🏜️ 🌋 ⛰️ 🏕️ 🌅 🌄 🌠 🎇 🌇 🌆 🏙️ 🌃 🌌",
-    ),
-    (
-        "Objects",
-        "emoji-objects-symbolic",
-        "⌚️ 📱 💻 ⌨️ 🖥️ 🖨️ 🖱️ 🕹️ 🗜️ 💽 💾 💿 📀 📼 📷 📸 📹 🎥 📽️ 🎞️ 📞 ☎️ 📟 📠 📺 📻 🎙️ ⏱️ ⏰ ⌛️ 🔋 🔌 💡 🔦 🕯️ 🧯 🛢️ 💸 💵 💶 💷 💰 💳 💎 ⚖️ 🪜 🧰 🪛 🔧 🔨 ⚒️ 🛠️ ⛏️ 🪚 🔩 ⚙️ 🧱 ⛓️ 🧲 🔫 💣 🧨 🪓 🔪 🗡️ ⚔️ 🛡️ 🚬 ⚰️ 🪦 🔮 📿 🧿 💈 ⚗️ 🔭 🔬 🕳️ 🩹 🩺 💊 💉 🧬 🦠 🧹 🧺 🧻 🚽 🚿 🛁 🪥 🧼 🪒",
-    ),
-    (
-        "Symbols",
-        "emoji-symbols-symbolic",
-        "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 ❤️‍🔥 ❤️‍🩹 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 ☮️ ✝️ ☪️ 🕉️ ☸️ ✡️ 🔯 🕎 ☯️ ☦️ 🛐 ⛎ ♈️ ♉️ ♊️ ♋️ ♌️ ♍️ ♎️ ♏️ ♐️ ♑️ ♒️ ♓️ 🆔 ⚛️ ☢️ ☣️ 📴 📳 🈶 🈚️ 🈸 🈺 🈷️ ✴️ 🆚 💮 🉐 ㊙️ ㊗️ 🈴 🈵 🈹 🈲 🅰️ 🅱️ 🆎 🆑 🅾️ 🆘 ❌ ⭕️ 🛑 ⛔️ 📛 🚫 💯 💢 ♨️ 🚷 🚯 🚳 🚱 🔞 📵 🚭 ❗️ ❓ ‼️ ⁉️ 🔅 🔆 〽️ ⚠️ 🚸 🔱 ⚜️ 🔰 ♻️ ✅ ❇️ ✳️ ❎ 🌐 💠 Ⓜ️ 🌀 💤",
-    ),
-    (
-        "Flags",
-        "emoji-flags-symbolic",
-        "🏁 🚩 🎌 🏴 🏳️ 🏳️‍🌈 🏳️‍⚧️ 🇺🇳 🇪🇺 🇩🇪 🇫🇷 🇬🇧 🇮🇹 🇪🇸 🇵🇱 🇺🇦 🇳🇱 🇧🇪 🇨🇭 🇦🇹 🇸🇪 🇳🇴 🇩🇰 🇫🇮 🇮🇸 🇮🇪 🇵🇹 🇬🇷 🇨🇿 🇸🇰 🇭🇺 🇷🇴 🇧🇬 🇭🇷 🇷🇸 🇸🇮 🇪🇪 🇱🇻 🇱🇹 🇺🇸 🇨🇦 🇲🇽 🇧🇷 🇦🇷 🇨🇱 🇨🇴 🇯🇵 🇰🇷 🇨🇳 🇮🇳 🇦🇺 🇳🇿 🇿🇦 🇪🇬 🇹🇷 🇮🇱 🇸🇦 🇦🇪",
-    ),
-];
+mod cache;
+mod emoji;
+mod rail;
+
+use self::cache::*;
+use self::emoji::*;
+use self::rail::*;
 
 mod imp {
     use super::*;
@@ -257,19 +216,6 @@ enum PickerMode {
     Reaction,
 }
 
-/// A sticker-pack icon in the navigation rail whose cover thumbnail is fetched
-/// lazily — only once the button scrolls into the rail's viewport — so opening the
-/// sticker tab doesn't stampede the decode limiter with one decode per installed pack.
-#[derive(Debug)]
-struct RailCover {
-    button: glib::WeakRef<gtk::Button>,
-    picture: glib::WeakRef<gtk::Picture>,
-    cover: Option<tdlib::types::Sticker>,
-    thumbnail: Option<tdlib::types::File>,
-    demand: Rc<Cell<bool>>,
-    loaded: bool,
-}
-
 #[derive(Debug, Clone)]
 enum StickerRow {
     Header { title: String, set_id: Option<i64> },
@@ -278,93 +224,11 @@ enum StickerRow {
     Error { set_id: i64, title: String },
 }
 
-/// A row in the virtualized emoji `ListView`. The emoji page is a `GtkListView` so
-/// only on-screen rows are ever built/decoded/animated — the standard-emoji wall of
-/// buttons and every off-screen custom-emoji pack cost nothing until scrolled to.
-#[derive(Debug, Clone)]
-enum EmojiRow {
-    /// A section heading; `name` is the rail key used to scroll to it.
-    Header { title: String, name: String },
-    /// A row of standard emoji characters.
-    Emoji(Vec<String>),
-    /// A row of custom-emoji stickers.
-    CustomEmoji(Vec<tdlib::types::Sticker>),
-}
-
-const STICKER_SET_CACHE_VERSION: u32 = 1;
-
-/// Emoji per row on the emoji page (standard and custom alike).
-const EMOJI_ROW_LEN: usize = 8;
-
 /// How many sticker rows past the just-bound one to warm the preview cache for, so a
 /// buffer below the viewport is already decoded when scrolled into view. GtkListView
 /// only realizes ~1 row of overdraw itself (a hardcoded 10px in `gtklistbase.c`), so
 /// this model-level read-ahead is what actually provides the buffer.
 const PICKER_PRELOAD_ROWS: u32 = 5;
-
-/// Layout of custom-emoji rows in the emoji page, chosen to match the standard
-/// emoji grid's density rather than the larger sticker cells.
-const CUSTOM_EMOJI_COLUMNS: i32 = 8;
-const CUSTOM_EMOJI_CELL_SIZE: i32 = 44;
-const CUSTOM_EMOJI_SIZE: i32 = 30;
-
-/// glib qdata key under which each realized picker row stashes its section's rail key,
-/// so the scroll handler can tell which section a visible row belongs to.
-const RAIL_SECTION_KEY: &str = "papl-rail-section";
-
-/// Records `section` (a rail key) on a freshly built picker row.
-fn tag_rail_section(widget: &impl IsA<gtk::Widget>, section: String) {
-    // Safe: only ever a `String` is stored under this key, and the row is a fresh widget
-    // dropped on unbind, so the data is cleared along with it.
-    unsafe { widget.set_data(RAIL_SECTION_KEY, section) };
-}
-
-/// Reads back the rail key stashed by [`tag_rail_section`], if any.
-fn widget_rail_section(widget: &gtk::Widget) -> Option<String> {
-    // Safe: the only writer (`tag_rail_section`) always stores a `String`.
-    unsafe {
-        widget
-            .data::<String>(RAIL_SECTION_KEY)
-            .map(|value| value.as_ref().clone())
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-struct StickerSetSignature {
-    title: String,
-    name: String,
-    size: i32,
-    thumbnail_file_id: Option<i32>,
-    cover_file_ids: Vec<i32>,
-}
-
-impl From<&tdlib::types::StickerSetInfo> for StickerSetSignature {
-    fn from(info: &tdlib::types::StickerSetInfo) -> Self {
-        Self {
-            title: info.title.clone(),
-            name: info.name.clone(),
-            size: info.size,
-            thumbnail_file_id: info.thumbnail.as_ref().map(|thumbnail| thumbnail.file.id),
-            cover_file_ids: info
-                .covers
-                .iter()
-                .map(|sticker| sticker.sticker.id)
-                .collect(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-struct CachedStickerSet {
-    signature: StickerSetSignature,
-    set: tdlib::types::StickerSet,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-struct StickerSetCache {
-    version: u32,
-    sets: HashMap<i64, CachedStickerSet>,
-}
 
 impl ContentPicker {
     fn emoji_model(&self) -> &gio::ListStore {
@@ -544,30 +408,6 @@ impl ContentPicker {
         }
     }
 
-    /// The section rail key for the row at `position`: its own name if it is a header,
-    /// else the nearest header above it. Used to tag rows so the rail follows scroll.
-    fn emoji_section_name_at(&self, position: u32) -> Option<String> {
-        let model = self.emoji_model();
-        (0..=position).rev().find_map(|p| {
-            let item = model.item(p).and_downcast::<glib::BoxedAnyObject>()?;
-            match &*item.borrow::<EmojiRow>() {
-                EmojiRow::Header { name, .. } => Some(name.clone()),
-                _ => None,
-            }
-        })
-    }
-
-    fn sticker_section_name_at(&self, position: u32) -> Option<String> {
-        let model = self.sticker_model();
-        (0..=position).rev().find_map(|p| {
-            let item = model.item(p).and_downcast::<glib::BoxedAnyObject>()?;
-            match &*item.borrow::<StickerRow>() {
-                StickerRow::Header { title, .. } => Some(title.clone()),
-                _ => None,
-            }
-        })
-    }
-
     /// Warms the preview cache for the few sticker rows just after `position`, so rows
     /// about to scroll into view are already decoded. Cheap: `load_picker_preview`
     /// deduplicates against its cache and in-flight decodes.
@@ -584,43 +424,6 @@ impl ContentPicker {
             {
                 ui::prefetch_sticker_previews(stickers, &session, scale);
             }
-        }
-    }
-
-    /// Highlights the rail entry for the section whose row occupies the top of the
-    /// visible page, so the active rail icon follows the scroll position.
-    fn update_active_rail_for(&self, list: &gtk::ListView, page: &gtk::ScrolledWindow) {
-        // A hidden page (e.g. stickers loading in the background) must not steal the
-        // visible page's rail highlight.
-        if !self
-            .imp()
-            .content_stack
-            .visible_child()
-            .is_some_and(|visible| &visible == page.upcast_ref::<gtk::Widget>())
-        {
-            return;
-        }
-        let viewport_height = page.height() as f32;
-        let mut top_section: Option<(f32, String)> = None;
-        for item_widget in utils::ChildIter::from(list.upcast_ref::<gtk::Widget>()) {
-            let Some(bounds) = item_widget.compute_bounds(page) else {
-                continue;
-            };
-            let top = bounds.y();
-            let bottom = top + bounds.height();
-            // Skip rows fully above the viewport top (overdraw) or fully below it.
-            if bottom <= 1.0 || top >= viewport_height {
-                continue;
-            }
-            if top_section.as_ref().is_none_or(|(t, _)| top < *t)
-                && let Some(row) = item_widget.first_child()
-                && let Some(section) = widget_rail_section(&row)
-            {
-                top_section = Some((top, section));
-            }
-        }
-        if let Some((_, section)) = top_section {
-            self.set_active_rail(&section);
         }
     }
 
@@ -1339,7 +1142,7 @@ impl ContentPicker {
         let mut previous_cache = load_sticker_set_cache(cache_path.clone()).await;
         let mut next_cache = StickerSetCache {
             version: STICKER_SET_CACHE_VERSION,
-            sets: HashMap::new(),
+            sets: Default::default(),
         };
         let loading_position = self.sticker_model().n_items();
         if !infos.is_empty() {
@@ -1773,93 +1576,6 @@ fn log_tdlib_result<T>(label: &str, started: Instant, result: &Result<T, tdlib::
     }
 }
 
-/// The section name of a custom-emoji pack in the emoji model.
-fn custom_emoji_section_name(set_id: i64) -> String {
-    format!("custom-emoji-{set_id}")
-}
-
-/// Pushes a section (header row + chunked emoji rows) onto the emoji model rows.
-fn push_emoji_section(
-    rows: &mut Vec<glib::BoxedAnyObject>,
-    title: &str,
-    name: &str,
-    emojis: &[String],
-) {
-    rows.push(glib::BoxedAnyObject::new(EmojiRow::Header {
-        title: title.to_owned(),
-        name: name.to_owned(),
-    }));
-    // The whole section is one grid row (rendered as an 8-column GtkGrid), so every
-    // line has a consistent 8 columns. Standard emoji are cheap text labels, and the
-    // ListView still only realizes the visible sections.
-    if !emojis.is_empty() {
-        rows.push(glib::BoxedAnyObject::new(EmojiRow::Emoji(emojis.to_vec())));
-    }
-}
-
-fn sticker_set_cache_path(session: &model::ClientStateSession) -> PathBuf {
-    utils::data_dir()
-        .join(session.client_().database_info().0.directory_base_name)
-        .join("sticker-sets-v1.json")
-}
-
-async fn load_sticker_set_cache(path: PathBuf) -> StickerSetCache {
-    let started = Instant::now();
-    let result = gio::spawn_blocking(move || {
-        let data = fs::read(path)?;
-        serde_json::from_slice::<StickerSetCache>(&data)
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-    })
-    .await;
-    match result {
-        Ok(Ok(cache)) if cache.version == STICKER_SET_CACHE_VERSION => {
-            log::info!(
-                target: "paper_plane::content_picker",
-                "sticker set cache loaded; sets={} elapsed={:?}",
-                cache.sets.len(),
-                started.elapsed(),
-            );
-            cache
-        }
-        Ok(Err(error)) if error.kind() != std::io::ErrorKind::NotFound => {
-            log::warn!(
-                target: "paper_plane::content_picker",
-                "failed to load sticker set cache: {error}"
-            );
-            StickerSetCache::default()
-        }
-        _ => StickerSetCache::default(),
-    }
-}
-
-async fn save_sticker_set_cache(path: PathBuf, cache: StickerSetCache) {
-    let set_count = cache.sets.len();
-    let started = Instant::now();
-    let result = gio::spawn_blocking(move || {
-        let data = serde_json::to_vec(&cache)
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
-        let temporary = path.with_extension("json.tmp");
-        fs::write(&temporary, data)?;
-        fs::rename(temporary, path)
-    })
-    .await;
-    match result {
-        Ok(Ok(())) => log::info!(
-            target: "paper_plane::content_picker",
-            "sticker set cache saved; sets={set_count} elapsed={:?}",
-            started.elapsed(),
-        ),
-        Ok(Err(error)) => log::warn!(
-            target: "paper_plane::content_picker",
-            "failed to save sticker set cache: {error}"
-        ),
-        Err(_) => log::warn!(
-            target: "paper_plane::content_picker",
-            "sticker set cache writer failed"
-        ),
-    }
-}
-
 fn section_title(text: &str) -> gtk::Label {
     gtk::Label::builder()
         .label(text)
@@ -1896,43 +1612,6 @@ fn status_row(title: &str, message: &str, retry: Option<Box<dyn Fn()>>) -> gtk::
         row.append(&button);
     }
     row.upcast()
-}
-
-/// A fixed `EMOJI_ROW_LEN`-column grid of emoji buttons. A column-homogeneous
-/// `GtkGrid` guarantees exactly that many per line (unlike a `FlowBox`, whose
-/// homogeneous natural width dropped the 8th column to a new line).
-fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>) -> gtk::Grid {
-    let grid = gtk::Grid::builder().column_homogeneous(true).build();
-    for (i, emoji) in emojis.enumerate() {
-        let button = gtk::Button::with_label(emoji);
-        button.add_css_class("flat");
-        button.add_css_class("emoji-picker-item");
-        let value = emoji.to_string();
-        button.connect_clicked(clone!(
-            #[weak]
-            picker,
-            move |_| {
-                if picker.imp().mode.get() == PickerMode::Reaction {
-                    let reaction_type = model::BoxedReactionType(
-                        tdlib::enums::ReactionType::Emoji(tdlib::types::ReactionTypeEmoji {
-                            emoji: value.clone(),
-                        }),
-                    );
-                    picker.emit_by_name::<()>("reaction-picked", &[&reaction_type]);
-                } else {
-                    picker.remember_emoji(&value);
-                    if let Some(session) = utils::ancestor::<_, ui::Session>(&picker) {
-                        session.insert_emoji(&value);
-                    }
-                }
-                picker.emit_by_name::<()>("content-picked", &[]);
-            }
-        ));
-        let column = (i % EMOJI_ROW_LEN) as i32;
-        let row = (i / EMOJI_ROW_LEN) as i32;
-        grid.attach(&button, column, row, 1, 1);
-    }
-    grid
 }
 
 /// Factory setup that makes a list item non-selectable and non-activatable, so the

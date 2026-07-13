@@ -407,7 +407,7 @@ impl StickerPickerRow {
                 let Some(session) = session_weak.upgrade() else {
                     return;
                 };
-                if let Ok(texture) = super::load_picker_preview(
+                if let Ok(texture) = super::sticker_cache::load_picker_preview(
                     &sticker,
                     sticker_size * scale,
                     &session,
@@ -502,7 +502,8 @@ impl StickerPickerRow {
                 let Some(session) = session_weak.upgrade() else {
                     return;
                 };
-                let Some(path) = super::download_sticker_path(file, &session).await else {
+                let Some(path) = super::sticker_cache::download_sticker_path(file, &session).await
+                else {
                     return;
                 };
                 if !demand_task.get() {
@@ -632,8 +633,13 @@ pub(crate) fn prefetch_sticker_previews(
         let sticker = sticker.clone();
         let session = session.clone();
         utils::spawn(async move {
-            let _ = super::load_picker_preview(&sticker, size, &session, Rc::new(Cell::new(true)))
-                .await;
+            let _ = super::sticker_cache::load_picker_preview(
+                &sticker,
+                size,
+                &session,
+                Rc::new(Cell::new(true)),
+            )
+            .await;
         });
     }
 }

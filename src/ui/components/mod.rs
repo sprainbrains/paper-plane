@@ -12,6 +12,7 @@ mod message_entry;
 mod phone_number_input;
 mod snow;
 mod sticker;
+mod sticker_cache;
 mod sticker_picker_row;
 
 pub(crate) use self::animated_bin::AnimatedBin;
@@ -28,8 +29,7 @@ pub(crate) use self::message_entry::MessageEntry;
 pub(crate) use self::phone_number_input::PhoneNumberInput;
 pub(crate) use self::snow::Snow;
 pub(crate) use self::sticker::Sticker;
-pub(crate) use self::sticker::download_sticker_path;
-pub(crate) use self::sticker::load_picker_file_preview;
-pub(crate) use self::sticker::load_picker_preview;
+pub(crate) use self::sticker_cache::load_picker_file_preview;
+pub(crate) use self::sticker_cache::load_picker_preview;
 pub(crate) use self::sticker_picker_row::StickerPickerRow;
 pub(crate) use self::sticker_picker_row::prefetch_sticker_previews;
