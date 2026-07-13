@@ -5,6 +5,8 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use adw::prelude::*;
+use adw::subclass::prelude::*;
 use futures::StreamExt;
 use gettextrs::gettext;
 use glib::clone;
@@ -12,8 +14,6 @@ use glib::subclass::Signal;
 use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
-use gtk::prelude::*;
-use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
@@ -39,6 +39,13 @@ mod imp {
         pub(super) mode: Cell<PickerMode>,
         /// `(chat_id, message_id)` targeted when in [`PickerMode::Reaction`].
         pub(super) reaction_target: Cell<Option<(i64, i64)>>,
+        /// When the target chat restricts reactions to a specific set, the allowed
+        /// standard-emoji strings; the emoji page then offers only these (and no custom
+        /// emoji). `None` means unrestricted (full keyboard + custom emoji).
+        pub(super) reaction_allowed_emoji: RefCell<Option<Vec<String>>>,
+        /// Whether the picker's header bar should show the window close button. Set
+        /// only when the picker is the window's end sidebar; kept off in popovers.
+        pub(super) show_window_controls: Cell<bool>,
         pub(super) stickers_loaded: Cell<bool>,
         pub(super) gifs_loaded: Cell<bool>,
         /// Whether the emoji page's full content (standard + custom emoji) is built,
@@ -53,6 +60,10 @@ mod imp {
         pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
+        /// Debounces the active-rail update onto idle, so it reads row bounds after the
+        /// scroll has re-laid-out (reading them synchronously in value-changed gives the
+        /// pre-scroll positions, which highlighted the wrong section).
+        pub(super) rail_update_pending: Cell<bool>,
         pub(super) emoji_model: OnceCell<gio::ListStore>,
         pub(super) sticker_model: OnceCell<gio::ListStore>,
         pub(super) gif_model: OnceCell<gio::ListStore>,
@@ -62,11 +73,9 @@ mod imp {
         pub(super) rail_sections: RefCell<Vec<(String, glib::WeakRef<gtk::Button>)>>,
         pub(super) animations: RefCell<Vec<tdlib::types::Animation>>,
         #[template_child]
-        pub(super) emoji_tab: TemplateChild<gtk::ToggleButton>,
+        pub(super) header_bar: TemplateChild<adw::HeaderBar>,
         #[template_child]
-        pub(super) sticker_tab: TemplateChild<gtk::ToggleButton>,
-        #[template_child]
-        pub(super) gif_tab: TemplateChild<gtk::ToggleButton>,
+        pub(super) tabs: TemplateChild<adw::ToggleGroup>,
         #[template_child]
         pub(super) search_entry: TemplateChild<gtk::SearchEntry>,
         #[template_child]
@@ -123,6 +132,7 @@ mod imp {
                 vec![
                     glib::ParamSpecObject::builder::<model::ClientStateSession>("session").build(),
                     glib::ParamSpecObject::builder::<model::Chat>("chat").build(),
+                    glib::ParamSpecBoolean::builder("show-window-controls").build(),
                 ]
             })
         }
@@ -131,6 +141,7 @@ mod imp {
             match pspec.name() {
                 "session" => self.session.set(value.get().unwrap()),
                 "chat" => self.chat.set(value.get().unwrap()),
+                "show-window-controls" => self.show_window_controls.set(value.get().unwrap()),
                 _ => unimplemented!(),
             }
         }
@@ -139,6 +150,7 @@ mod imp {
             match pspec.name() {
                 "session" => self.session.upgrade().to_value(),
                 "chat" => self.chat.upgrade().to_value(),
+                "show-window-controls" => self.show_window_controls.get().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -152,25 +164,14 @@ mod imp {
             obj.setup_gif_grid();
             obj.setup_rail_scrolling();
             obj.build_emoji_page();
-            self.emoji_tab.connect_toggled(clone!(
+            self.tabs.connect_active_name_notify(clone!(
                 #[weak]
                 obj,
-                move |b| if b.is_active() {
-                    obj.show_page(PickerPage::Emoji);
-                }
-            ));
-            self.sticker_tab.connect_toggled(clone!(
-                #[weak]
-                obj,
-                move |b| if b.is_active() {
-                    obj.show_page(PickerPage::Stickers);
-                }
-            ));
-            self.gif_tab.connect_toggled(clone!(
-                #[weak]
-                obj,
-                move |b| if b.is_active() {
-                    obj.show_page(PickerPage::Gifs);
+                move |tabs| match tabs.active_name().as_deref() {
+                    Some("emoji") => obj.show_page(PickerPage::Emoji),
+                    Some("stickers") => obj.show_page(PickerPage::Stickers),
+                    Some("gifs") => obj.show_page(PickerPage::Gifs),
+                    _ => {}
                 }
             ));
             self.search_entry.connect_search_changed(clone!(
@@ -218,10 +219,23 @@ enum PickerMode {
 
 #[derive(Debug, Clone)]
 enum StickerRow {
-    Header { title: String, set_id: Option<i64> },
+    Header {
+        title: String,
+        set_id: Option<i64>,
+    },
+    /// The header of a single-pack view (opened via "Show sticker pack"): a back
+    /// button, the pack title, its id (debug), and an "Add" action.
+    PackHeader {
+        set_id: i64,
+        title: String,
+        is_installed: bool,
+    },
     Stickers(Vec<tdlib::types::Sticker>),
     Loading(String),
-    Error { set_id: i64, title: String },
+    Error {
+        set_id: i64,
+        title: String,
+    },
 }
 
 /// How many sticker rows past the just-bound one to warm the preview cache for, so a
@@ -323,6 +337,11 @@ impl ContentPicker {
                 );
                 let child: gtk::Widget = match &*row.borrow::<StickerRow>() {
                     StickerRow::Header { title, .. } => section_title(title).upcast(),
+                    StickerRow::PackHeader {
+                        set_id,
+                        title,
+                        is_installed,
+                    } => obj.build_pack_header(*set_id, title, *is_installed),
                     StickerRow::Stickers(stickers) => obj.build_sticker_row(stickers).upcast(),
                     StickerRow::Loading(title) => status_row(title, &gettext("Loading…"), None),
                     StickerRow::Error { set_id, title } => {
@@ -391,7 +410,7 @@ impl ContentPicker {
                 list,
                 move |_| {
                     obj.mark_scrolling();
-                    obj.update_active_rail_for(&list, &page);
+                    obj.queue_active_rail_update(&list, &page);
                 }
             ));
             // `changed` fires when the content is (re)allocated — after a pack loads or
@@ -480,7 +499,7 @@ impl ContentPicker {
                     return;
                 };
                 let animation = row.borrow::<tdlib::types::Animation>().clone();
-                cell.set_animation(animation, &session);
+                cell.set_animation(animation, &session, obj.imp().sticker_scrolling.clone());
             }
         ));
         factory.connect_unbind(|_, item| {
@@ -496,12 +515,31 @@ impl ContentPicker {
             self,
             move |_, position| obj.activate_gif(position as usize)
         ));
+
+        // Gate the GIF grid on scrolling, exactly like the sticker/emoji lists: while
+        // the grid is being flung, bound cells keep their cheap static minithumbnail
+        // and defer spinning up a GStreamer pipeline until it settles (see
+        // GifCell::set_animation). Without this, fast scrolling churns pipelines and
+        // file descriptors and can crash the app.
+        self.imp()
+            .gif_page
+            .vadjustment()
+            .connect_value_changed(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_| obj.mark_scrolling()
+            ));
+    }
+
+    /// Name of the currently selected tab (`"emoji"`, `"stickers"`, or `"gifs"`).
+    fn active_tab(&self) -> Option<glib::GString> {
+        self.imp().tabs.active_name()
     }
 
     pub(crate) fn refresh(&self) {
         // Refresh the Recently Used emoji section on each open, without paying for a
         // full rebuild (and custom-emoji re-download) on every open.
-        if self.imp().emoji_tab.is_active() && !self.imp().emoji_search_active.get() {
+        if self.active_tab().as_deref() == Some("emoji") && !self.imp().emoji_search_active.get() {
             if self.imp().emoji_built.get() {
                 self.refresh_recent_emoji();
             } else {
@@ -547,6 +585,19 @@ impl ContentPicker {
         self.imp()
             .custom_emoji_generation
             .set(self.imp().custom_emoji_generation.get().wrapping_add(1));
+
+        // Restricted reaction chats only allow a specific set — offer exactly those and
+        // no custom emoji, so the user can never pick a reaction that TDLib rejects.
+        if let Some(allowed) = self.imp().reaction_allowed_emoji.borrow().clone() {
+            let mut rows: Vec<glib::BoxedAnyObject> = Vec::new();
+            push_emoji_section(&mut rows, &gettext("Reactions"), "Reactions", &allowed);
+            let model = self.emoji_model();
+            model.remove_all();
+            model.splice(0, 0, &rows);
+            self.rebuild_rail(PickerPage::Emoji);
+            self.imp().emoji_built.set(true);
+            return;
+        }
 
         let mut rows: Vec<glib::BoxedAnyObject> = Vec::new();
         let recent = utils::PaperPlaneSettings::default().strv("recent-emojis");
@@ -1042,6 +1093,135 @@ impl ContentPicker {
         }
     }
 
+    /// Opens the sticker tab showing only the sticker pack `set_id`, with a back button
+    /// to return to the normal list. Used by the message menu's "Show sticker pack".
+    pub(crate) fn show_sticker_pack(&self, set_id: i64) {
+        // Keep the sticker tab's lazy auto-load from overwriting the pack view.
+        self.imp().stickers_loaded.set(true);
+        self.imp().tabs.set_active_name(Some("stickers"));
+
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let client_id = session.client_().id();
+        let generation = self.next_sticker_generation();
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                match tdlib::functions::get_sticker_set(set_id, client_id).await {
+                    Ok(tdlib::enums::StickerSet::StickerSet(set)) => {
+                        if !obj.sticker_generation_is(generation) {
+                            return;
+                        }
+                        let model = obj.sticker_model();
+                        model.remove_all();
+                        let mut rows: Vec<glib::BoxedAnyObject> =
+                            vec![glib::BoxedAnyObject::new(StickerRow::PackHeader {
+                                set_id: set.id,
+                                title: set.title.clone(),
+                                is_installed: set.is_installed,
+                            })];
+                        for chunk in set.stickers.chunks(5) {
+                            rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
+                                chunk.to_vec(),
+                            )));
+                        }
+                        model.splice(0, 0, &rows);
+                        // A single pack needs no section rail.
+                        clear_box(&obj.imp().navigation_rail);
+                        obj.imp().rail_sections.borrow_mut().clear();
+                        obj.imp().rail_covers.borrow_mut().clear();
+                    }
+                    Err(e) => log::warn!("Failed to load sticker pack {set_id}: {e:?}"),
+                }
+            }
+        ));
+    }
+
+    fn build_pack_header(&self, set_id: i64, title: &str, is_installed: bool) -> gtk::Widget {
+        let row = gtk::Box::builder()
+            .spacing(6)
+            .margin_start(6)
+            .margin_end(6)
+            .margin_top(6)
+            .margin_bottom(6)
+            .build();
+
+        let back = gtk::Button::from_icon_name("go-previous-symbolic");
+        back.add_css_class("flat");
+        back.set_tooltip_text(Some(&gettext("Back")));
+        back.set_valign(gtk::Align::Center);
+        back.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.exit_sticker_pack()
+        ));
+        row.append(&back);
+
+        let titles = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .hexpand(true)
+            .valign(gtk::Align::Center)
+            .build();
+        titles.append(
+            &gtk::Label::builder()
+                .label(title)
+                .xalign(0.0)
+                .css_classes(["heading"])
+                .build(),
+        );
+        // The raw set id is a developer aid, shown only when debug options are on.
+        if utils::PaperPlaneSettings::default().boolean("debug-options-enabled") {
+            titles.append(
+                &gtk::Label::builder()
+                    .label(format!("ID: {set_id}"))
+                    .xalign(0.0)
+                    .selectable(true)
+                    .css_classes(["dim-label", "caption"])
+                    .build(),
+            );
+        }
+        row.append(&titles);
+
+        if !is_installed {
+            let add = gtk::Button::with_label(&gettext("Add"));
+            add.add_css_class("suggested-action");
+            add.set_valign(gtk::Align::Center);
+            add.connect_clicked(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |button| {
+                    button.set_sensitive(false);
+                    obj.add_sticker_pack(set_id);
+                }
+            ));
+            row.append(&add);
+        }
+
+        row.upcast()
+    }
+
+    fn exit_sticker_pack(&self) {
+        // Return to the normal installed-sticker list.
+        self.imp().stickers_loaded.set(true);
+        self.load_sticker_content();
+    }
+
+    fn add_sticker_pack(&self, set_id: i64) {
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let client_id = session.client_().id();
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::change_sticker_set(set_id, true, false, client_id).await
+            {
+                log::warn!("Failed to add sticker pack {set_id}: {e:?}");
+            }
+        });
+    }
+
     fn load_sticker_content(&self) {
         let Some(session) = self.imp().session.upgrade() else {
             return;
@@ -1475,15 +1655,15 @@ impl ContentPicker {
 
     fn search(&self, query: &str) {
         let query = query.trim().to_lowercase();
+        let active_tab = self.active_tab();
+        let active_tab = active_tab.as_deref();
         log::debug!(
             target: "paper_plane::content_picker",
-            "search changed; query_len={} emoji_tab={} sticker_tab={} gif_tab={}",
+            "search changed; query_len={} active_tab={:?}",
             query.chars().count(),
-            self.imp().emoji_tab.is_active(),
-            self.imp().sticker_tab.is_active(),
-            self.imp().gif_tab.is_active(),
+            active_tab,
         );
-        if self.imp().emoji_tab.is_active() {
+        if active_tab == Some("emoji") {
             if query.is_empty() {
                 // Only rebuild the (large) static emoji page when we're actually
                 // returning from a search; tab switches and redundant clears skip it.
@@ -1520,7 +1700,7 @@ impl ContentPicker {
                     }
                 ));
             }
-        } else if self.imp().sticker_tab.is_active() && query.is_empty() {
+        } else if active_tab == Some("stickers") && query.is_empty() {
             if self.imp().sticker_search_active.replace(false) {
                 log::info!(
                     target: "paper_plane::content_picker",
@@ -1528,7 +1708,7 @@ impl ContentPicker {
                 );
                 self.load_sticker_content();
             }
-        } else if self.imp().sticker_tab.is_active() {
+        } else if active_tab == Some("stickers") {
             self.imp().sticker_search_active.set(true);
             let generation = self.next_sticker_generation();
             let Some(session) = self.imp().session.upgrade() else {
@@ -1639,16 +1819,25 @@ impl ContentPicker {
     /// picking an emoji or custom emoji emits `reaction-picked` instead of editing
     /// the message entry. The reaction picker is a single emoji + custom-emoji panel
     /// (tdesktop-style), so the tab bar, sticker tab, and GIF tab are hidden.
-    pub(crate) fn set_reaction_mode(&self, chat_id: i64, message_id: i64) {
+    ///
+    /// `allowed_emoji` constrains the picker to a chat's restricted reaction set (only
+    /// those emoji, no custom emoji); `None` offers the full keyboard + custom emoji.
+    pub(crate) fn set_reaction_mode(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        allowed_emoji: Option<Vec<String>>,
+    ) {
         let imp = self.imp();
         imp.mode.set(PickerMode::Reaction);
         imp.reaction_target.set(Some((chat_id, message_id)));
-        imp.gif_tab.set_visible(false);
-        imp.sticker_tab.set_visible(false);
-        // Hide the whole tab bar — only the emoji (+ custom emoji) page remains.
-        if let Some(tabs) = imp.emoji_tab.parent() {
-            tabs.set_visible(false);
-        }
+        imp.reaction_allowed_emoji.replace(allowed_emoji);
+        // Hide the whole header bar (tabs + window controls) — only the emoji
+        // (+ custom emoji) page remains.
+        imp.header_bar.set_visible(false);
+        // Drop the picker's own opaque background so it sits directly on the popover's
+        // native surface instead of looking like a widget boxed inside it.
+        self.add_css_class("reaction-mode");
     }
 
     pub(crate) fn connect_reaction_picked<F: Fn(&Self, model::BoxedReactionType) + 'static>(

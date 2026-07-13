@@ -59,6 +59,30 @@ impl ContentPicker {
         })
     }
 
+    /// Schedules an active-rail update on idle (debounced). Reading row bounds directly
+    /// from the scroll handler sees the pre-scroll layout; idle runs after the relayout.
+    pub(super) fn queue_active_rail_update(
+        &self,
+        list: &gtk::ListView,
+        page: &gtk::ScrolledWindow,
+    ) {
+        if self.imp().rail_update_pending.replace(true) {
+            return;
+        }
+        glib::idle_add_local_once(glib::clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            list,
+            #[weak]
+            page,
+            move || {
+                obj.imp().rail_update_pending.set(false);
+                obj.update_active_rail_for(&list, &page);
+            }
+        ));
+    }
+
     pub(super) fn update_active_rail_for(&self, list: &gtk::ListView, page: &gtk::ScrolledWindow) {
         if !self
             .imp()

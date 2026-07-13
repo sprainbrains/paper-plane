@@ -214,12 +214,32 @@ impl MessageMenuReactions {
             return;
         };
 
+        // If the chat restricts reactions to a specific set, offer only those emoji;
+        // otherwise (`All`) show the full keyboard + custom emoji.
+        let allowed_emoji = match chat.available_reactions() {
+            Some(tdlib::enums::ChatAvailableReactions::Some(some)) => Some(
+                some.reactions
+                    .into_iter()
+                    .filter_map(|reaction| match reaction {
+                        tdlib::enums::ReactionType::Emoji(emoji) => Some(emoji.emoji),
+                        _ => None,
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
+
         let picker: ui::ContentPicker = glib::Object::builder()
             .property("session", &session)
             .property("chat", &chat)
             .build();
-        picker.set_reaction_mode(chat_id, message_id);
+        picker.set_reaction_mode(chat_id, message_id, allowed_emoji);
         picker.set_size_request(360, 420);
+        // The `session` property is set after construction, so the emoji page built in
+        // `constructed()` had no session and skipped custom-emoji packs. Refresh now
+        // that the session is available so custom-emoji reactions appear (the sidebar
+        // and compose popup rely on the same refresh).
+        picker.refresh();
 
         // Reveal the picker with a downward "unfold" so it grows open from the
         // reaction bar's position instead of just appearing.
