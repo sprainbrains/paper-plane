@@ -479,16 +479,9 @@ impl Row {
             use tdlib::enums::MessageContent::*;
 
             // Text messages edit their text; captioned media edit their caption.
-            let is_editable = matches!(
-                message.content().0,
-                MessageText(_)
-                    | MessagePhoto(_)
-                    | MessageVideo(_)
-                    | MessageAnimation(_)
-                    | MessageDocument(_)
-                    | MessageAudio(_)
-                    | MessageVoiceNote(_)
-            );
+            let content = message.content();
+            let is_editable = matches!(content.0, MessageText(_))
+                || super::captioned_media_caption(&content.0).is_some();
 
             is_editable && message.can_be_edited() && can_send_messages_in_chat(&message.chat_())
         } else {
@@ -657,13 +650,7 @@ fn copyable_text(content: &tdlib::enums::MessageContent) -> Option<String> {
 
     let text = match content {
         MessageText(data) => &data.text.text,
-        MessagePhoto(data) => &data.caption.text,
-        MessageVideo(data) => &data.caption.text,
-        MessageAnimation(data) => &data.caption.text,
-        MessageDocument(data) => &data.caption.text,
-        MessageAudio(data) => &data.caption.text,
-        MessageVoiceNote(data) => &data.caption.text,
-        _ => return None,
+        other => &super::captioned_media_caption(other)?.text,
     };
 
     (!text.is_empty()).then(|| text.clone())

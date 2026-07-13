@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
@@ -6,6 +8,23 @@ use gtk::subclass::prelude::*;
 
 use crate::ui;
 use crate::utils;
+
+#[derive(Debug, Default)]
+pub(super) struct MessageHandler(RefCell<Option<glib::SignalHandlerId>>);
+
+impl MessageHandler {
+    pub(super) fn disconnect(&self, message: &glib::WeakRef<crate::model::Message>) {
+        if let Some(handler) = self.0.take()
+            && let Some(message) = message.upgrade()
+        {
+            message.disconnect(handler);
+        }
+    }
+
+    pub(super) fn set(&self, handler: glib::SignalHandlerId) {
+        self.0.replace(Some(handler));
+    }
+}
 
 mod imp {
     use super::*;

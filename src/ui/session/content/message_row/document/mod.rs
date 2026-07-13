@@ -2,7 +2,6 @@ mod file_status;
 mod status_indicator;
 
 use std::cell::RefCell;
-use std::sync::OnceLock;
 
 use file_status::FileStatus;
 use glib::clone;
@@ -16,18 +15,25 @@ use gtk::subclass::prelude::*;
 pub(crate) use self::status_indicator::StatusIndicator;
 use crate::model;
 use crate::ui;
-use crate::ui::MessageBaseExt;
 use crate::utils;
 
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Debug, Default, CompositeTemplate, glib::Properties)]
     #[template(resource = "/app/drey/paper-plane/ui/session/content/message_row/document/mod.ui")]
+    #[properties(wrapper_type = super::MessageDocument)]
     pub(crate) struct MessageDocument {
         pub(super) bindings: RefCell<Vec<gtk::ExpressionWatch>>,
         pub(super) handler_id: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) status_handler_id: RefCell<Option<glib::SignalHandlerId>>,
+        #[property(
+            type = Option<glib::Object>,
+            get = Self::message,
+            set = Self::set_message,
+            explicit_notify,
+            nullable
+        )]
         pub(super) message: glib::WeakRef<model::Message>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
@@ -62,30 +68,26 @@ mod imp {
 
     impl ObjectImpl for MessageDocument {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<glib::Object>("message")
-                        .explicit_notify()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            let obj = self.obj();
-
-            match pspec.name() {
-                "message" => obj.set_message(value.get().unwrap()),
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "message" => self.message.upgrade().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
+        }
+    }
+
+    impl MessageDocument {
+        fn message(&self) -> Option<glib::Object> {
+            self.message.upgrade().map(|message| message.upcast())
+        }
+
+        fn set_message(&self, message: Option<glib::Object>) {
+            let message = message.unwrap().downcast::<model::Message>().unwrap();
+            ui::MessageBaseExt::set_message(&*self.obj(), &message);
         }
     }
 

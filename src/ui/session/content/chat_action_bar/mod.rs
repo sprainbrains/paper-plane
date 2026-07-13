@@ -498,7 +498,7 @@ impl ChatActionBar {
             if let Some(message) = chat.message(id) {
                 let text = match message.content().0 {
                     tdlib::enums::MessageContent::MessageText(data) => Some(data.text),
-                    other => message_caption(other),
+                    other => super::captioned_media_caption(&other).cloned(),
                 };
 
                 if let Some(text) = text {
@@ -589,16 +589,9 @@ impl ChatActionBar {
             let client_id = chat.session_().client_().id();
             let chat_id = chat.id();
 
-            // Media messages edit their caption; everything else edits its text.
-            let is_caption = chat
-                .message(message_id)
-                .map(|message| {
-                    !matches!(
-                        message.content().0,
-                        tdlib::enums::MessageContent::MessageText(_)
-                    )
-                })
-                .unwrap_or(false);
+            let is_caption = chat.message(message_id).is_some_and(|message| {
+                super::captioned_media_caption(&message.content().0).is_some()
+            });
 
             let result = if is_caption {
                 let caption = self.imp().message_entry.as_markdown().await;
@@ -852,20 +845,5 @@ impl ChatActionBar {
             .get()
             .unwrap()
             .set_target(supergroup.as_ref());
-    }
-}
-
-/// Extracts the editable caption from a captioned media message, if any.
-fn message_caption(content: tdlib::enums::MessageContent) -> Option<tdlib::types::FormattedText> {
-    use tdlib::enums::MessageContent::*;
-
-    match content {
-        MessagePhoto(data) => Some(data.caption),
-        MessageVideo(data) => Some(data.caption),
-        MessageAnimation(data) => Some(data.caption),
-        MessageDocument(data) => Some(data.caption),
-        MessageAudio(data) => Some(data.caption),
-        MessageVoiceNote(data) => Some(data.caption),
-        _ => None,
     }
 }

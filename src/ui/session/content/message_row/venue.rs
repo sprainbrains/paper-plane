@@ -1,6 +1,3 @@
-use std::cell::RefCell;
-use std::sync::OnceLock;
-
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gio;
@@ -9,17 +6,20 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use ui::MessageBaseExt;
 
+use super::base::MessageHandler;
 use crate::model;
 use crate::ui;
 
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Debug, Default, CompositeTemplate, glib::Properties)]
     #[template(resource = "/app/drey/paper-plane/ui/session/content/message_row/venue.ui")]
+    #[properties(wrapper_type = super::MessageVenue)]
     pub(crate) struct MessageVenue {
+        #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
-        pub(super) handler_id: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) handler: MessageHandler,
         pub(super) map_window: glib::WeakRef<ui::MapWindow>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
@@ -36,8 +36,8 @@ mod imp {
         type ParentType = ui::MessageBase;
 
         fn class_init(klass: &mut Self::Class) {
-            Self::bind_template(klass);
-            Self::bind_template_callbacks(klass);
+            klass.bind_template();
+            klass.bind_template_callbacks();
 
             klass.set_css_name("messagevenue");
 
@@ -53,28 +53,15 @@ mod imp {
 
     impl ObjectImpl for MessageVenue {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<model::Message>("message")
-                        .explicit_notify()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            match pspec.name() {
-                "message" => self.obj().set_message(value.get().unwrap()),
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "message" => self.message.upgrade().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
         }
     }
 
@@ -83,6 +70,10 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl MessageVenue {
+        fn set_message(&self, message: Option<model::Message>) {
+            ui::MessageBaseExt::set_message(&*self.obj(), message.as_ref().unwrap());
+        }
+
         #[template_callback]
         fn on_map_gesture_click_pressed(&self) {
             let obj = &*self.obj();
@@ -118,10 +109,7 @@ impl MessageBaseExt for MessageVenue {
             return;
         }
 
-        if let Some(old_message) = old_message {
-            let handler_id = imp.handler_id.take().unwrap();
-            old_message.disconnect(handler_id);
-        }
+        imp.handler.disconnect(&imp.message);
 
         imp.message_bubble.update_from_message(message, true);
         imp.message_bubble.add_message_label_class("caption");
@@ -136,7 +124,7 @@ impl MessageBaseExt for MessageVenue {
                 obj.update_map_window(message);
             }
         ));
-        imp.handler_id.replace(Some(handler_id));
+        imp.handler.set(handler_id);
         self.update_row(message);
 
         imp.message.set(Some(message));

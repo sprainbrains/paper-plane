@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::sync::OnceLock;
 
 use glib::clone;
 use glib::closure;
@@ -10,20 +9,22 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
+use super::base::MessageHandler;
 use crate::model;
 use crate::types::MessageId;
 use crate::ui;
-use crate::ui::MessageBaseExt;
 use crate::utils;
 
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Debug, Default, CompositeTemplate, glib::Properties)]
     #[template(resource = "/app/drey/paper-plane/ui/session/content/message_row/photo.ui")]
+    #[properties(wrapper_type = super::MessagePhoto)]
     pub(crate) struct MessagePhoto {
         pub(super) binding: RefCell<Option<gtk::ExpressionWatch>>,
-        pub(super) handler_id: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) handler: MessageHandler,
+        #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
@@ -48,30 +49,15 @@ mod imp {
 
     impl ObjectImpl for MessagePhoto {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<model::Message>("message")
-                        .explicit_notify()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            let obj = self.obj();
-
-            match pspec.name() {
-                "message" => obj.set_message(value.get().unwrap()),
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "message" => self.message.upgrade().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
         }
 
         fn constructed(&self) {
@@ -80,6 +66,12 @@ mod imp {
             self.obj().connect_scale_factor_notify(|obj| {
                 obj.update_photo(&obj.imp().message.upgrade().unwrap());
             });
+        }
+    }
+
+    impl MessagePhoto {
+        fn set_message(&self, message: Option<model::Message>) {
+            ui::MessageBaseExt::set_message(&*self.obj(), message.as_ref().unwrap());
         }
     }
 
@@ -108,10 +100,7 @@ impl ui::MessageBaseExt for MessagePhoto {
             binding.unwatch();
         }
 
-        if let Some(old_message) = old_message {
-            let handler_id = imp.handler_id.take().unwrap();
-            old_message.disconnect(handler_id);
-        }
+        imp.handler.disconnect(&imp.message);
 
         imp.message.set(Some(message));
 
@@ -139,7 +128,7 @@ impl ui::MessageBaseExt for MessagePhoto {
                 obj.update_photo(message);
             }
         ));
-        imp.handler_id.replace(Some(handler_id));
+        imp.handler.set(handler_id);
         self.update_photo(message);
 
         self.notify("message");

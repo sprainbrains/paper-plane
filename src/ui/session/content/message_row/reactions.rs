@@ -21,7 +21,7 @@ mod imp {
     #[properties(wrapper_type = super::MessageReactions)]
     pub(crate) struct MessageReactions {
         #[property(get, set = Self::set_message, explicit_notify, nullable)]
-        pub(super) message: RefCell<Option<model::Message>>,
+        pub(super) message: glib::WeakRef<model::Message>,
         pub(super) items_changed_handler: RefCell<Option<glib::SignalHandlerId>>,
         #[template_child]
         pub(super) flow_box: TemplateChild<gtk::FlowBox>,
@@ -63,13 +63,14 @@ mod imp {
     impl MessageReactions {
         fn set_message(&self, message: Option<model::Message>) {
             let obj = self.obj();
-            if *self.message.borrow() == message {
+            let old_message = self.message.upgrade();
+            if old_message == message {
                 return;
             }
 
             // Drop the previous items-changed subscription.
             if let Some(handler) = self.items_changed_handler.take()
-                && let Some(old) = self.message.borrow().as_ref()
+                && let Some(old) = old_message
             {
                 old.interaction_info().reactions().disconnect(handler);
             }
@@ -106,7 +107,7 @@ mod imp {
                 obj.set_visible(false);
             }
 
-            self.message.replace(message);
+            self.message.set(message.as_ref());
             obj.notify_message();
         }
 

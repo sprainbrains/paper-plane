@@ -53,6 +53,22 @@ pub(crate) use self::message_row::Row as MessageRow;
 pub(crate) use self::send_media_window::SendMediaWindow;
 use crate::model;
 
+fn captioned_media_caption(
+    content: &tdlib::enums::MessageContent,
+) -> Option<&tdlib::types::FormattedText> {
+    use tdlib::enums::MessageContent::*;
+
+    match content {
+        MessagePhoto(data) => Some(&data.caption),
+        MessageVideo(data) => Some(&data.caption),
+        MessageAnimation(data) => Some(&data.caption),
+        MessageDocument(data) => Some(&data.caption),
+        MessageAudio(data) => Some(&data.caption),
+        MessageVoiceNote(data) => Some(&data.caption),
+        _ => None,
+    }
+}
+
 mod imp {
     use super::*;
 

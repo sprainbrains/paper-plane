@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use adw::prelude::*;
 use gtk::CompositeTemplate;
 use gtk::glib;
@@ -7,7 +5,6 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
-use crate::ui::MessageBaseExt;
 
 const MAX_REPLY_CHAR_WIDTH: i32 = 18;
 
@@ -17,9 +14,11 @@ const EMOJI_SIZE: i32 = 112;
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Debug, Default, CompositeTemplate, glib::Properties)]
     #[template(resource = "/app/drey/paper-plane/ui/session/content/message_row/sticker.ui")]
+    #[properties(wrapper_type = super::MessageSticker)]
     pub(crate) struct MessageSticker {
+        #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
         #[template_child]
         pub(super) overlay: TemplateChild<gtk::Overlay>,
@@ -50,30 +49,15 @@ mod imp {
 
     impl ObjectImpl for MessageSticker {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<model::Message>("message")
-                        .explicit_notify()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            let obj = self.obj();
-
-            match pspec.name() {
-                "message" => obj.set_message(value.get().unwrap()),
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "message" => self.message.upgrade().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
         }
     }
 
@@ -82,6 +66,10 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl MessageSticker {
+        fn set_message(&self, message: Option<model::Message>) {
+            ui::MessageBaseExt::set_message(&*self.obj(), message.as_ref().unwrap());
+        }
+
         #[template_callback]
         fn on_pressed(&self, _n_press: i32, _x: f64, _y: f64) {
             // TODO: animated emoji needs to play

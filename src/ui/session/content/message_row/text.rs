@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::sync::OnceLock;
 
 use gettextrs::gettext;
 use glib::closure;
@@ -10,16 +9,17 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
-use crate::ui::MessageBaseExt;
 use crate::utils;
 
 mod imp {
     use super::*;
 
-    #[derive(Debug, Default, CompositeTemplate)]
+    #[derive(Debug, Default, CompositeTemplate, glib::Properties)]
     #[template(resource = "/app/drey/paper-plane/ui/session/content/message_row/text.ui")]
+    #[properties(wrapper_type = super::MessageText)]
     pub(crate) struct MessageText {
         pub(super) bindings: RefCell<Vec<gtk::ExpressionWatch>>,
+        #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<glib::Object>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
@@ -42,30 +42,21 @@ mod imp {
 
     impl ObjectImpl for MessageText {
         fn properties() -> &'static [glib::ParamSpec] {
-            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
-            PROPERTIES.get_or_init(|| {
-                vec![
-                    glib::ParamSpecObject::builder::<glib::Object>("message")
-                        .explicit_notify()
-                        .build(),
-                ]
-            })
+            Self::derived_properties()
         }
 
-        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            let obj = self.obj();
-
-            match pspec.name() {
-                "message" => obj.set_message(value.get().unwrap()),
-                _ => unimplemented!(),
-            }
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
         }
 
-        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
-            match pspec.name() {
-                "message" => self.message.upgrade().to_value(),
-                _ => unimplemented!(),
-            }
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
+        }
+    }
+
+    impl MessageText {
+        fn set_message(&self, message: Option<glib::Object>) {
+            ui::MessageBaseExt::set_message(&*self.obj(), message.as_ref().unwrap());
         }
     }
 
