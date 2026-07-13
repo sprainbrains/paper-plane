@@ -40,6 +40,9 @@ mod imp {
             klass.bind_template_callbacks();
             klass.set_css_name("chatfolderrow");
 
+            klass.install_action("chat-folder-row.edit", None, |widget, _, _| {
+                widget.edit_chat_folder();
+            });
             klass.install_action_async("chat-folder-row.remove", None, |widget, _, _| async move {
                 widget.remove_chat_folder().await;
             });
@@ -162,6 +165,21 @@ impl Row {
             .property("chat-folder-bar", chat_folder_bar)
             .property("chat-list", chat_list)
             .build()
+    }
+
+    /// Opens the folder editor (rename + choose member chats) for this folder.
+    fn edit_chat_folder(&self) {
+        let Some(folder_id) = self
+            .chat_list()
+            .and_then(|chat_list| chat_list.list_type().chat_folder_id())
+        else {
+            return;
+        };
+        let Some(session) = utils::ancestor::<_, ui::Session>(self) else {
+            return;
+        };
+        let window = self.root().and_downcast::<gtk::Window>();
+        super::EditWindow::new(window.as_ref(), &session, folder_id).present();
     }
 
     pub(crate) async fn remove_chat_folder(&self) {

@@ -1,0 +1,68 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $PaplSidebarChatFolderEditWindow: Adw.Window {
+  title: _("Edit Folder");
+  modal: true;
+  default-width: 380;
+  default-height: 640;
+
+  content: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      show-start-title-buttons: false;
+      show-end-title-buttons: false;
+
+      [start]
+      Button {
+        label: _("Cancel");
+
+        clicked => $on_cancel() swapped;
+      }
+
+      [end]
+      Button save_button {
+        label: _("Save");
+
+        styles ["suggested-action"]
+
+        clicked => $on_save() swapped;
+      }
+    }
+
+    content: Box {
+      orientation: vertical;
+      spacing: 6;
+
+      Entry name_entry {
+        placeholder-text: _("Folder Name");
+        margin-start: 12;
+        margin-end: 12;
+        margin-top: 12;
+      }
+
+      SearchEntry search_entry {
+        placeholder-text: _("Search Chats");
+        margin-start: 12;
+        margin-end: 12;
+
+        search-changed => $on_search_changed() swapped;
+      }
+
+      ScrolledWindow {
+        vexpand: true;
+        hscrollbar-policy: never;
+
+        ListView list_view {
+          model: NoSelection {
+            model: FilterListModel filter_model {
+              filter: CustomFilter custom_filter {};
+            };
+          };
+
+          styles ["navigation-sidebar"]
+        }
+      }
+    };
+  };
+}
