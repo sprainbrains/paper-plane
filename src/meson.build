@@ -90,3 +90,17 @@ test (
   is_parallel: false,
   timeout: 300, # Give cargo more time
 )
+test(
+  'rustfmt',
+  cargo,
+  args: [
+    'fmt',
+    '--all',
+    '--',
+    '--check',
+  ],
+  env: [
+    'CARGO_HOME=@0@'.format(cargo_home),
+  ],
+  timeout: 60,
+)
