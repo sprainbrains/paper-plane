@@ -55,6 +55,7 @@ template $PaplSidebarRow {
 
       Box {
         spacing: 3;
+        hexpand: true;
 
         Label subtitle_prefix_label {
           ellipsize: end;
@@ -66,6 +67,25 @@ template $PaplSidebarRow {
         $PaplSidebarMiniThumbnail minithumbnail {
           visible: "False";
           valign: "center";
+        }
+
+        Box typing_indicator {
+          visible: false;
+          valign: center;
+
+          styles ["typing-dots"]
+
+          Box {
+            styles ["typing-dot"]
+          }
+
+          Box {
+            styles ["typing-dot"]
+          }
+
+          Box {
+            styles ["typing-dot"]
+          }
         }
 
         Inscription subtitle_label {

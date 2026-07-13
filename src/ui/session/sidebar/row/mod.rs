@@ -39,6 +39,8 @@ mod imp {
         #[template_child]
         pub(super) subtitle_label: TemplateChild<gtk::Inscription>,
         #[template_child]
+        pub(super) typing_indicator: TemplateChild<gtk::Box>,
+        #[template_child]
         pub(super) status_stack: TemplateChild<gtk::Stack>,
         #[template_child]
         pub(super) pin_icon: TemplateChild<gtk::Image>,

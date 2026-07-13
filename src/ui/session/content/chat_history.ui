@@ -15,7 +15,52 @@
                   </object>
                 </child>
                 <child type="title">
-                  <object class="AdwWindowTitle" id="window_title"/>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="valign">center</property>
+                    <child>
+                      <object class="AdwWindowTitle" id="window_title"/>
+                    </child>
+                    <child>
+                      <object class="GtkBox" id="header_typing_box">
+                        <property name="visible">False</property>
+                        <property name="halign">center</property>
+                        <property name="spacing">4</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="valign">center</property>
+                            <style>
+                              <class name="typing-dots"/>
+                            </style>
+                            <child>
+                              <object class="GtkBox">
+                                <style><class name="typing-dot"/></style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <style><class name="typing-dot"/></style>
+                              </object>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <style><class name="typing-dot"/></style>
+                              </object>
+                            </child>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="header_typing_label">
+                            <property name="ellipsize">end</property>
+                            <style>
+                              <class name="accent"/>
+                              <class name="caption"/>
+                            </style>
+                          </object>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
                 </child>
                 <child type="end">
                   <object class="GtkMenuButton">

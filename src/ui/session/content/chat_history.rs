@@ -73,6 +73,10 @@ mod imp {
         #[template_child]
         pub(super) header_avatar: TemplateChild<ui::Avatar>,
         #[template_child]
+        pub(super) header_typing_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) header_typing_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
         #[template_child]
         pub(super) scrolled_window: TemplateChild<gtk::ScrolledWindow>,
@@ -438,6 +442,32 @@ impl ChatHistory {
 
         // Chat avatar in the header (also serves as identity when the sidebar is collapsed).
         chat_expression.bind(&*self.imp().header_avatar, "item", Some(self));
+
+        // Typing status in the header: the label shows the current chat action (re-evaluated
+        // whenever the chat's actions change) and the row (label + animated dots) is only
+        // visible while someone is acting.
+        let actions_expression = chat_expression.chain_property::<model::Chat>("actions");
+        gtk::ClosureExpression::new::<String>(
+            [actions_expression.clone().upcast()],
+            glib::closure!(
+                |_: super::ChatHistory, actions: Option<model::ChatActionList>| {
+                    actions
+                        .and_then(|actions| actions.last())
+                        .map(|action| strings::chat_action(&action))
+                        .unwrap_or_default()
+                }
+            ),
+        )
+        .bind(&*self.imp().header_typing_label, "label", Some(self));
+        gtk::ClosureExpression::new::<bool>(
+            [actions_expression.upcast()],
+            glib::closure!(
+                |_: super::ChatHistory, actions: Option<model::ChatActionList>| {
+                    actions.is_some_and(|actions| actions.n_items() > 0)
+                }
+            ),
+        )
+        .bind(&*self.imp().header_typing_box, "visible", Some(self));
     }
 
     fn open_info_dialog(&self) {

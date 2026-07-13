@@ -110,24 +110,31 @@ impl super::Row {
             let chat = item.chat_();
             let label = &imp.subtitle_label;
 
+            let typing_indicator = &imp.typing_indicator;
             if let Some(actions) = chat.actions().last().map(|a| strings::chat_action(&a)) {
                 label.set_text(Some(&actions));
                 label.remove_css_class("dim-label");
                 label.add_css_class("accent");
-            } else if let Some(draft_message) =
-                chat.draft_message().map(|d| draft_message_text(d.0))
-            {
-                label.set_text(Some(&draft_message));
-                label.add_css_class("dim-label");
-                label.remove_css_class("accent");
-            } else if let Some(last_message) =
-                chat.last_message().map(|m| strings::message_content(&m))
-            {
-                label.set_text(Some(&last_message));
-                label.add_css_class("dim-label");
-                label.remove_css_class("accent");
+                // Drop the label's expansion so the animated dots hug the typing text.
+                label.set_hexpand(false);
+                typing_indicator.set_visible(true);
             } else {
-                label.set_text(None);
+                label.set_hexpand(true);
+                typing_indicator.set_visible(false);
+
+                if let Some(draft_message) = chat.draft_message().map(|d| draft_message_text(d.0)) {
+                    label.set_text(Some(&draft_message));
+                    label.add_css_class("dim-label");
+                    label.remove_css_class("accent");
+                } else if let Some(last_message) =
+                    chat.last_message().map(|m| strings::message_content(&m))
+                {
+                    label.set_text(Some(&last_message));
+                    label.add_css_class("dim-label");
+                    label.remove_css_class("accent");
+                } else {
+                    label.set_text(None);
+                }
             }
         }
     }
