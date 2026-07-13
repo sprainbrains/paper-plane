@@ -19,6 +19,8 @@ pub(crate) enum ChatHistoryError {
     AlreadyLoading,
     #[error("TDLib error: {0:?}")]
     Tdlib(tdlib::types::Error),
+    #[error("The chat is no longer available")]
+    ChatUnavailable,
 }
 
 mod imp {
@@ -127,9 +129,9 @@ impl ChatHistoryModel {
             .map(|m| m.id())
             .unwrap_or_default();
 
+        let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
         imp.is_loading.set(true);
-
-        let result = self.chat().get_chat_history(oldest_message_id, limit).await;
+        let result = chat.get_chat_history(oldest_message_id, limit).await;
 
         imp.is_loading.set(false);
 
@@ -143,7 +145,7 @@ impl ChatHistoryModel {
         Ok(true)
     }
 
-    fn items_changed(&self, position: u32, removed: u32, added: u32) {
+    fn emit_items_changed_with_dividers(&self, position: u32, removed: u32, added: u32) {
         let imp = self.imp();
 
         // Insert day dividers where needed
@@ -152,6 +154,17 @@ impl ChatHistoryModel {
             let added = added as usize;
 
             let mut list = imp.list.borrow_mut();
+            let Some(end) = position.checked_add(added) else {
+                log::warn!("Chat history change range overflowed");
+                return;
+            };
+            if end > list.len() {
+                log::warn!(
+                    "Chat history change range {position}..{end} exceeds list length {}",
+                    list.len()
+                );
+                return;
+            }
             let mut previous_timestamp = if position + 1 < list.len() {
                 list.get(position + 1)
                     .and_then(|item| item.message_timestamp())
@@ -160,7 +173,7 @@ impl ChatHistoryModel {
             };
             let mut dividers: Vec<(usize, model::ChatHistoryItem)> = vec![];
 
-            for (index, current) in list.range(position..position + added).enumerate().rev() {
+            for (index, current) in list.range(position..end).enumerate().rev() {
                 if let Some(current_timestamp) = current.message_timestamp()
                     && Some(current_timestamp.ymd()) != previous_timestamp.as_ref().map(|t| t.ymd())
                 {
@@ -201,9 +214,13 @@ impl ChatHistoryModel {
 
                     match item_after_removed.map(|item| item.type_()) {
                         None | Some(model::ChatHistoryItemType::DayDivider(_)) => {
-                            list.remove(position + removed);
-
-                            removed += 1;
+                            let divider_position = position.saturating_add(removed);
+                            if divider_position < list.len() {
+                                list.remove(divider_position);
+                                removed += 1;
+                            } else {
+                                log::warn!("Missing trailing chat history day divider");
+                            }
                         }
                         _ => {}
                     }
@@ -220,12 +237,16 @@ impl ChatHistoryModel {
 
             if added > 0 && position > 0 {
                 let mut list = imp.list.borrow_mut();
-                let last_added_timestamp = list.get(position).unwrap().message_timestamp().unwrap();
+                let last_added_timestamp = list
+                    .get(position)
+                    .and_then(model::ChatHistoryItem::message_timestamp);
                 let next_item = list.get(position - 1);
 
                 if let Some(model::ChatHistoryItemType::DayDivider(date)) =
                     next_item.map(|item| item.type_())
-                    && date.ymd() == last_added_timestamp.ymd()
+                    && last_added_timestamp
+                        .as_ref()
+                        .is_some_and(|timestamp| date.ymd() == timestamp.ymd())
                 {
                     list.remove(position - 1);
 
@@ -247,7 +268,7 @@ impl ChatHistoryModel {
             .borrow_mut()
             .push_front(model::ChatHistoryItem::for_message(message));
 
-        self.items_changed(0, 0, 1);
+        self.emit_items_changed_with_dividers(0, 0, 1);
     }
 
     fn append(&self, messages: Vec<model::Message>) {
@@ -263,30 +284,29 @@ impl ChatHistoryModel {
         }
 
         let index = imp.list.borrow().len() - added;
-        self.items_changed(index as u32, 0, added as u32);
+        self.emit_items_changed_with_dividers(index as u32, 0, added as u32);
     }
 
     fn remove(&self, message: model::Message) {
         let imp = self.imp();
 
         // Put this in a block, so that we only need to borrow the list once and the runtime
-        // borrow checker does not panic in Self::items_changed when it borrows the list again.
-        let index = {
+        // borrow checker does not panic when the change notification borrows the list again.
+        let Some(index) = ({
             let mut list = imp.list.borrow_mut();
 
             // The elements in this list are ordered. While the day dividers are ordered
             // only by their date time, the messages are additionally sorted by their id. We
             // can exploit this by applying a binary search.
-            let index = list
-                .binary_search_by(|m| match m.type_() {
+            let timestamp = glib::DateTime::from_unix_utc(message.date() as i64).ok();
+            let result = timestamp.and_then(|timestamp| {
+                list.binary_search_by(|m| match m.type_() {
                     model::ChatHistoryItemType::Message(other_message) => {
                         message.id().cmp(&other_message.id())
                     }
                     model::ChatHistoryItemType::DayDivider(date_time) => {
-                        let ordering = glib::DateTime::from_unix_utc(message.date() as i64)
-                            .unwrap()
-                            .cmp(date_time);
-                        if let Ordering::Equal = ordering {
+                        let ordering = timestamp.cmp(date_time);
+                        if ordering == Ordering::Equal {
                             // We found the day divider of the message. Therefore, the message
                             // must be among the following elements.
                             Ordering::Greater
@@ -295,16 +315,28 @@ impl ChatHistoryModel {
                         }
                     }
                 })
-                .unwrap();
+                .ok()
+            });
+            let index = result.or_else(|| {
+                log::warn!(
+                    "Message {} was not found at its expected chat history position",
+                    message.id()
+                );
+                list.iter().position(|item| {
+                    item.message()
+                        .is_some_and(|other_message| other_message.id() == message.id())
+                })
+            });
 
-            list.remove(index);
-            index as u32
+            index.and_then(|index| list.remove(index).map(|_| index as u32))
+        }) else {
+            return;
         };
 
-        self.items_changed(index, 1, 0);
+        self.emit_items_changed_with_dividers(index, 1, 0);
     }
 
-    pub(crate) fn chat(&self) -> model::Chat {
-        self.imp().chat.upgrade().unwrap()
+    pub(crate) fn chat(&self) -> Option<model::Chat> {
+        self.imp().chat.upgrade()
     }
 }

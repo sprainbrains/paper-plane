@@ -82,11 +82,9 @@ impl ChatHistoryItem {
 
     pub(crate) fn message_timestamp(&self) -> Option<glib::DateTime> {
         if let ChatHistoryItemType::Message(message) = self.type_() {
-            Some(
-                glib::DateTime::from_unix_utc(message.date().into())
-                    .and_then(|t| t.to_local())
-                    .unwrap(),
-            )
+            glib::DateTime::from_unix_utc(message.date().into())
+                .and_then(|timestamp| timestamp.to_local())
+                .ok()
         } else {
             None
         }
