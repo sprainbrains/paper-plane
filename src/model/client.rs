@@ -129,21 +129,6 @@ impl Client {
         {
             log::warn!("Error setting the tdlib log level: {:?}", e);
         }
-
-        if let Err(e) = tdlib::functions::set_option(
-            "notification_group_count_max".to_string(),
-            Some(tdlib::enums::OptionValue::Integer(
-                tdlib::types::OptionValueInteger { value: 5 },
-            )),
-            self.id(),
-        )
-        .await
-        {
-            log::warn!(
-                "Error setting the notification_group_count_max option: {:?}",
-                e
-            );
-        }
     }
 
     pub(crate) fn is_logged_in(&self) -> bool {
