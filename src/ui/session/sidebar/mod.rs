@@ -55,6 +55,10 @@ mod imp {
         // header shimmer can follow whichever list (folder) is on screen.
         pub(super) loading_handler:
             RefCell<Option<(glib::WeakRef<model::ChatList>, glib::SignalHandlerId)>>,
+        // The archive chat list and its items-changed handler, disconnected and
+        // reconnected whenever the session changes.
+        pub(super) archive_handler:
+            RefCell<Option<(glib::WeakRef<model::ChatList>, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) navigation_view: TemplateChild<adw::NavigationView>,
         #[template_child]
@@ -107,8 +111,15 @@ mod imp {
                 return;
             }
 
+            if let Some((weak, id)) = self.archive_handler.take()
+                && let Some(list) = weak.upgrade()
+            {
+                list.disconnect(id);
+            }
+
             if let Some(session) = session {
-                session.archive_chat_list().connect_items_changed(clone!(
+                let list = session.archive_chat_list();
+                let id = list.connect_items_changed(clone!(
                     #[weak]
                     obj,
                     move |chat_list, _, _, _| {
@@ -117,6 +128,7 @@ mod imp {
                         }
                     }
                 ));
+                self.archive_handler.replace(Some((list.downgrade(), id)));
             }
 
             self.session.set(session);
@@ -224,6 +236,16 @@ mod imp {
         }
 
         fn dispose(&self) {
+            if let Some((weak, id)) = self.archive_handler.take()
+                && let Some(list) = weak.upgrade()
+            {
+                list.disconnect(id);
+            }
+            if let Some((weak, id)) = self.loading_handler.take()
+                && let Some(list) = weak.upgrade()
+            {
+                list.disconnect(id);
+            }
             utils::unparent_children(&*self.obj());
         }
     }
