@@ -67,6 +67,9 @@ mod imp {
         /// Maps each content section's name to its rail button, so the rail can
         /// highlight the clicked section.
         pub(super) rail_sections: RefCell<Vec<(String, glib::WeakRef<gtk::Button>)>>,
+        /// The loaded custom-emoji pack infos, kept so their rail covers can be re-added
+        /// when the shared rail is rebuilt on a tab switch (the model rows persist).
+        pub(super) custom_emoji_infos: RefCell<Vec<tdlib::types::StickerSetInfo>>,
         pub(super) animations: RefCell<Vec<tdlib::types::Animation>>,
         #[template_child]
         pub(super) header_bar: TemplateChild<adw::HeaderBar>,
@@ -586,6 +589,7 @@ impl ContentPicker {
         self.imp()
             .custom_emoji_generation
             .set(self.imp().custom_emoji_generation.get().wrapping_add(1));
+        self.imp().custom_emoji_infos.borrow_mut().clear();
 
         // Restricted reaction chats only allow a specific set — offer exactly those and
         // no custom emoji, so the user can never pick a reaction that TDLib rejects.
@@ -714,6 +718,7 @@ impl ContentPicker {
                         Ok(tdlib::enums::StickerSet::StickerSet(set)) => {
                             obj.append_custom_emoji_section(info.id, &set.title, set.stickers);
                             obj.append_emoji_rail_pack(&info);
+                            obj.imp().custom_emoji_infos.borrow_mut().push(info);
                         }
                         Err(e) => log::warn!(
                             target: "paper_plane::content_picker",
@@ -835,6 +840,13 @@ impl ContentPicker {
                         }
                     ));
                     self.imp().navigation_rail.append(&button);
+                }
+                // Re-add the custom-emoji pack covers: their model rows survive a tab
+                // switch, but the shared rail is rebuilt per page, so without this they
+                // vanish after switching to stickers and back.
+                let infos = self.imp().custom_emoji_infos.borrow().clone();
+                for info in &infos {
+                    self.append_emoji_rail_pack(info);
                 }
             }
             PickerPage::Stickers => {
