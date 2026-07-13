@@ -10,6 +10,7 @@ use gtk::prelude::*;
 
 use crate::model;
 use crate::types::ChatFolderId;
+use crate::utils;
 
 mod imp {
     use super::*;
@@ -111,6 +112,58 @@ impl From<&model::ClientStateSession> for ChatFolderList {
 
 impl ChatFolderList {
     weak_getter!(session_, session, model::ClientStateSession);
+
+    /// The combined-model position (folders interleaved with the main chat list) of a
+    /// chat list, or `None` if it isn't in this model.
+    pub(crate) fn position_of(&self, chat_list: &model::ChatList) -> Option<u32> {
+        (0..self.n_items()).find(|&position| {
+            self.item(position)
+                .and_downcast::<model::ChatList>()
+                .as_ref()
+                == Some(chat_list)
+        })
+    }
+
+    /// Moves the entry at `from_position` to `to_position` in the combined model and asks
+    /// TDLib to persist the new folder order; the model re-syncs from `updateChatFolders`.
+    pub(crate) fn reorder(&self, from_position: u32, to_position: u32) {
+        if from_position == to_position {
+            return;
+        }
+
+        // Reconstruct the combined order: folders in list order, with the main chat list
+        // (represented as `None`) at its current position.
+        let folders: Vec<i32> = self
+            .imp()
+            .list
+            .borrow()
+            .iter()
+            .map(|chat_list| chat_list.list_type().chat_folder_id().unwrap())
+            .collect();
+        let main_position = (self.main_chat_list_position() as usize).min(folders.len());
+        let mut entries: Vec<Option<i32>> = folders.into_iter().map(Some).collect();
+        entries.insert(main_position, None);
+
+        let from = from_position as usize;
+        if from >= entries.len() {
+            return;
+        }
+        let entry = entries.remove(from);
+        entries.insert((to_position as usize).min(entries.len()), entry);
+
+        let new_main_position = entries.iter().position(Option::is_none).unwrap_or(0) as i32;
+        let new_folder_ids: Vec<i32> = entries.into_iter().flatten().collect();
+
+        let client_id = self.session_().client_().id();
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::reorder_chat_folders(new_folder_ids, new_main_position, client_id)
+                    .await
+            {
+                log::warn!("Failed to reorder chat folders: {e:?}");
+            }
+        });
+    }
 
     pub(crate) fn get_or_create(&self, id: ChatFolderId) -> model::ChatList {
         let mut list = self.imp().list.borrow_mut();

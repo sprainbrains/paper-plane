@@ -2,6 +2,7 @@ use std::cell::OnceCell;
 
 use gettextrs::gettext;
 use glib::Properties;
+use glib::clone;
 use glib::closure;
 use gtk::CompositeTemplate;
 use gtk::gdk;
@@ -98,6 +99,8 @@ mod imp {
                 ),
             )
             .bind(&self.title_label.get(), "label", Some(obj));
+
+            obj.setup_dnd();
         }
 
         fn dispose(&self) {
@@ -165,6 +168,57 @@ impl Row {
             .property("chat-folder-bar", chat_folder_bar)
             .property("chat-list", chat_list)
             .build()
+    }
+
+    /// Sets up drag-to-reorder: folder tabs can be dragged onto any tab to move to that
+    /// position; the drop asks the model to persist the new order via TDLib.
+    fn setup_dnd(&self) {
+        let drag = gtk::DragSource::builder()
+            .actions(gdk::DragAction::MOVE)
+            .build();
+        drag.connect_prepare(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[upgrade_or]
+            None,
+            move |_, _, _| {
+                // Only actual folders can be reordered (not "All Chats").
+                let position = obj.is_folder().then(|| obj.position_in_bar()).flatten()?;
+                Some(gdk::ContentProvider::for_value(
+                    &(position as i32).to_value(),
+                ))
+            }
+        ));
+        self.add_controller(drag);
+
+        let drop = gtk::DropTarget::new(i32::static_type(), gdk::DragAction::MOVE);
+        drop.connect_drop(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[upgrade_or]
+            false,
+            move |_, value, _, _| {
+                let Ok(from) = value.get::<i32>() else {
+                    return false;
+                };
+                let Some(to) = obj.position_in_bar() else {
+                    return false;
+                };
+                let Some(list) = obj.chat_folder_bar().chat_folder_list() else {
+                    return false;
+                };
+                list.reorder(from as u32, to);
+                true
+            }
+        ));
+        self.add_controller(drop);
+    }
+
+    /// This row's position in the combined folder bar (folders + "All Chats").
+    fn position_in_bar(&self) -> Option<u32> {
+        let list = self.chat_folder_bar().chat_folder_list()?;
+        let chat_list = self.chat_list()?;
+        list.position_of(&chat_list)
     }
 
     /// Opens the folder editor (rename + choose member chats) for this folder.
