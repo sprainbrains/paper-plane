@@ -280,7 +280,9 @@ impl Row {
         let Ok(message) = self.message().downcast::<model::Message>() else {
             return;
         };
-        let session = utils::ancestor::<_, ui::Session>(self);
+        let Some(session) = utils::ancestor::<_, ui::Session>(self) else {
+            return;
+        };
         let parent = self.root().and_downcast::<gtk::Window>();
 
         let window = ui::ForwardWindow::new(

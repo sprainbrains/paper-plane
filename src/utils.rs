@@ -188,12 +188,6 @@ pub(crate) fn spawn<F: Future<Output = ()> + 'static>(fut: F) {
     ctx.spawn_local(fut);
 }
 
-/// Run a future on the default `MainContext` and block until finished
-pub(crate) fn block_on<F: Future>(fut: F) -> F::Output {
-    let ctx = glib::MainContext::default();
-    ctx.block_on(fut)
-}
-
 #[derive(Error, Debug)]
 pub(crate) enum DecodeError {
     #[error("I/O error: {0:?}")]
@@ -266,25 +260,26 @@ pub(crate) fn decode_image_from_path_at_size(
 }
 
 pub(crate) fn show_toast<W: IsA<gtk::Widget>>(widget: &W, title: impl Into<glib::GString>) {
-    widget
+    let title = title.into();
+    let Some(overlay) = widget
         .ancestor(adw::ToastOverlay::static_type())
-        .unwrap()
-        .downcast::<adw::ToastOverlay>()
-        .unwrap()
-        .add_toast(
-            adw::Toast::builder()
-                .title(title)
-                .timeout(3)
-                .priority(adw::ToastPriority::High)
-                .build(),
-        );
+        .and_downcast::<adw::ToastOverlay>()
+    else {
+        log::warn!("Could not show toast without a ToastOverlay ancestor: {title}");
+        return;
+    };
+
+    overlay.add_toast(
+        adw::Toast::builder()
+            .title(title)
+            .timeout(3)
+            .priority(adw::ToastPriority::High)
+            .build(),
+    );
 }
 
-pub(crate) fn ancestor<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -> T {
-    widget
-        .ancestor(T::static_type())
-        .and_downcast::<T>()
-        .unwrap()
+pub(crate) fn ancestor<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -> Option<T> {
+    widget.ancestor(T::static_type()).and_downcast::<T>()
 }
 
 pub(crate) fn unparent_children<W: IsA<gtk::Widget>>(widget: &W) {

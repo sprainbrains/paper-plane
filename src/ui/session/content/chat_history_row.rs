@@ -73,7 +73,9 @@ mod imp {
 
     impl ChatHistoryRow {
         fn perform_history_action<F: Fn(&ui::ChatHistory, i64)>(&self, op: F) {
-            let chat_history = utils::ancestor::<_, ui::ChatHistory>(&*self.obj());
+            let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&*self.obj()) else {
+                return;
+            };
 
             if let Some(item) = &*self.item.borrow() {
                 if let Some(item) = item.downcast_ref::<model::ChatHistoryItem>() {

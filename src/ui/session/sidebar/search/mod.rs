@@ -343,7 +343,9 @@ impl Search {
     async fn list_activate(&self, position: u32) {
         let item = self.imp().selection.item(position).unwrap();
         let session = self.session().unwrap();
-        let sidebar = utils::ancestor::<_, ui::Sidebar>(self);
+        let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(self) else {
+            return;
+        };
 
         if let Some(chat) = item.downcast_ref::<model::Chat>() {
             sidebar.set_selected_chat(Some(chat));

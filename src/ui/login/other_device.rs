@@ -122,8 +122,9 @@ impl OtherDevice {
         if let Some(model) = self.model() {
             let client = model.auth_().client_();
 
-            utils::ancestor::<_, ui::ClientManagerView>(self)
-                .add_new_client(client.database_info().0.use_test_dc);
+            if let Some(view) = utils::ancestor::<_, ui::ClientManagerView>(self) {
+                view.add_new_client(client.database_info().0.use_test_dc);
+            }
 
             utils::spawn(async move {
                 // We actually need to logout to stop tdlib sending us new links.

@@ -49,6 +49,7 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) chat_action_in_cooldown: Cell<bool>,
         pub(super) state: Cell<ChatActionBarState>,
+        pub(super) state_change_generation: Cell<u64>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) basic_group_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) supergroup_signal_group: OnceCell<glib::SignalGroup>,
@@ -118,9 +119,10 @@ mod imp {
                         .await
                     {
                         Ok(_) => {
-                            let sidebar = utils::ancestor::<_, ui::Sidebar>(&widget);
-                            // Select chat recently joined by the user
-                            sidebar.set_selected_chat(Some(&chat));
+                            if let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(&widget) {
+                                // Select chat recently joined by the user
+                                sidebar.set_selected_chat(Some(&chat));
+                            }
                         }
                         Err(e) => {
                             log::warn!("Failed to join chat: {e:?}");
@@ -239,21 +241,27 @@ mod imp {
                 #[weak]
                 obj,
                 move |_, _| {
-                    utils::ancestor::<_, ui::Session>(&obj).toggle_content_picker_sidebar();
+                    if let Some(session) = utils::ancestor::<_, ui::Session>(&obj) {
+                        session.toggle_content_picker_sidebar();
+                    }
                 }
             ));
             self.message_entry.connect_emoji_button_hover(clone!(
                 #[weak]
                 obj,
                 move |_, button| {
-                    utils::ancestor::<_, ui::Session>(&obj).show_content_picker_popup(&button);
+                    if let Some(session) = utils::ancestor::<_, ui::Session>(&obj) {
+                        session.show_content_picker_popup(&button);
+                    }
                 }
             ));
             self.message_entry.connect_emoji_button_leave(clone!(
                 #[weak]
                 obj,
                 move |_| {
-                    utils::ancestor::<_, ui::Session>(&obj).schedule_content_picker_close();
+                    if let Some(session) = utils::ancestor::<_, ui::Session>(&obj) {
+                        session.schedule_content_picker_close();
+                    }
                 }
             ));
 
@@ -380,6 +388,9 @@ impl ChatActionBar {
             return;
         }
 
+        let generation = imp.state_change_generation.get().wrapping_add(1);
+        imp.state_change_generation.set(generation);
+
         // If we were editing, reset the message entry
         if let ChatActionBarState::Editing(_) = imp.state.get() {
             self.imp().message_entry.set_formatted_text(None);
@@ -388,18 +399,34 @@ impl ChatActionBar {
         // If the new state is "Editing", save the current
         // message composition state as draft message first
         if let ChatActionBarState::Editing(_) = state {
-            utils::block_on(async move {
-                self.save_message_as_draft().await;
-            });
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    if obj.imp().state_change_generation.get() != generation {
+                        return;
+                    }
+                    obj.save_message_as_draft().await;
+                    if obj.imp().state_change_generation.get() == generation {
+                        obj.apply_state(state, generation);
+                    }
+                }
+            ));
+            return;
         }
 
+        self.apply_state(state, generation);
+    }
+
+    fn apply_state(&self, state: ChatActionBarState, generation: u64) {
+        let imp = self.imp();
         imp.state.set(state);
 
         self.update_top_bar();
         self.update_send_button();
 
         if let ChatActionBarState::Editing(message_id) = state {
-            self.load_message_to_edit(message_id);
+            self.load_message_to_edit(message_id, generation);
         }
     }
 
@@ -464,7 +491,7 @@ impl ChatActionBar {
         }
     }
 
-    fn load_message_to_edit(&self, id: MessageId) {
+    fn load_message_to_edit(&self, id: MessageId, generation: u64) {
         if let Some(chat) = self.chat() {
             let client_id = chat.session_().client_().id();
 
@@ -475,16 +502,27 @@ impl ChatActionBar {
                 };
 
                 if let Some(text) = text {
-                    utils::block_on(async move {
-                        let tdlib::enums::FormattedText::FormattedText(markdown_text) =
-                            tdlib::functions::get_markdown_text(text, client_id)
-                                .await
-                                .unwrap();
-
-                        self.imp()
-                            .message_entry
-                            .set_formatted_text(Some(model::BoxedFormattedText(markdown_text)));
-                    });
+                    utils::spawn(clone!(
+                        #[weak(rename_to = obj)]
+                        self,
+                        async move {
+                            match tdlib::functions::get_markdown_text(text, client_id).await {
+                                Ok(tdlib::enums::FormattedText::FormattedText(markdown_text)) => {
+                                    if obj.imp().state_change_generation.get() != generation
+                                        || obj.imp().state.get() != ChatActionBarState::Editing(id)
+                                    {
+                                        return;
+                                    }
+                                    obj.imp().message_entry.set_formatted_text(Some(
+                                        model::BoxedFormattedText(markdown_text),
+                                    ));
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to load message text for editing: {e:?}")
+                                }
+                            }
+                        }
+                    ));
                 }
             }
         }
@@ -665,6 +703,10 @@ impl ChatActionBar {
             return;
         }
 
+        let imp = self.imp();
+        imp.state_change_generation
+            .set(imp.state_change_generation.get().wrapping_add(1));
+
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -673,7 +715,6 @@ impl ChatActionBar {
             }
         ));
 
-        let imp = self.imp();
         let mut bindings = imp.bindings.borrow_mut();
         while let Some(binding) = bindings.pop() {
             binding.unwatch();

@@ -97,7 +97,9 @@ mod imp {
 
         fn show_menu(&self, x: i32, y: i32) {
             let obj = &*self.obj();
-            let sidebar = utils::ancestor::<_, ui::Sidebar>(obj);
+            let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(obj) else {
+                return;
+            };
             let menu = sidebar.row_menu();
 
             menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));

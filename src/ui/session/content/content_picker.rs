@@ -1577,8 +1577,9 @@ impl ContentPicker {
             return;
         }
         if let tdlib::enums::StickerFullType::CustomEmoji(custom) = sticker.full_type {
-            utils::ancestor::<_, ui::Session>(self)
-                .insert_custom_emoji(&sticker.emoji, custom.custom_emoji_id);
+            if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
+                session.insert_custom_emoji(&sticker.emoji, custom.custom_emoji_id);
+            }
             return;
         }
         let Some(chat) = self.imp().chat.upgrade() else {
@@ -1920,7 +1921,9 @@ fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>)
                     picker.emit_by_name::<()>("reaction-picked", &[&reaction_type]);
                 } else {
                     picker.remember_emoji(&value);
-                    utils::ancestor::<_, ui::Session>(&picker).insert_emoji(&value);
+                    if let Some(session) = utils::ancestor::<_, ui::Session>(&picker) {
+                        session.insert_emoji(&value);
+                    }
                 }
                 picker.emit_by_name::<()>("content-picked", &[]);
             }

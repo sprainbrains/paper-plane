@@ -45,11 +45,15 @@ mod imp {
 
         fn show_message_menu(&self, x: i32, y: i32) {
             let obj = &*self.obj();
-            let chat_history = utils::ancestor::<_, ui::ChatHistory>(obj);
+            let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(obj) else {
+                return;
+            };
             let menu = chat_history.message_menu();
 
             // Recompute row visibility and the reactions bar for this message.
-            let row = utils::ancestor::<_, ui::MessageRow>(obj);
+            let Some(row) = utils::ancestor::<_, ui::MessageRow>(obj) else {
+                return;
+            };
             menu.rebind(&row);
 
             menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));

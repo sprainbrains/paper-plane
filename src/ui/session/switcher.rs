@@ -74,7 +74,9 @@ mod imp {
             self.parent_root();
 
             let obj = &*self.obj();
-            let client_manager_view = obj.client_manager_view();
+            let Some(client_manager_view) = obj.client_manager_view() else {
+                return;
+            };
 
             self.set_selected(&client_manager_view);
             client_manager_view.connect_active_client_notify(clone!(
@@ -148,7 +150,9 @@ mod imp {
                 .downcast::<model::Client>()
                 .unwrap();
 
-            self.obj().client_manager_view().set_active_client(&client);
+            if let Some(view) = self.obj().client_manager_view() {
+                view.set_active_client(&client);
+            }
         }
 
         #[template_callback]
@@ -195,7 +199,7 @@ impl Default for Switcher {
 }
 
 impl Switcher {
-    pub(crate) fn client_manager_view(&self) -> ui::ClientManagerView {
+    pub(crate) fn client_manager_view(&self) -> Option<ui::ClientManagerView> {
         utils::ancestor::<_, ui::ClientManagerView>(self)
     }
 }
