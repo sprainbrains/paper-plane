@@ -70,24 +70,22 @@ template $PaplContentPicker : Widget {
     ScrolledWindow gif_page {
       hscrollbar-policy: never;
 
-      FlowBox gif_grid {
-        selection-mode: none;
-        homogeneous: true;
-        max-children-per-line: 3;
-        min-children-per-line: 2;
-        row-spacing: 6;
-        column-spacing: 6;
+      GridView gif_grid {
+        single-click-activate: true;
+        min-columns: 2;
+        max-columns: 3;
         margin-start: 12;
         margin-end: 12;
         margin-top: 6;
         margin-bottom: 12;
+        styles ["gif-picker-grid"]
       }
     }
   }
 
   Separator {}
 
-  ScrolledWindow {
+  ScrolledWindow navigation_rail_scroll {
     height-request: 44;
     vscrollbar-policy: never;
     hscrollbar-policy: automatic;

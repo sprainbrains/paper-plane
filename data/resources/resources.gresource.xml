@@ -3,6 +3,7 @@
   <gresource prefix="/app/drey/paper-plane/">
     <file preprocess="xml-stripblanks">icons/scalable/actions/arrow1-right-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/big-x-symbolic.svg</file>
+    <file preprocess="xml-stripblanks">icons/scalable/actions/chain-link-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/clear-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/done-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/scalable/actions/edit-symbolic.svg</file>

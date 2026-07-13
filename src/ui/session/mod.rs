@@ -28,6 +28,8 @@ pub(crate) use self::content::EventRow;
 pub(crate) use self::content::ForwardWindow;
 pub(crate) use self::content::MediaPicture;
 pub(crate) use self::content::MessageAudio;
+pub(crate) use self::content::MessageMenu;
+pub(crate) use self::content::MessageMenuReactions;
 pub(crate) use self::content::MessageBase;
 pub(crate) use self::content::MessageBaseExt;
 pub(crate) use self::content::MessageBaseImpl;

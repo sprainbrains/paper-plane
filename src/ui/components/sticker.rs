@@ -174,6 +174,16 @@ mod imp {
                 child.allocate(width, height, baseline, None);
             }
         }
+
+        fn map(&self) {
+            self.parent_map();
+            self.obj().resume_animation();
+        }
+
+        fn unmap(&self) {
+            self.parent_unmap();
+            self.obj().pause_animation();
+        }
     }
 
     impl Sticker {
@@ -241,39 +251,58 @@ impl Sticker {
                 let animation = rlt::Animation::from_filename(&path);
                 animation.set_loop(looped);
                 animation.use_cache(looped);
-                animation.play();
+                // Only animate while on-screen; map()/unmap() drive play/pause.
+                if self.is_mapped() {
+                    animation.play();
+                }
                 animation.upcast()
             }
             tdlib::enums::StickerFormat::Webp => {
                 let target_size = self.longer_side_size().max(1) * self.scale_factor().max(1);
-                let permit = Permit::acquire(decode_limiter()).await;
-                let result = gio::spawn_blocking(move || {
-                    utils::decode_image_from_path_at_size(&path, Some(target_size as u32))
-                })
-                .await;
-                drop(permit);
-                match result {
-                    Ok(Ok(texture)) => {
-                        let texture = texture.upcast::<gdk::Texture>();
-                        let picture = gtk::Picture::new();
-                        picture.set_paintable(Some(&texture));
-                        picture.upcast()
+                let key = PreviewKey {
+                    file_id,
+                    size: target_size,
+                };
+                // Reuse the decoded texture across ListView recycling so scrolling
+                // back over a sticker never re-decodes.
+                let cached = PREVIEW_CACHE.with(|cache| cache.borrow_mut().get(key));
+                let texture = if let Some(texture) = cached {
+                    texture
+                } else {
+                    let permit = Permit::acquire(decode_limiter()).await;
+                    let result = gio::spawn_blocking(move || {
+                        utils::decode_image_from_path_at_size(&path, Some(target_size as u32))
+                    })
+                    .await;
+                    drop(permit);
+                    match result {
+                        Ok(Ok(texture)) => {
+                            let texture = texture.upcast::<gdk::Texture>();
+                            PREVIEW_CACHE
+                                .with(|cache| cache.borrow_mut().insert(key, texture.clone()));
+                            texture
+                        }
+                        Ok(Err(error)) => {
+                            log::warn!(target: "paper_plane::sticker", "failed to decode sticker {file_id}: {error}");
+                            return;
+                        }
+                        Err(_) => {
+                            log::warn!(target: "paper_plane::sticker", "sticker decode task failed for {file_id}");
+                            return;
+                        }
                     }
-                    Ok(Err(error)) => {
-                        log::warn!(target: "paper_plane::sticker", "failed to decode sticker {file_id}: {error}");
-                        return;
-                    }
-                    Err(_) => {
-                        log::warn!(target: "paper_plane::sticker", "sticker decode task failed for {file_id}");
-                        return;
-                    }
-                }
+                };
+                let picture = gtk::Picture::new();
+                picture.set_paintable(Some(&texture));
+                picture.upcast()
             }
             tdlib::enums::StickerFormat::Webm => {
                 let media = gtk::MediaFile::for_file(&gio::File::for_path(path));
                 media.set_loop(looped);
                 media.set_muted(true);
-                media.play();
+                if self.is_mapped() {
+                    media.play();
+                }
                 let picture = gtk::Picture::for_paintable(&media);
                 picture.set_content_fit(gtk::ContentFit::Contain);
                 picture.set_can_shrink(true);
@@ -295,6 +324,39 @@ impl Sticker {
             && !animation.is_playing()
         {
             animation.play();
+        }
+    }
+
+    /// Resume playback when the sticker scrolls back into view.
+    fn resume_animation(&self) {
+        let child = self.imp().child.borrow();
+        let Some(child) = child.as_ref() else {
+            return;
+        };
+        if let Some(animation) = child.downcast_ref::<rlt::Animation>() {
+            if !animation.is_playing() {
+                animation.play();
+            }
+        } else if let Some(picture) = child.downcast_ref::<gtk::Picture>()
+            && let Some(media) = picture.paintable().and_downcast::<gtk::MediaFile>()
+        {
+            media.play();
+        }
+    }
+
+    /// Pause playback (keeping the last frame on screen) while off-screen so a chat
+    /// full of animated stickers doesn't keep every decoder running.
+    fn pause_animation(&self) {
+        let child = self.imp().child.borrow();
+        let Some(child) = child.as_ref() else {
+            return;
+        };
+        if let Some(animation) = child.downcast_ref::<rlt::Animation>() {
+            animation.pause();
+        } else if let Some(picture) = child.downcast_ref::<gtk::Picture>()
+            && let Some(media) = picture.paintable().and_downcast::<gtk::MediaFile>()
+        {
+            media.pause();
         }
     }
 
@@ -539,6 +601,21 @@ mod tests {
             cache.order.pop_front();
         }
         assert_eq!(cache.order.front().unwrap().file_id, 1);
+    }
+
+    #[test]
+    fn preview_cache_returns_inserted_texture() {
+        let mut cache = PreviewCache::default();
+        let key = PreviewKey {
+            file_id: 7,
+            size: 64,
+        };
+        let bytes = glib::Bytes::from_static(&[0u8, 0, 0, 255]);
+        let texture: gdk::Texture =
+            gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &bytes, 4).upcast();
+        cache.insert(key, texture);
+        assert!(cache.get(key).is_some());
+        assert_eq!(cache.order.len(), 1);
     }
 
     #[test]

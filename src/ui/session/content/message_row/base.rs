@@ -48,6 +48,10 @@ mod imp {
             let chat_history = utils::ancestor::<_, ui::ChatHistory>(obj);
             let menu = chat_history.message_menu();
 
+            // Recompute row visibility and the reactions bar for this message.
+            let row = utils::ancestor::<_, ui::MessageRow>(obj);
+            menu.rebind(&row);
+
             menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));
             menu.unparent();
             menu.set_parent(obj);

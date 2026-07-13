@@ -143,39 +143,11 @@ mod imp {
         /// The leading widget of a chip: the resolved custom-emoji sticker for
         /// custom-emoji reactions, or a plain label (the emoji / a star) otherwise.
         fn create_emoji_widget(&self, reaction: &model::MessageReaction) -> gtk::Widget {
-            let tdlib::enums::ReactionType::CustomEmoji(data) = reaction.reaction_type_() else {
+            let Some(message) = self.obj().message() else {
                 return gtk::Label::new(Some(&reaction.label())).upcast();
             };
-
-            let sticker: ui::Sticker = glib::Object::new();
-            sticker.set_longer_side_size(18);
-
-            if let Some(message) = self.obj().message() {
-                let session = message.chat_().session_();
-                let client_id = session.client_().id();
-                let custom_emoji_id = data.custom_emoji_id;
-
-                utils::spawn(clone!(
-                    #[weak]
-                    sticker,
-                    #[weak]
-                    session,
-                    async move {
-                        if let Ok(tdlib::enums::Stickers::Stickers(result)) =
-                            tdlib::functions::get_custom_emoji_stickers(
-                                vec![custom_emoji_id],
-                                client_id,
-                            )
-                            .await
-                            && let Some(custom_emoji) = result.stickers.into_iter().next()
-                        {
-                            sticker.update_sticker(custom_emoji, true, session);
-                        }
-                    }
-                ));
-            }
-
-            sticker.upcast()
+            let session = message.chat_().session_();
+            super::reaction_icon_widget(reaction.reaction_type_(), &session, 18)
         }
     }
 }
@@ -184,6 +156,48 @@ glib::wrapper! {
     pub(crate) struct MessageReactions(ObjectSubclass<imp::MessageReactions>)
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+/// Builds the visual for a single reaction: an animated custom-emoji sticker for
+/// `CustomEmoji` reactions (resolved asynchronously), or a plain label (the emoji
+/// character, or a star for paid reactions) otherwise. `size` is the longer-side
+/// size of the sticker, in pixels. Shared by the message-bubble reaction chips and
+/// the context-menu reactions bar.
+pub(crate) fn reaction_icon_widget(
+    reaction_type: tdlib::enums::ReactionType,
+    session: &model::ClientStateSession,
+    size: i32,
+) -> gtk::Widget {
+    let custom_emoji_id = match reaction_type {
+        tdlib::enums::ReactionType::Emoji(data) => {
+            return gtk::Label::new(Some(&data.emoji)).upcast();
+        }
+        tdlib::enums::ReactionType::Paid => {
+            return gtk::Label::new(Some("⭐")).upcast();
+        }
+        tdlib::enums::ReactionType::CustomEmoji(data) => data.custom_emoji_id,
+    };
+
+    let sticker: ui::Sticker = glib::Object::new();
+    sticker.set_longer_side_size(size);
+
+    let client_id = session.client_().id();
+    utils::spawn(clone!(
+        #[weak]
+        sticker,
+        #[weak]
+        session,
+        async move {
+            if let Ok(tdlib::enums::Stickers::Stickers(result)) =
+                tdlib::functions::get_custom_emoji_stickers(vec![custom_emoji_id], client_id).await
+                && let Some(custom_emoji) = result.stickers.into_iter().next()
+            {
+                sticker.update_sticker(custom_emoji, true, session);
+            }
+        }
+    ));
+
+    sticker.upcast()
 }
 
 /// Toggles the current user's reaction: removes it if already chosen, otherwise

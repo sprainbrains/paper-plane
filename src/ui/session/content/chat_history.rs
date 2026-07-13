@@ -28,7 +28,7 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) chat_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) model: RefCell<Option<model::ChatHistoryModel>>,
-        pub(super) message_menu: OnceCell<gtk::PopoverMenu>,
+        pub(super) message_menu: OnceCell<ui::MessageMenu>,
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
         pub(super) sticky: Cell<bool>,
@@ -351,13 +351,9 @@ impl ChatHistory {
         }
     }
 
-    pub(crate) fn message_menu(&self) -> &gtk::PopoverMenu {
+    pub(crate) fn message_menu(&self) -> &ui::MessageMenu {
         self.imp().message_menu.get_or_init(|| {
-            let menu = gtk::Builder::from_resource(
-                "/app/drey/paper-plane/ui/session/content/message_menu.ui",
-            )
-            .object::<gtk::PopoverMenu>("menu")
-            .unwrap();
+            let menu = ui::MessageMenu::new();
 
             menu.set_halign(if self.direction() == gtk::TextDirection::Rtl {
                 gtk::Align::End

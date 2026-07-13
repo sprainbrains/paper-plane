@@ -1,0 +1,287 @@
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::collections::HashSet;
+
+use glib::clone;
+use gtk::glib;
+use gtk::prelude::*;
+use gtk::subclass::prelude::*;
+
+use crate::model;
+use crate::ui;
+use crate::utils;
+
+/// How many quick reactions to offer before the "open full picker" chevron.
+const MAX_QUICK_REACTIONS: usize = 7;
+/// Longer-side size (px) of a reaction icon in the bar.
+const REACTION_ICON_SIZE: i32 = 32;
+
+mod imp {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    pub(crate) struct MessageMenuReactions {
+        pub(super) message: RefCell<Option<model::Message>>,
+        /// Bumped on every `load_for` so stale async availability responses (from a
+        /// previously bound message) are discarded — the bar is a shared singleton
+        /// re-parented per message.
+        pub(super) generation: Cell<u64>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for MessageMenuReactions {
+        const NAME: &'static str = "PaplMessageMenuReactions";
+        type Type = super::MessageMenuReactions;
+        type ParentType = gtk::Box;
+    }
+
+    impl ObjectImpl for MessageMenuReactions {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let obj = self.obj();
+            obj.set_orientation(gtk::Orientation::Horizontal);
+            obj.set_spacing(2);
+            obj.add_css_class("reaction-bar");
+        }
+    }
+
+    impl WidgetImpl for MessageMenuReactions {}
+    impl BoxImpl for MessageMenuReactions {}
+}
+
+glib::wrapper! {
+    pub(crate) struct MessageMenuReactions(ObjectSubclass<imp::MessageMenuReactions>)
+        @extends gtk::Widget, gtk::Box,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;
+}
+
+impl MessageMenuReactions {
+    /// Populates the bar with quick reactions for `message`: the server-side
+    /// favorite reaction first, then the chat's top and recent reactions, capped
+    /// to [`MAX_QUICK_REACTIONS`], followed by a chevron opening the full picker.
+    /// Hides itself entirely when the message can carry no reactions.
+    pub(crate) fn load_for(&self, message: &model::Message) {
+        let imp = self.imp();
+        imp.message.replace(Some(message.clone()));
+
+        let generation = imp.generation.get().wrapping_add(1);
+        imp.generation.set(generation);
+
+        while let Some(child) = self.first_child() {
+            self.remove(&child);
+        }
+
+        let chat = message.chat_();
+        let session = chat.session_();
+        let client_id = session.client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+        let favorite = session.default_reaction_type();
+
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            session,
+            async move {
+                let available = match tdlib::functions::get_message_available_reactions(
+                    chat_id, message_id, 8, client_id,
+                )
+                .await
+                {
+                    Ok(tdlib::enums::AvailableReactions::AvailableReactions(available)) => available,
+                    Err(e) => {
+                        log::warn!("Failed to get available reactions: {e:?}");
+                        obj.set_visible(false);
+                        return;
+                    }
+                };
+
+                if obj.imp().generation.get() != generation {
+                    return;
+                }
+
+                let mut seen: HashSet<String> = HashSet::new();
+                let mut types: Vec<tdlib::enums::ReactionType> = Vec::new();
+                let ordered = favorite
+                    .map(|b| b.0)
+                    .into_iter()
+                    .chain(available.top_reactions.into_iter().map(|ar| ar.r#type))
+                    .chain(available.recent_reactions.into_iter().map(|ar| ar.r#type));
+                for reaction_type in ordered {
+                    if types.len() >= MAX_QUICK_REACTIONS {
+                        break;
+                    }
+                    if seen.insert(reaction_key(&reaction_type)) {
+                        types.push(reaction_type);
+                    }
+                }
+
+                if types.is_empty() && !available.allow_custom_emoji {
+                    obj.set_visible(false);
+                    return;
+                }
+                obj.set_visible(true);
+
+                for reaction_type in types {
+                    let icon = super::message_row::reaction_icon_widget(
+                        reaction_type.clone(),
+                        &session,
+                        REACTION_ICON_SIZE,
+                    );
+                    let button = gtk::Button::builder().child(&icon).build();
+                    button.add_css_class("flat");
+                    button.add_css_class("reaction-bar-item");
+                    button.connect_clicked(clone!(
+                        #[weak]
+                        obj,
+                        move |_| {
+                            let reaction_type = reaction_type.clone();
+                            utils::spawn(async move {
+                                if let Err(e) = tdlib::functions::add_message_reaction(
+                                    chat_id,
+                                    message_id,
+                                    reaction_type,
+                                    false,
+                                    true,
+                                    client_id,
+                                )
+                                .await
+                                {
+                                    log::warn!("Failed to add a reaction: {e:?}");
+                                }
+                            });
+                            obj.close_menu();
+                        }
+                    ));
+                    obj.append(&button);
+                }
+
+                let chevron = gtk::Button::from_icon_name("pan-down-symbolic");
+                chevron.add_css_class("flat");
+                chevron.add_css_class("reaction-bar-expand");
+                chevron.connect_clicked(clone!(
+                    #[weak]
+                    obj,
+                    move |_| obj.open_full_picker()
+                ));
+                obj.append(&chevron);
+            }
+        ));
+    }
+
+    /// Closes the enclosing context menu, if any.
+    fn close_menu(&self) {
+        if let Some(menu) = self
+            .ancestor(ui::MessageMenu::static_type())
+            .and_downcast::<ui::MessageMenu>()
+        {
+            menu.popdown();
+        }
+    }
+
+    /// Dismisses the context menu and opens the full reaction picker (the content
+    /// picker in reaction mode) anchored where the menu was.
+    fn open_full_picker(&self) {
+        let Some(message) = self.imp().message.borrow().clone() else {
+            return;
+        };
+        let chat = message.chat_();
+        let session = chat.session_();
+        let client_id = session.client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+
+        // Detach from the menu and re-anchor the picker exactly where the menu was,
+        // so it opens in place rather than jumping.
+        let menu = self
+            .ancestor(ui::MessageMenu::static_type())
+            .and_downcast::<ui::MessageMenu>();
+        let placement = menu.as_ref().map(|menu| {
+            (
+                menu.parent(),
+                menu.pointing_to(),
+                menu.halign(),
+                menu.position(),
+            )
+        });
+        if let Some(menu) = &menu {
+            menu.popdown();
+        }
+        let Some((Some(anchor), pointing, halign, position)) = placement else {
+            return;
+        };
+
+        let picker: ui::ContentPicker = glib::Object::builder()
+            .property("session", &session)
+            .property("chat", &chat)
+            .build();
+        picker.set_reaction_mode(chat_id, message_id);
+        picker.set_size_request(360, 420);
+
+        // Reveal the picker with a downward "unfold" so it grows open from the
+        // reaction bar's position instead of just appearing.
+        let revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::SwingDown)
+            .transition_duration(250)
+            .reveal_child(false)
+            .child(&picker)
+            .build();
+
+        let popover = gtk::Popover::builder().has_arrow(false).build();
+        popover.add_css_class("reaction-picker-popover");
+        popover.set_halign(halign);
+        popover.set_position(position);
+        popover.set_child(Some(&revealer));
+        popover.set_parent(&anchor);
+        if let (true, rect) = pointing {
+            popover.set_pointing_to(Some(&rect));
+        }
+        popover.connect_closed(|popover| popover.unparent());
+        // Kick off the reveal once the popover is on screen.
+        popover.connect_map(clone!(
+            #[weak]
+            revealer,
+            move |_| revealer.set_reveal_child(true)
+        ));
+
+        picker.connect_content_picked(clone!(
+            #[weak]
+            popover,
+            move |_| popover.popdown()
+        ));
+        picker.connect_reaction_picked(clone!(
+            #[weak]
+            popover,
+            move |_, boxed| {
+                let reaction_type = boxed.0;
+                utils::spawn(async move {
+                    if let Err(e) = tdlib::functions::add_message_reaction(
+                        chat_id,
+                        message_id,
+                        reaction_type,
+                        false,
+                        true,
+                        client_id,
+                    )
+                    .await
+                    {
+                        log::warn!("Failed to add a reaction from the picker: {e:?}");
+                    }
+                });
+                popover.popdown();
+            }
+        ));
+
+        popover.popup();
+    }
+}
+
+/// A stable de-duplication key for a reaction type.
+fn reaction_key(reaction_type: &tdlib::enums::ReactionType) -> String {
+    match reaction_type {
+        tdlib::enums::ReactionType::Emoji(data) => format!("e:{}", data.emoji),
+        tdlib::enums::ReactionType::CustomEmoji(data) => format!("c:{}", data.custom_emoji_id),
+        tdlib::enums::ReactionType::Paid => "paid".to_owned(),
+    }
+}

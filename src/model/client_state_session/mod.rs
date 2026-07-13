@@ -50,6 +50,10 @@ mod imp {
         #[property(get)]
         pub(super) channel_chats_notification_settings:
             RefCell<model::BoxedScopeNotificationSettings>,
+        /// The user's server-side default ("favorite") reaction, delivered via
+        /// `updateDefaultReactionType`. Not a GObject property because
+        /// `ReactionType` has no meaningful default value.
+        pub(super) default_reaction_type: RefCell<Option<model::BoxedReactionType>>,
     }
 
     #[glib::object_subclass]
@@ -286,6 +290,11 @@ impl ClientStateSession {
         })
     }
 
+    /// The user's server-side default ("favorite") reaction, if known.
+    pub(crate) fn default_reaction_type(&self) -> Option<model::BoxedReactionType> {
+        self.imp().default_reaction_type.borrow().clone()
+    }
+
     fn set_private_chats_notification_settings(
         &self,
         settings: model::BoxedScopeNotificationSettings,
@@ -484,6 +493,11 @@ impl ClientStateSession {
             }
             UserStatus(data) => {
                 self.user(data.user_id).update_status(data.status);
+            }
+            DefaultReactionType(data) => {
+                self.imp()
+                    .default_reaction_type
+                    .replace(Some(model::BoxedReactionType(data.reaction_type)));
             }
             _ => {}
         }

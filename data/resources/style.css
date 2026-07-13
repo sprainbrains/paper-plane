@@ -444,6 +444,57 @@ messagesticker {
   color: @accent_fg_color;
 }
 
+/* Message context menu: a floating reactions pill above a separate menu card,
+   both drawn as their own rounded surfaces over a transparent popover. */
+.message-menu > contents {
+  background: none;
+  box-shadow: none;
+  border: none;
+  padding: 0;
+}
+
+.reaction-bar {
+  padding: 4px 6px;
+  border-radius: 9999px;
+  background-color: @popover_bg_color;
+  box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.reaction-bar-item,
+.reaction-bar-expand {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 3px;
+  border-radius: 9999px;
+}
+
+/* Standard-emoji reactions are plain labels; enlarge the glyph to match the
+   bigger custom-emoji stickers in the bar. */
+.reaction-bar-item label {
+  font-size: 28px;
+}
+
+.message-menu-card {
+  padding: 6px;
+  border-radius: 12px;
+  background-color: @popover_bg_color;
+  box-shadow: 0 1px 3px 1px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+}
+
+.message-menu-item {
+  min-height: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.message-menu-item.message-menu-item-destructive {
+  color: @destructive_color;
+}
+
+.message-menu-separator {
+  margin: 6px 8px;
+}
+
 .video-note {
   border-radius: 9999px;
 }
@@ -570,9 +621,9 @@ contentpicker.content-picker {
 }
 
 .emoji-picker-item {
-  font-size: 22px;
-  min-width: 34px;
-  min-height: 34px;
+  font-size: 26px;
+  min-width: 38px;
+  min-height: 38px;
   padding: 0;
 }
 
@@ -588,8 +639,22 @@ contentpicker.content-picker {
   padding: 4px;
 }
 
+/* The rail entry for the section currently in view. */
+.rail-item.active {
+  background-color: alpha(@accent_bg_color, 0.2);
+}
+
+.rail-item.active image {
+  color: @accent_color;
+}
+
 .gif-picker-item {
   min-width: 100px;
   min-height: 84px;
   padding: 0;
+  border-radius: 8px;
+}
+
+.gif-picker-grid > child {
+  padding: 3px;
 }

@@ -6,6 +6,8 @@ mod chat_info_window;
 mod content_picker;
 mod event_row;
 mod forward_window;
+mod message_menu;
+mod message_menu_reactions;
 mod message_row;
 mod send_media_window;
 
@@ -24,6 +26,8 @@ pub(crate) use self::chat_info_window::ChatInfoWindow;
 pub(crate) use self::content_picker::ContentPicker;
 pub(crate) use self::event_row::EventRow;
 pub(crate) use self::forward_window::ForwardWindow;
+pub(crate) use self::message_menu::MessageMenu;
+pub(crate) use self::message_menu_reactions::MessageMenuReactions;
 pub(crate) use self::message_row::MediaPicture;
 pub(crate) use self::message_row::MessageAudio;
 pub(crate) use self::message_row::MessageBase;

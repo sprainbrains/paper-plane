@@ -76,13 +76,42 @@ mod imp {
     pub(crate) struct ContentPicker {
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         pub(super) chat: glib::WeakRef<model::Chat>,
+        /// Whether this picker composes a message (default) or picks a reaction.
+        pub(super) mode: Cell<PickerMode>,
+        /// `(chat_id, message_id)` targeted when in [`PickerMode::Reaction`].
+        pub(super) reaction_target: Cell<Option<(i64, i64)>>,
         pub(super) stickers_loaded: Cell<bool>,
         pub(super) gifs_loaded: Cell<bool>,
+        /// Whether the emoji page's full content (standard + custom emoji) is built,
+        /// so reopening only refreshes the cheap "Recently Used" section instead of
+        /// rebuilding — and re-downloading — every custom-emoji pack.
+        pub(super) emoji_built: Cell<bool>,
         pub(super) sticker_search_active: Cell<bool>,
+        pub(super) emoji_search_active: Cell<bool>,
         pub(super) sticker_generation: Cell<u64>,
+        /// Bumped whenever the emoji page is rebuilt, so an in-flight custom-emoji
+        /// section load from a previous build stops appending to the cleared page.
+        pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
         pub(super) sticker_model: OnceCell<gio::ListStore>,
+        pub(super) gif_model: OnceCell<gio::ListStore>,
+        pub(super) rail_covers: RefCell<Vec<RailCover>>,
+        /// Maps each content section's widget name to its rail button, so the rail
+        /// can highlight the section currently in view.
+        pub(super) rail_sections: RefCell<Vec<(String, glib::WeakRef<gtk::Button>)>>,
+        /// The lazy custom-emoji rows on the emoji page; their previews are loaded
+        /// only while scrolled into view (poor man's virtualization for the
+        /// non-virtualized emoji Box).
+        pub(super) custom_emoji_rows: RefCell<Vec<glib::WeakRef<ui::StickerPickerRow>>>,
+        /// Debounce guard so a burst of appends/relayouts triggers a single viewport
+        /// demand sweep rather than one per event.
+        pub(super) demand_scheduled: Cell<bool>,
+        /// True while custom-emoji packs are still streaming in. Demand sweeps are
+        /// suppressed until the build finishes, since the page geometry is unstable
+        /// mid-build and would otherwise demand (and decode) rows that aren't really
+        /// on screen yet.
+        pub(super) custom_emoji_loading: Cell<bool>,
         pub(super) animations: RefCell<Vec<tdlib::types::Animation>>,
         #[template_child]
         pub(super) emoji_tab: TemplateChild<gtk::ToggleButton>,
@@ -105,9 +134,11 @@ mod imp {
         #[template_child]
         pub(super) sticker_list: TemplateChild<gtk::ListView>,
         #[template_child]
-        pub(super) gif_grid: TemplateChild<gtk::FlowBox>,
+        pub(super) gif_grid: TemplateChild<gtk::GridView>,
         #[template_child]
         pub(super) navigation_rail: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) navigation_rail_scroll: TemplateChild<gtk::ScrolledWindow>,
     }
 
     #[glib::object_subclass]
@@ -128,7 +159,14 @@ mod imp {
     impl ObjectImpl for ContentPicker {
         fn signals() -> &'static [Signal] {
             static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
-            SIGNALS.get_or_init(|| vec![Signal::builder("content-picked").build()])
+            SIGNALS.get_or_init(|| {
+                vec![
+                    Signal::builder("content-picked").build(),
+                    Signal::builder("reaction-picked")
+                        .param_types([model::BoxedReactionType::static_type()])
+                        .build(),
+                ]
+            })
         }
 
         fn properties() -> &'static [glib::ParamSpec] {
@@ -162,6 +200,8 @@ mod imp {
             let obj = self.obj();
             obj.setup_sticker_list();
             obj.setup_sticker_scrolling();
+            obj.setup_gif_grid();
+            obj.setup_rail_scrolling();
             obj.build_emoji_page();
             self.emoji_tab.connect_toggled(clone!(
                 #[weak]
@@ -218,6 +258,28 @@ enum PickerPage {
     Gifs,
 }
 
+/// What a picked item does: insert into the message being composed (default), or
+/// be reported as a chosen reaction via the `reaction-picked` signal.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum PickerMode {
+    #[default]
+    Compose,
+    Reaction,
+}
+
+/// A sticker-pack icon in the navigation rail whose cover thumbnail is fetched
+/// lazily — only once the button scrolls into the rail's viewport — so opening the
+/// sticker tab doesn't stampede the decode limiter with one decode per installed pack.
+#[derive(Debug)]
+struct RailCover {
+    button: glib::WeakRef<gtk::Button>,
+    picture: glib::WeakRef<gtk::Picture>,
+    cover: Option<tdlib::types::Sticker>,
+    thumbnail: Option<tdlib::types::File>,
+    demand: Rc<Cell<bool>>,
+    loaded: bool,
+}
+
 #[derive(Debug, Clone)]
 enum StickerRow {
     Header { title: String, set_id: Option<i64> },
@@ -227,6 +289,12 @@ enum StickerRow {
 }
 
 const STICKER_SET_CACHE_VERSION: u32 = 1;
+
+/// Layout of custom-emoji rows in the emoji page, chosen to match the standard
+/// emoji grid's density rather than the larger sticker cells.
+const CUSTOM_EMOJI_COLUMNS: i32 = 8;
+const CUSTOM_EMOJI_CELL_SIZE: i32 = 44;
+const CUSTOM_EMOJI_SIZE: i32 = 30;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct StickerSetSignature {
@@ -283,6 +351,11 @@ impl ContentPicker {
             move |_, item| {
                 let item = item.downcast_ref::<gtk::ListItem>().unwrap();
                 let row = item.item().and_downcast::<glib::BoxedAnyObject>().unwrap();
+                log::debug!(
+                    target: "paper_plane::content_picker",
+                    "bind sticker row; position={}",
+                    item.position(),
+                );
                 let child: gtk::Widget = match &*row.borrow::<StickerRow>() {
                     StickerRow::Header { title, .. } => section_title(title).upcast(),
                     StickerRow::Stickers(stickers) => obj.build_sticker_row(stickers).upcast(),
@@ -329,37 +402,107 @@ impl ContentPicker {
     }
 
     fn setup_sticker_scrolling(&self) {
-        self.imp()
-            .sticker_page
-            .vadjustment()
-            .connect_value_changed(clone!(
+        // Both the sticker list and the emoji page host `StickerPickerRow`s (the
+        // emoji page now embeds custom-emoji packs), so pause preview loading and
+        // animation while either is scrolling.
+        for adjustment in [
+            self.imp().sticker_page.vadjustment(),
+            self.imp().emoji_page.vadjustment(),
+        ] {
+            adjustment.connect_value_changed(clone!(
                 #[weak(rename_to = obj)]
                 self,
-                move |_| {
-                    let imp = obj.imp();
-                    imp.sticker_scrolling.set(true);
-                    if let Some(source) = imp.scroll_timeout.borrow_mut().take() {
-                        source.remove();
-                    }
-                    let source = glib::timeout_add_local_once(
-                        std::time::Duration::from_millis(150),
-                        clone!(
-                            #[weak]
-                            obj,
-                            move || {
-                                let imp = obj.imp();
-                                imp.scroll_timeout.borrow_mut().take();
-                                imp.sticker_scrolling.set(false);
-                                imp.sticker_list.queue_draw();
-                            }
-                        ),
-                    );
-                    *imp.scroll_timeout.borrow_mut() = Some(source);
-                }
+                move |_| obj.mark_scrolling()
             ));
+        }
+    }
+
+    fn mark_scrolling(&self) {
+        let imp = self.imp();
+        imp.sticker_scrolling.set(true);
+        if let Some(source) = imp.scroll_timeout.borrow_mut().take() {
+            source.remove();
+        }
+        let source = glib::timeout_add_local_once(
+            std::time::Duration::from_millis(150),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move || {
+                    let imp = obj.imp();
+                    imp.scroll_timeout.borrow_mut().take();
+                    imp.sticker_scrolling.set(false);
+                    imp.sticker_list.queue_draw();
+                    imp.emoji_sections.queue_draw();
+                    // Now that scrolling stopped, (un)load custom-emoji rows for the
+                    // new viewport and update the rail highlight — both too costly to
+                    // run on every scroll frame.
+                    obj.update_custom_emoji_demand();
+                    obj.update_active_rail_item();
+                }
+            ),
+        );
+        *imp.scroll_timeout.borrow_mut() = Some(source);
+    }
+
+    fn gif_model(&self) -> &gio::ListStore {
+        self.imp().gif_model.get().unwrap()
+    }
+
+    fn setup_gif_grid(&self) {
+        let model = gio::ListStore::new::<glib::BoxedAnyObject>();
+        let selection = gtk::NoSelection::new(Some(model.clone()));
+        self.imp().gif_grid.set_model(Some(&selection));
+        self.imp().gif_model.set(model).unwrap();
+
+        let factory = gtk::SignalListItemFactory::new();
+        factory.connect_setup(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            item.set_child(Some(&ui::GifCell::new()));
+        });
+        factory.connect_bind(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_, item| {
+                let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+                let Some(cell) = item.child().and_downcast::<ui::GifCell>() else {
+                    return;
+                };
+                let Some(row) = item.item().and_downcast::<glib::BoxedAnyObject>() else {
+                    return;
+                };
+                let Some(session) = obj.imp().session.upgrade() else {
+                    return;
+                };
+                let animation = row.borrow::<tdlib::types::Animation>().clone();
+                cell.set_animation(animation, &session);
+            }
+        ));
+        factory.connect_unbind(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            if let Some(cell) = item.child().and_downcast::<ui::GifCell>() {
+                cell.clear();
+            }
+        });
+        self.imp().gif_grid.set_factory(Some(&factory));
+
+        self.imp().gif_grid.connect_activate(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_, position| obj.activate_gif(position as usize)
+        ));
     }
 
     pub(crate) fn refresh(&self) {
+        // Refresh the Recently Used emoji section on each open, without paying for a
+        // full rebuild (and custom-emoji re-download) on every open.
+        if self.imp().emoji_tab.is_active() && !self.imp().emoji_search_active.get() {
+            if self.imp().emoji_built.get() {
+                self.refresh_recent_emoji();
+            } else {
+                self.build_emoji_page();
+            }
+        }
         log::info!(
             target: "paper_plane::content_picker",
             "picker ready; sticker and GIF content remains lazy"
@@ -395,6 +538,11 @@ impl ContentPicker {
 
     fn build_emoji_page(&self) {
         let started = Instant::now();
+        // Cancel any custom-emoji load still appending to the old page.
+        self.imp()
+            .custom_emoji_generation
+            .set(self.imp().custom_emoji_generation.get().wrapping_add(1));
+        self.imp().custom_emoji_rows.borrow_mut().clear();
         clear_box(&self.imp().emoji_sections);
         let settings = utils::PaperPlaneSettings::default();
         let recent = settings.strv("recent-emojis");
@@ -419,6 +567,15 @@ impl ContentPicker {
             self.imp().emoji_sections.append(&grid);
         }
         self.rebuild_rail(PickerPage::Emoji);
+        // Append the user's custom-emoji packs after the standard emoji sections,
+        // tdesktop-style — so custom emoji live in the emoji panel rather than a
+        // separate tab.
+        self.load_custom_emoji_sections();
+        // Consider the page built only once a session is available to load custom
+        // emoji; otherwise the next refresh rebuilds so they still appear.
+        self.imp()
+            .emoji_built
+            .set(self.imp().session.upgrade().is_some());
         log::info!(
             target: "paper_plane::content_picker",
             "emoji page built in {:?}; recent_count={}",
@@ -427,8 +584,194 @@ impl ContentPicker {
         );
     }
 
+    /// Updates just the "Recently Used" emoji section in place, leaving the (heavy)
+    /// standard and custom-emoji sections untouched.
+    fn refresh_recent_emoji(&self) {
+        let sections = self.imp().emoji_sections.get();
+        if let Some(grid) = find_named_child(&sections, "Recently-Used") {
+            if let Some(title) = grid.prev_sibling() {
+                sections.remove(&title);
+            }
+            sections.remove(&grid);
+        }
+        let recent = utils::PaperPlaneSettings::default().strv("recent-emojis");
+        if !recent.is_empty() {
+            let values: Vec<&str> = recent.iter().map(|value| value.as_str()).collect();
+            let grid = emoji_grid(self, values.into_iter());
+            grid.set_widget_name("Recently-Used");
+            sections.prepend(&grid);
+            sections.prepend(&section_title(&gettext("Recently Used")));
+        }
+    }
+
+    /// Loads the installed custom-emoji sticker sets and appends each as a section
+    /// in the emoji page, with a matching pack icon in the navigation rail.
+    fn load_custom_emoji_sections(&self) {
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let client_id = session.client_().id();
+        let generation = self.imp().custom_emoji_generation.get();
+        self.imp().custom_emoji_loading.set(true);
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let Ok(tdlib::enums::StickerSets::StickerSets(data)) =
+                    tdlib::functions::get_installed_sticker_sets(
+                        tdlib::enums::StickerType::CustomEmoji,
+                        client_id,
+                    )
+                    .await
+                else {
+                    obj.imp().custom_emoji_loading.set(false);
+                    return;
+                };
+                // Fetch several packs concurrently (each get_sticker_set is a TDLib
+                // round-trip), but append them one at a time, yielding to the main loop
+                // between packs so the UI never freezes while the page fills in.
+                let mut packs = futures::stream::iter(data.sets.into_iter().map(move |info| async move {
+                    let set = tdlib::functions::get_sticker_set(info.id, client_id).await;
+                    (info, set)
+                }))
+                .buffered(4);
+                while let Some((info, set)) = packs.next().await {
+                    if obj.imp().custom_emoji_generation.get() != generation {
+                        return;
+                    }
+                    match set {
+                        Ok(tdlib::enums::StickerSet::StickerSet(set)) => {
+                            obj.append_custom_emoji_section(info.id, &set.title, set.stickers);
+                            obj.append_emoji_rail_pack(&info);
+                        }
+                        Err(e) => log::warn!(
+                            target: "paper_plane::content_picker",
+                            "Failed to load custom emoji set {}: {e:?}",
+                            info.id,
+                        ),
+                    }
+                    // Yield so pending redraws/input are processed before the next pack.
+                    glib::timeout_future(std::time::Duration::from_millis(0)).await;
+                }
+                // Build finished: allow demand sweeps and run one now that the layout
+                // is stable, so whatever is actually on screen starts loading.
+                if obj.imp().custom_emoji_generation.get() == generation {
+                    obj.imp().custom_emoji_loading.set(false);
+                    obj.schedule_custom_emoji_demand();
+                }
+            }
+        ));
+    }
+
+    /// Appends one custom-emoji pack (header + `StickerPickerRow`s) to the emoji
+    /// page, wrapped in a named box so the rail can scroll to it.
+    fn append_custom_emoji_section(
+        &self,
+        set_id: i64,
+        title: &str,
+        stickers: Vec<tdlib::types::Sticker>,
+    ) {
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let container = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .name(custom_emoji_section_name(set_id))
+            .build();
+        container.append(&section_title(title));
+        // Render custom emoji at (roughly) emoji size, 8 per row, so they blend into
+        // the emoji grid instead of towering over it like stickers.
+        for chunk in stickers.chunks(CUSTOM_EMOJI_COLUMNS as usize) {
+            let preview = ui::StickerPickerRow::new_sized(
+                chunk,
+                &session,
+                self.imp().sticker_scrolling.clone(),
+                CUSTOM_EMOJI_CELL_SIZE,
+                CUSTOM_EMOJI_SIZE,
+                CUSTOM_EMOJI_COLUMNS,
+                false,
+                true,
+                false,
+                clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |sticker| obj.activate_sticker(sticker)
+                ),
+            );
+            self.imp()
+                .custom_emoji_rows
+                .borrow_mut()
+                .push(preview.downgrade());
+            container.append(&preview);
+        }
+        self.imp().emoji_sections.append(&container);
+    }
+
+    /// Adds a custom-emoji pack's cover to the emoji navigation rail.
+    fn append_emoji_rail_pack(&self, info: &tdlib::types::StickerSetInfo) {
+        let picture = gtk::Picture::builder()
+            .width_request(24)
+            .height_request(24)
+            .content_fit(gtk::ContentFit::Contain)
+            .build();
+        let button = gtk::Button::builder().child(&picture).build();
+        button.add_css_class("flat");
+        button.add_css_class("sticker-pack-rail-item");
+        button.set_tooltip_text(Some(&info.title));
+        let set_id = info.id;
+        let name = custom_emoji_section_name(set_id);
+        self.register_rail_section(name.clone(), &button);
+        button.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| {
+                obj.set_active_rail(&name);
+                obj.scroll_emoji_to_section(&name);
+            }
+        ));
+
+        let cover = info.covers.first().cloned();
+        let thumbnail = info.thumbnail.as_ref().and_then(|thumbnail| {
+            matches!(
+                thumbnail.format,
+                tdlib::enums::ThumbnailFormat::Jpeg
+                    | tdlib::enums::ThumbnailFormat::Png
+                    | tdlib::enums::ThumbnailFormat::Webp
+            )
+            .then(|| thumbnail.file.clone())
+        });
+        if cover.is_some() || thumbnail.is_some() {
+            self.imp().rail_covers.borrow_mut().push(RailCover {
+                button: button.downgrade(),
+                picture: picture.downgrade(),
+                cover,
+                thumbnail,
+                demand: Rc::new(Cell::new(false)),
+                loaded: false,
+            });
+        }
+        self.imp().navigation_rail.append(&button);
+        self.update_rail_covers();
+    }
+
+    /// Scrolls the emoji page to the section whose widget name matches `name`.
+    fn scroll_emoji_to_section(&self, name: &str) {
+        let sections = self.imp().emoji_sections.get();
+        if let Some(child) = find_named_child(&sections, name)
+            && let Some(point) = child.compute_point(&sections, &gtk::graphene::Point::zero())
+        {
+            self.imp()
+                .emoji_page
+                .vadjustment()
+                .set_value(point.y() as f64);
+        }
+    }
+
     fn rebuild_rail(&self, page: PickerPage) {
         clear_box(&self.imp().navigation_rail);
+        self.imp().rail_covers.borrow_mut().clear();
+        self.imp().rail_sections.borrow_mut().clear();
         match page {
             PickerPage::Emoji => {
                 for (title, icon, emojis) in EMOJI_SECTIONS {
@@ -438,26 +781,16 @@ impl ContentPicker {
                     let button = gtk::Button::from_icon_name(icon);
                     button.set_tooltip_text(Some(&gettext(*title)));
                     button.add_css_class("flat");
-                    let page = self.imp().emoji_page.get();
-                    let sections = self.imp().emoji_sections.get();
                     let name = title.replace(' ', "-");
-                    button.connect_clicked(move |_| {
-                        if let Some(child) = sections.first_child().and_then(|mut c| {
-                            loop {
-                                if c.widget_name() == name {
-                                    break Some(c);
-                                }
-                                match c.next_sibling() {
-                                    Some(next) => c = next,
-                                    None => break None,
-                                }
-                            }
-                        }) && let Some(point) =
-                            child.compute_point(&sections, &gtk::graphene::Point::zero())
-                        {
-                            page.vadjustment().set_value(point.y() as f64);
+                    self.register_rail_section(name.clone(), &button);
+                    button.connect_clicked(clone!(
+                        #[weak(rename_to = obj)]
+                        self,
+                        move |_| {
+                            obj.set_active_rail(&name);
+                            obj.scroll_emoji_to_section(&name);
                         }
-                    });
+                    ));
                     self.imp().navigation_rail.append(&button);
                 }
             }
@@ -469,12 +802,17 @@ impl ContentPicker {
                     let button = gtk::Button::from_icon_name(icon);
                     button.set_tooltip_text(Some(&gettext(label)));
                     button.add_css_class("flat");
+                    let name = gettext(label);
+                    self.register_rail_section(name.clone(), &button);
                     button.connect_clicked(clone!(
                         #[weak(rename_to = obj)]
                         self,
                         #[strong]
-                        label,
-                        move |_| obj.scroll_to_sticker_section(None, &gettext(label))
+                        name,
+                        move |_| {
+                            obj.set_active_rail(&name);
+                            obj.scroll_to_sticker_section(None, &name);
+                        }
                     ));
                     self.imp().navigation_rail.append(&button);
                 }
@@ -483,6 +821,9 @@ impl ContentPicker {
                 let button = gtk::Button::from_icon_name("document-open-recent-symbolic");
                 button.set_tooltip_text(Some(&gettext("Saved GIFs")));
                 button.add_css_class("flat");
+                // The GIF page has a single section, so it is always the active one.
+                button.add_css_class("rail-item");
+                button.add_css_class("active");
                 self.imp().navigation_rail.append(&button);
             }
         }
@@ -490,10 +831,6 @@ impl ContentPicker {
 
     fn build_sticker_pack_rail(&self, infos: &[(bool, tdlib::types::StickerSetInfo)]) {
         self.rebuild_rail(PickerPage::Stickers);
-        let Some(session) = self.imp().session.upgrade() else {
-            return;
-        };
-        let preview_pixel_size = 24 * self.scale_factor().max(1);
         for (_, info) in infos {
             let picture = gtk::Picture::builder()
                 .width_request(24)
@@ -506,10 +843,14 @@ impl ContentPicker {
             button.set_tooltip_text(Some(&info.title));
             let set_id = info.id;
             let title = info.title.clone();
+            self.register_rail_section(title.clone(), &button);
             button.connect_clicked(clone!(
                 #[weak(rename_to = obj)]
                 self,
-                move |_| obj.scroll_to_sticker_section(Some(set_id), &title)
+                move |_| {
+                    obj.set_active_rail(&title);
+                    obj.scroll_to_sticker_section(Some(set_id), &title);
+                }
             ));
 
             let cover = info.covers.first().cloned();
@@ -522,33 +863,256 @@ impl ContentPicker {
                 )
                 .then(|| thumbnail.file.clone())
             });
+            // Defer the cover decode until the icon is actually scrolled into the
+            // rail's viewport (see update_rail_covers). Loading every pack cover up
+            // front swamps the decode limiter and delays the visible grid previews.
             if cover.is_some() || thumbnail.is_some() {
-                let demand = Rc::new(Cell::new(true));
-                utils::spawn(clone!(
-                    #[weak]
-                    picture,
-                    #[weak]
-                    session,
-                    async move {
-                        let result = if let Some(cover) = cover {
-                            ui::load_picker_preview(&cover, preview_pixel_size, &session, demand)
-                                .await
-                        } else {
-                            ui::load_picker_file_preview(
-                                thumbnail.unwrap(),
-                                preview_pixel_size,
-                                &session,
-                                demand,
-                            )
-                            .await
-                        };
-                        if let Ok(texture) = result {
-                            picture.set_paintable(Some(&texture));
-                        }
-                    }
-                ));
+                self.imp().rail_covers.borrow_mut().push(RailCover {
+                    button: button.downgrade(),
+                    picture: picture.downgrade(),
+                    cover,
+                    thumbnail,
+                    demand: Rc::new(Cell::new(false)),
+                    loaded: false,
+                });
             }
             self.imp().navigation_rail.append(&button);
+        }
+    }
+
+    fn setup_rail_scrolling(&self) {
+        let rail_scroll = self.imp().navigation_rail_scroll.get();
+        // The rail is a horizontal strip: never show scrollbars, and let a mouse
+        // wheel (either axis) scroll it horizontally.
+        rail_scroll.set_policy(gtk::PolicyType::External, gtk::PolicyType::Never);
+        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+        scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
+        scroll.connect_scroll(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[upgrade_or]
+            glib::Propagation::Proceed,
+            move |_, dx, dy| {
+                let adjustment = obj.imp().navigation_rail_scroll.hadjustment();
+                let step = adjustment.step_increment().max(40.0);
+                let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+                let value = (adjustment.value() + (dx + dy) * step).clamp(adjustment.lower(), max);
+                adjustment.set_value(value);
+                glib::Propagation::Stop
+            }
+        ));
+        rail_scroll.add_controller(scroll);
+
+        let adjustment = rail_scroll.hadjustment();
+        // `value_changed` fires while scrolling the rail; `changed` fires once the rail
+        // is (re)allocated, which is when button positions first become known.
+        adjustment.connect_value_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.update_rail_covers()
+        ));
+        adjustment.connect_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.update_rail_covers()
+        ));
+
+        // The rail highlight (update_active_rail_item) and custom-emoji demand both
+        // run on scroll-settle (see mark_scrolling), not per frame — a compute_point
+        // sweep over every section each frame stutters scrolling.
+
+        // Drive lazy custom-emoji loading from the emoji page's viewport. Only on
+        // `changed` (content relaid out) here; the per-frame `value_changed` case is
+        // handled once scrolling settles (see mark_scrolling), avoiding a
+        // compute_bounds sweep over every row each frame.
+        self.imp().emoji_page.vadjustment().connect_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.schedule_custom_emoji_demand()
+        ));
+    }
+
+    /// Registers a rail button as the entry for the content section named `name`,
+    /// so scrolling can highlight it.
+    fn register_rail_section(&self, name: String, button: &gtk::Button) {
+        button.add_css_class("rail-item");
+        self.imp()
+            .rail_sections
+            .borrow_mut()
+            .push((name, button.downgrade()));
+    }
+
+    /// Marks `name`'s rail button active and clears the others.
+    fn set_active_rail(&self, name: &str) {
+        for (section, button) in self.imp().rail_sections.borrow().iter() {
+            if let Some(button) = button.upgrade() {
+                if section == name {
+                    button.add_css_class("active");
+                } else {
+                    button.remove_css_class("active");
+                }
+            }
+        }
+    }
+
+    /// Loads previews only for the custom-emoji rows near the viewport, dropping
+    /// off-screen ones. This keeps thousands of off-screen custom emoji out of the
+    /// (4-slot) decode queue, so the visible ones appear immediately.
+    /// Coalesces demand updates: a burst of appends/relayouts runs a single sweep
+    /// ~150 ms later instead of one O(rows) sweep per event.
+    fn schedule_custom_emoji_demand(&self) {
+        if self.imp().demand_scheduled.replace(true) {
+            return;
+        }
+        glib::timeout_add_local_once(
+            std::time::Duration::from_millis(150),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move || {
+                    obj.imp().demand_scheduled.set(false);
+                    obj.update_custom_emoji_demand();
+                }
+            ),
+        );
+    }
+
+    fn update_custom_emoji_demand(&self) {
+        if !self.imp().emoji_tab.is_active() || self.imp().custom_emoji_loading.get() {
+            return;
+        }
+        let sections = self.imp().emoji_sections.get();
+        let adjustment = self.imp().emoji_page.vadjustment();
+        let top = adjustment.value();
+        let viewport = if adjustment.page_size() > 0.0 {
+            adjustment.page_size()
+        } else {
+            self.imp().emoji_page.height() as f64
+        };
+        let bottom = top + viewport;
+        // Preload a fixed, modest band beyond the viewport (not a full viewport,
+        // which on a tall sidebar would demand hundreds of extra off-screen emoji).
+        let margin = 300.0;
+        let mut demanded = 0usize;
+        let mut total = 0usize;
+        for weak in self.imp().custom_emoji_rows.borrow().iter() {
+            let Some(row) = weak.upgrade() else {
+                continue;
+            };
+            total += 1;
+            let Some(bounds) = row.compute_bounds(&sections) else {
+                row.set_demanded(false);
+                continue;
+            };
+            let row_top = bounds.y() as f64;
+            let row_bottom = row_top + bounds.height() as f64;
+            let visible = row_bottom >= top - margin && row_top <= bottom + margin;
+            if visible {
+                demanded += 1;
+            }
+            row.set_demanded(visible);
+        }
+        log::info!(
+            target: "paper_plane::content_picker",
+            "custom-emoji demand sweep; demanded={demanded}/{total} rows viewport={viewport:.0} scroll_top={top:.0}",
+        );
+    }
+
+    /// Highlights the rail entry for the section at the top of the visible content.
+    fn update_active_rail_item(&self) {
+        // Only the emoji page exposes its sections as named boxes we can measure;
+        // the sticker list virtualizes, so it relies on click-to-highlight.
+        if !self.imp().emoji_tab.is_active() {
+            return;
+        }
+        let sections = self.imp().emoji_sections.get();
+        let value = self.imp().emoji_page.vadjustment().value();
+        let mut current: Option<String> = None;
+        let mut child = sections.first_child();
+        while let Some(node) = child {
+            let name = node.widget_name();
+            if !name.is_empty()
+                && let Some(point) = node.compute_point(&sections, &gtk::graphene::Point::zero())
+            {
+                if point.y() as f64 <= value + 8.0 {
+                    current = Some(name.to_string());
+                } else {
+                    break;
+                }
+            }
+            child = node.next_sibling();
+        }
+        if let Some(name) = current {
+            self.set_active_rail(&name);
+        }
+    }
+
+    fn update_rail_covers(&self) {
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let adjustment = self.imp().navigation_rail_scroll.hadjustment();
+        let start = adjustment.value();
+        let page = if adjustment.page_size() > 0.0 {
+            adjustment.page_size()
+        } else {
+            self.imp().navigation_rail_scroll.width() as f64
+        };
+        let end = start + page;
+        // Preload roughly a viewport on either side so covers are ready by the time
+        // the user scrolls to them.
+        let margin = page;
+        let preview_pixel_size = 24 * self.scale_factor().max(1);
+        let rail = self.imp().navigation_rail.get();
+        let mut covers = self.imp().rail_covers.borrow_mut();
+        for entry in covers.iter_mut() {
+            if entry.loaded {
+                continue;
+            }
+            let Some(button) = entry.button.upgrade() else {
+                continue;
+            };
+            // Position within the rail box; None until the button is laid out, in
+            // which case a later `changed` signal will revisit it.
+            let Some(bounds) = button.compute_bounds(&rail) else {
+                continue;
+            };
+            if bounds.width() == 0.0 {
+                continue;
+            }
+            let button_start = bounds.x() as f64;
+            let button_end = button_start + bounds.width() as f64;
+            if button_end < start - margin || button_start > end + margin {
+                continue;
+            }
+
+            entry.loaded = true;
+            entry.demand.set(true);
+            let Some(picture) = entry.picture.upgrade() else {
+                continue;
+            };
+            let demand = entry.demand.clone();
+            let cover = entry.cover.clone();
+            let thumbnail = entry.thumbnail.clone();
+            utils::spawn(clone!(
+                #[weak]
+                picture,
+                #[weak]
+                session,
+                async move {
+                    let result = if let Some(cover) = cover {
+                        ui::load_picker_preview(&cover, preview_pixel_size, &session, demand).await
+                    } else if let Some(thumbnail) = thumbnail {
+                        ui::load_picker_file_preview(thumbnail, preview_pixel_size, &session, demand)
+                            .await
+                    } else {
+                        return;
+                    };
+                    if let Ok(texture) = result {
+                        picture.set_paintable(Some(&texture));
+                    }
+                }
+            ));
         }
     }
 
@@ -585,6 +1149,9 @@ impl ContentPicker {
         let generation = self.next_sticker_generation();
         self.sticker_model().remove_all();
         log::info!(target: "paper_plane::content_picker", "TDLib sticker load started; client_id={client_id}");
+
+        // The sticker tab shows only regular sticker packs; custom emoji now live in
+        // the emoji page (see load_custom_emoji_sections).
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -593,16 +1160,11 @@ impl ContentPicker {
                 let favorites_started = Instant::now();
                 let recent_started = Instant::now();
                 let sets_started = Instant::now();
-                let emoji_sets_started = Instant::now();
-                let (favorites, recent, sets, emoji_sets) = futures::future::join4(
+                let (favorites, recent, sets) = futures::future::join3(
                     tdlib::functions::get_favorite_stickers(client_id),
                     tdlib::functions::get_recent_stickers(false, client_id),
                     tdlib::functions::get_installed_sticker_sets(
                         tdlib::enums::StickerType::Regular,
-                        client_id,
-                    ),
-                    tdlib::functions::get_installed_sticker_sets(
-                        tdlib::enums::StickerType::CustomEmoji,
                         client_id,
                     ),
                 )
@@ -610,11 +1172,6 @@ impl ContentPicker {
                 log_tdlib_result("favorite stickers", favorites_started, &favorites);
                 log_tdlib_result("recent stickers", recent_started, &recent);
                 log_tdlib_result("installed sticker sets", sets_started, &sets);
-                log_tdlib_result(
-                    "installed custom emoji sets",
-                    emoji_sets_started,
-                    &emoji_sets,
-                );
                 if !obj.sticker_generation_is(generation) {
                     return;
                 }
@@ -623,7 +1180,7 @@ impl ContentPicker {
                     favorites.ok(),
                     recent.ok(),
                     sets.ok(),
-                    emoji_sets.ok(),
+                    None,
                 )
                 .await;
                 log::info!(
@@ -914,6 +1471,19 @@ impl ContentPicker {
 
     fn activate_sticker(&self, sticker: tdlib::types::Sticker) {
         self.emit_by_name::<()>("content-picked", &[]);
+        if self.imp().mode.get() == PickerMode::Reaction {
+            // In reaction mode the sticker tab only shows custom emoji.
+            if let tdlib::enums::StickerFullType::CustomEmoji(custom) = sticker.full_type {
+                let reaction_type =
+                    model::BoxedReactionType(tdlib::enums::ReactionType::CustomEmoji(
+                        tdlib::types::ReactionTypeCustomEmoji {
+                            custom_emoji_id: custom.custom_emoji_id,
+                        },
+                    ));
+                self.emit_by_name::<()>("reaction-picked", &[&reaction_type]);
+            }
+            return;
+        }
         if let tdlib::enums::StickerFullType::CustomEmoji(custom) = sticker.full_type {
             utils::ancestor::<_, ui::Session>(self)
                 .insert_custom_emoji(&sticker.emoji, custom.custom_emoji_id);
@@ -952,34 +1522,17 @@ impl ContentPicker {
     fn populate_gifs(&self, animations: Vec<tdlib::types::Animation>) {
         let started = Instant::now();
         let animation_count = animations.len();
-        clear_flowbox(&self.imp().gif_grid);
+        self.gif_model().remove_all();
+        let rows: Vec<glib::BoxedAnyObject> = animations
+            .iter()
+            .cloned()
+            .map(glib::BoxedAnyObject::new)
+            .collect();
         *self.imp().animations.borrow_mut() = animations;
-        for (index, animation) in self.imp().animations.borrow().iter().enumerate() {
-            let picture = gtk::Picture::builder()
-                .width_request(104)
-                .height_request(88)
-                .content_fit(gtk::ContentFit::Cover)
-                .build();
-            if let Some(mini) = &animation.minithumbnail
-                && let Ok(texture) = gtk::gdk::Texture::from_bytes(&glib::Bytes::from_owned(
-                    glib::base64_decode(&mini.data),
-                ))
-            {
-                picture.set_paintable(Some(&texture));
-            }
-            let button = gtk::Button::builder().child(&picture).build();
-            button.add_css_class("flat");
-            button.add_css_class("gif-picker-item");
-            button.connect_clicked(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |_| obj.activate_gif(index)
-            ));
-            self.imp().gif_grid.insert(&button, -1);
-        }
+        self.gif_model().splice(0, 0, &rows);
         log::info!(
             target: "paper_plane::content_picker",
-            "GIF widgets populated; count={} elapsed={:?}",
+            "GIF model populated; count={} elapsed={:?}",
             animation_count,
             started.elapsed(),
         );
@@ -1036,8 +1589,13 @@ impl ContentPicker {
         );
         if self.imp().emoji_tab.is_active() {
             if query.is_empty() {
-                self.build_emoji_page();
+                // Only rebuild the (large) static emoji page when we're actually
+                // returning from a search; tab switches and redundant clears skip it.
+                if self.imp().emoji_search_active.replace(false) {
+                    self.build_emoji_page();
+                }
             } else if let Some(session) = self.imp().session.upgrade() {
+                self.imp().emoji_search_active.set(true);
                 let client_id = session.client_().id();
                 utils::spawn(clone!(
                     #[weak(rename_to = obj)]
@@ -1118,6 +1676,23 @@ fn log_tdlib_result<T>(label: &str, started: Instant, result: &Result<T, tdlib::
             started.elapsed(),
         ),
     }
+}
+
+/// The widget name of a custom-emoji pack's section box in the emoji page.
+fn custom_emoji_section_name(set_id: i64) -> String {
+    format!("custom-emoji-{set_id}")
+}
+
+/// Finds the direct child of `container` whose widget name equals `name`.
+fn find_named_child(container: &gtk::Box, name: &str) -> Option<gtk::Widget> {
+    let mut child = container.first_child();
+    while let Some(current) = child {
+        if current.widget_name() == name {
+            return Some(current);
+        }
+        child = current.next_sibling();
+    }
+    None
 }
 
 fn sticker_set_cache_path(session: &model::ClientStateSession) -> PathBuf {
@@ -1239,8 +1814,17 @@ fn emoji_grid<'a>(picker: &ContentPicker, emojis: impl Iterator<Item = &'a str>)
             #[weak]
             picker,
             move |_| {
-                picker.remember_emoji(&value);
-                utils::ancestor::<_, ui::Session>(&picker).insert_emoji(&value);
+                if picker.imp().mode.get() == PickerMode::Reaction {
+                    let reaction_type = model::BoxedReactionType(tdlib::enums::ReactionType::Emoji(
+                        tdlib::types::ReactionTypeEmoji {
+                            emoji: value.clone(),
+                        },
+                    ));
+                    picker.emit_by_name::<()>("reaction-picked", &[&reaction_type]);
+                } else {
+                    picker.remember_emoji(&value);
+                    utils::ancestor::<_, ui::Session>(&picker).insert_emoji(&value);
+                }
                 picker.emit_by_name::<()>("content-picked", &[]);
             }
         ));
@@ -1261,6 +1845,34 @@ impl ContentPicker {
         })
     }
 
+    /// Switches this picker into reaction mode targeting `(chat_id, message_id)`:
+    /// picking an emoji or custom emoji emits `reaction-picked` instead of editing
+    /// the message entry. The reaction picker is a single emoji + custom-emoji panel
+    /// (tdesktop-style), so the tab bar, sticker tab, and GIF tab are hidden.
+    pub(crate) fn set_reaction_mode(&self, chat_id: i64, message_id: i64) {
+        let imp = self.imp();
+        imp.mode.set(PickerMode::Reaction);
+        imp.reaction_target.set(Some((chat_id, message_id)));
+        imp.gif_tab.set_visible(false);
+        imp.sticker_tab.set_visible(false);
+        // Hide the whole tab bar — only the emoji (+ custom emoji) page remains.
+        if let Some(tabs) = imp.emoji_tab.parent() {
+            tabs.set_visible(false);
+        }
+    }
+
+    pub(crate) fn connect_reaction_picked<F: Fn(&Self, model::BoxedReactionType) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("reaction-picked", true, move |values| {
+            let obj = values[0].get::<Self>().unwrap();
+            let reaction_type = values[1].get::<model::BoxedReactionType>().unwrap();
+            f(&obj, reaction_type);
+            None
+        })
+    }
+
     fn remember_emoji(&self, emoji: &str) {
         let settings = utils::PaperPlaneSettings::default();
         let mut recent: Vec<String> = settings
@@ -1276,11 +1888,6 @@ impl ContentPicker {
     }
 }
 fn clear_box(container: &gtk::Box) {
-    while let Some(child) = container.first_child() {
-        container.remove(&child);
-    }
-}
-fn clear_flowbox(container: &gtk::FlowBox) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
