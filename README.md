@@ -86,14 +86,17 @@ Using Gnome Builder is the easiest way to get the app built without even using t
 
 #### Prerequisites
 
-The following packages are required to build Paper Plane:
+The following tools and development packages are required to build Paper Plane:
 
-- meson
-- cargo
-- GTK >= 4.10 (with the patch included in the build-aux directory)
-- libadwaita >= 1.4
+- Meson >= 0.59
+- Ninja
+- Rust and Cargo 1.97.0 (see `rust-toolchain.toml`)
+- Blueprint Compiler
+- GLib and GIO >= 2.82
+- GTK >= 4.16
+- libadwaita >= 1.6
 - libshumate >= 1.0.0
-- [TDLib 1.8.19](https://github.com/tdlib/td/commit/2589c3fd46925f5d57e4ec79233cd1bd0f5d0c09)
+- [TDLib 1.8.61](https://github.com/tdlib/td/tree/v1.8.61), including `tdjson`
 - [Telegram API Credentials](https://my.telegram.org/) (optional, but recommended)
 
 Additionally, Paper Plane requires the following GStreamer plugins installed in your system to correctly show all media files:
@@ -104,10 +107,14 @@ Additionally, Paper Plane requires the following GStreamer plugins installed in 
 #### Instructions
 
 ```shell
-meson . _build -Dtg_api_id=ID -Dtg_api_hash=HASH
-ninja -C _build
-sudo ninja -C _build install
+meson setup _build -Dprofile=development -Dtg_api_id=ID -Dtg_api_hash=HASH
+meson compile -C _build
+meson test -C _build --print-errorlogs
+sudo meson install -C _build
 ```
+
+Omit the Telegram API options to use the limited test credentials. Omit
+`-Dprofile=development` for a release build.
 
 ## Contribution
 

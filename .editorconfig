@@ -9,3 +9,6 @@ charset = utf-8
 
 [*.{build,yml,ui,yaml,css,blp}]
 indent_size = 2
+
+[*.toml]
+indent_size = 2
