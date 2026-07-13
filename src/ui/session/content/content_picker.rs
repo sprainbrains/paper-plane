@@ -297,8 +297,10 @@ const STICKER_SET_CACHE_VERSION: u32 = 1;
 const EMOJI_ROW_LEN: usize = 8;
 
 /// How many sticker rows past the just-bound one to warm the preview cache for, so a
-/// small buffer below the viewport is already decoded when scrolled into view.
-const PICKER_PRELOAD_ROWS: u32 = 3;
+/// buffer below the viewport is already decoded when scrolled into view. GtkListView
+/// only realizes ~1 row of overdraw itself (a hardcoded 10px in `gtklistbase.c`), so
+/// this model-level read-ahead is what actually provides the buffer.
+const PICKER_PRELOAD_ROWS: u32 = 5;
 
 /// Layout of custom-emoji rows in the emoji page, chosen to match the standard
 /// emoji grid's density rather than the larger sticker cells.
