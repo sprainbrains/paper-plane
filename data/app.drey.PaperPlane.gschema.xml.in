@@ -41,5 +41,25 @@
       <summary>Recently used emoji</summary>
       <description>Emoji recently inserted through the content picker</description>
     </key>
+    <key name="debug-options-enabled" type="b">
+      <default>false</default>
+      <summary>Enable debug options</summary>
+      <description>Whether to expose developer/debug features such as "Copy Debug Entry" in message menus</description>
+    </key>
+    <key name="vertical-folders" type="b">
+      <default>false</default>
+      <summary>Vertical chat folders</summary>
+      <description>Show chat folders as a vertical rail on the far left of the sidebar instead of a horizontal bar at the top</description>
+    </key>
+    <key name="sidebar-width" type="i">
+      <default>300</default>
+      <summary>Chat list sidebar width</summary>
+      <description>The saved width, in pixels, of the resizable chat list sidebar</description>
+    </key>
+    <key name="content-picker-width" type="i">
+      <default>360</default>
+      <summary>Content picker width</summary>
+      <description>The saved width, in pixels, of the resizable emoji/sticker content picker panel</description>
+    </key>
   </schema>
 </schemalist>
