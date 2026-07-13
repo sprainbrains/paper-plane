@@ -88,26 +88,30 @@ fn restriction_label_expression<T: StaticType, V: ToValue>(value: &V) -> gtk::Ex
                         if status.restricted_until_date == 0 {
                             gettext("The admins of this group have restricted you from writing here")
                         } else {
-                            let date =
-                            glib::DateTime::from_unix_utc(status.restricted_until_date.into()).unwrap();
+                            let Ok(date) = glib::DateTime::from_unix_utc(status.restricted_until_date.into())
+                                .and_then(|date| date.to_local())
+                            else {
+                                return gettext("The admins of this group have restricted you from writing here");
+                            };
 
-                            gettext!(
-                                "The admins of this group have restricted you from writing here until {}",
-                                date.format(&if glib::DateTime::now_local()
-                                    .unwrap()
-                                    .difference(&date)
-                                    .as_days()
-                                    == 0
-                                {
-                                    gettext("%l:%M %p")
-                                } else {
-                                    // Translators: This is a date and time representation, without seconds.
-                                    // Here you may want to change to a 24-hours representation and change order, based on your locale.
-                                    // You can use this site to learn more: https://www.strfti.me/
-                                    gettext("%B %e, %Y %l:%M %p")
-                                })
-                                .unwrap()
-                                .to_string()
+                            let is_today = glib::DateTime::now_local()
+                                .map(|now| now.difference(&date).as_days() == 0)
+                                .unwrap_or(false);
+                            let format = if is_today {
+                                gettext("%l:%M %p")
+                            } else {
+                                // Translators: This is a date and time representation, without seconds.
+                                // Here you may want to change to a 24-hours representation and change order, based on your locale.
+                                // You can use this site to learn more: https://www.strfti.me/
+                                gettext("%B %e, %Y %l:%M %p")
+                            };
+
+                            date.format(&format).map_or_else(
+                                |_| gettext("The admins of this group have restricted you from writing here"),
+                                |date| gettext!(
+                                    "The admins of this group have restricted you from writing here until {}",
+                                    date
+                                ),
                             )
                         }
                     }
