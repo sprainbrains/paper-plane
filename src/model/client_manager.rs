@@ -12,7 +12,6 @@ use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use indexmap::IndexMap;
-use indexmap::map::Entry;
 
 use crate::APPLICATION_OPTS;
 use crate::model;
@@ -239,11 +238,10 @@ impl ClientManager {
     }
 
     pub(crate) fn handle_update(&self, update: tdlib::enums::Update, id: ClientId) {
-        let mut list = self.imp().0.borrow_mut();
-        if let Entry::Occupied(entry) = list.entry(id) {
+        let client = self.imp().0.borrow().get(&id).cloned();
+        if let Some(client) = client {
             if let tdlib::enums::Update::NotificationGroup(group) = update {
-                let session = entry
-                    .get()
+                let session = client
                     .state()
                     .and_downcast::<model::ClientStateSession>()
                     .unwrap();
@@ -253,9 +251,6 @@ impl ClientManager {
                     &[&model::BoxedUpdateNotificationGroup(group), &session],
                 );
             } else {
-                let client = entry.get().to_owned();
-                drop(list);
-
                 if matches!(
                     &update,
                     tdlib::enums::Update::AuthorizationState(state)
