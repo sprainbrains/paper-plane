@@ -147,8 +147,14 @@ listview.chat-history {
 }
 
 listview.chat-history > row {
-  margin: 2px 4px;
+  margin: 0 4px;
   border-radius: 9px;
+}
+
+/* Consecutive same-sender messages sit flush; the first message of each run (and
+   standalone messages) gets a little space to separate groups. */
+.group-start {
+  margin-top: 4px;
 }
 
 /* Values for the cairo renderer */
@@ -176,6 +182,63 @@ messagebubble {
   background: white;
   border-radius: 15px;
   box-shadow: 0 1px alpha(black, 0.1);
+}
+
+/* A subtle accent tint over a message row picked in multi-select mode. */
+.message-selected {
+  background-color: alpha(@accent_bg_color, 0.1);
+}
+
+/* Briefly flashes a row's background when a reply/jump/link focuses its message. */
+@keyframes message-flash {
+  0% {
+    background-color: transparent;
+  }
+
+  20% {
+    background-color: alpha(@accent_bg_color, 0.35);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+.message-flash {
+  animation: message-flash 1.5s ease-out;
+}
+
+/* The trailing multi-select checkbox: a round indicator, empty when unchecked and
+   accent-filled when selected (tdesktop style). */
+.selection-check {
+  margin-start: 8px;
+  margin-end: 8px;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.selection-check > check {
+  border-radius: 100%;
+  min-width: 18px;
+  min-height: 18px;
+  -gtk-icon-size: 14px;
+}
+
+/* Consecutive messages from the same sender are combined: the corners on the side
+   facing the neighbouring bubble are tightened so a run reads as one group. */
+.grouped-top messagebubble {
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.grouped-middle messagebubble {
+  border-radius: 6px;
+}
+
+.grouped-bottom messagebubble {
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
 }
 
 messagebubble.outgoing {
@@ -607,17 +670,47 @@ splitbutton.small-pill:dir(ltr) > menubutton > button {
 .chatlist-loading {
   animation: chatlist-title-shimmer 1.5s ease-in-out infinite;
 }
+/* Draggable divider strips for the resizable chat list and content picker panels. */
+.panel-resize-handle {
+  min-width: 5px;
+  min-height: 0;
+  background: transparent;
+  border: none;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle.dragging {
+  background: alpha(@accent_bg_color, 0.4);
+}
+
 contentpicker.content-picker {
   background: @window_bg_color;
 }
 
-.content-picker-tabs {
-  padding: 6px 8px 0;
+/* In the right-click reaction picker the picker lives inside a popover, so it must
+   not paint its own window background — let the popover's native surface show through
+   and blend in the search entry so it reads as a native menu, not an embedded widget. */
+contentpicker.content-picker.reaction-mode {
+  background: none;
 }
 
-.content-picker-tabs > button {
-  border-radius: 0;
-  border-width: 0 0 2px;
+.reaction-picker-popover > contents {
+  padding: 0;
+}
+
+contentpicker.content-picker.reaction-mode entry {
+  background: none;
+  box-shadow: none;
+}
+
+contentpicker.content-picker.reaction-mode separator {
+  background: none;
+}
+
+/* The picker's header bar sits at the same height as the chat header bar to read
+   as one continuous title bar; drop its bottom shadow so the seam is invisible. */
+.content-picker-header {
+  box-shadow: none;
 }
 
 .emoji-picker-item {

@@ -32,6 +32,12 @@ const PRIMARY: &[MenuEntry] = &[
         destructive: false,
     },
     MenuEntry {
+        action: "message-row.select",
+        icon: "checkbox-checked-symbolic",
+        label: "Select",
+        destructive: false,
+    },
+    MenuEntry {
         action: "message-row.copy",
         icon: "edit-copy-symbolic",
         label: "Copy Text",
@@ -59,6 +65,12 @@ const PRIMARY: &[MenuEntry] = &[
         action: "message-row.open",
         icon: "find-location-symbolic",
         label: "Open",
+        destructive: false,
+    },
+    MenuEntry {
+        action: "message-row.show-sticker-pack",
+        icon: "emoji-symbols-symbolic",
+        label: "Show Sticker Pack",
         destructive: false,
     },
     MenuEntry {

@@ -172,6 +172,11 @@ impl Content {
         self.imp().chat.upgrade()
     }
 
+    /// Jumps the open chat's history to its newest message.
+    pub(crate) fn scroll_history_to_latest(&self) {
+        self.imp().chat_history.scroll_to_latest();
+    }
+
     fn set_chat(&self, chat: Option<&model::Chat>) {
         if self.chat().as_ref() == chat {
             return;

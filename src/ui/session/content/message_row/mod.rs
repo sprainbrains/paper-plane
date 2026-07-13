@@ -24,6 +24,7 @@ use adw::prelude::*;
 use gettextrs::gettext;
 use glib::clone;
 use gtk::CompositeTemplate;
+use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
 use gtk::subclass::prelude::*;
@@ -52,6 +53,7 @@ pub(crate) use self::video_note::MessageVideoNote;
 pub(crate) use self::voice_note::MessageVoiceNote;
 use crate::config;
 use crate::model;
+use crate::strings;
 use crate::ui;
 use crate::utils;
 
@@ -68,6 +70,9 @@ mod imp {
         pub(super) message: RefCell<Option<glib::Object>>,
         pub(super) content: RefCell<Option<gtk::Widget>>,
         pub(super) avatar: RefCell<Option<ui::Avatar>>,
+        /// The trailing selection checkbox, shown (empty or checked) for every message
+        /// while in multi-select mode.
+        pub(super) selection_check: RefCell<Option<gtk::CheckButton>>,
     }
 
     #[glib::object_subclass]
@@ -86,6 +91,9 @@ mod imp {
             klass.install_action("message-row.forward", None, move |widget, _, _| {
                 widget.show_forward()
             });
+            klass.install_action("message-row.select", None, move |widget, _, _| {
+                widget.begin_selection()
+            });
             klass.install_action("message-row.copy", None, move |widget, _, _| {
                 widget.copy_text()
             });
@@ -99,6 +107,11 @@ mod imp {
                 widget.pin_message()
             });
             klass.install_action("message-row.edit", None, move |widget, _, _| widget.edit());
+            klass.install_action(
+                "message-row.show-sticker-pack",
+                None,
+                move |widget, _, _| widget.show_sticker_pack(),
+            );
             klass.install_action("message-row.revoke-delete", None, move |widget, _, _| {
                 widget.show_delete_dialog(true)
             });
@@ -113,6 +126,11 @@ mod imp {
     }
 
     impl ObjectImpl for Row {
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.obj().setup_selection_gestures();
+        }
+
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| {
@@ -149,6 +167,10 @@ mod imp {
 
             if let Some(content) = self.content.borrow().as_ref() {
                 content.unparent();
+            }
+
+            if let Some(check) = self.selection_check.borrow().as_ref() {
+                check.unparent();
             }
         }
     }
@@ -289,7 +311,7 @@ impl Row {
             parent.as_ref(),
             &session,
             message.chat_().id(),
-            message.id(),
+            vec![message.id()],
         );
         window.present();
     }
@@ -305,7 +327,11 @@ impl Row {
             "message-row.edit" => self.can_edit_message(),
             "message-row.copy" => self.can_copy_text(),
             "message-row.copy-link" => self.can_copy_link(),
-            "message-row.copy-debug" => config::PROFILE == "Devel",
+            "message-row.copy-debug" => debug_options_enabled(),
+            "message-row.show-sticker-pack" => self
+                .message()
+                .downcast_ref::<model::Message>()
+                .is_some_and(|message| sticker_message_set_id(message) != 0),
             "message-row.delete" => self
                 .message()
                 .downcast_ref::<model::Message>()
@@ -324,8 +350,8 @@ impl Row {
                         | tdlib::enums::MessageContent::MessageVenue(_)
                 )
             ),
-            // Forward and pin are always offered for real messages.
-            "message-row.forward" | "message-row.pin" => {
+            // Forward, select and pin are always offered for real messages.
+            "message-row.forward" | "message-row.select" | "message-row.pin" => {
                 self.message().downcast_ref::<model::Message>().is_some()
             }
             _ => true,
@@ -379,6 +405,115 @@ impl Row {
         self.imp().message.borrow().clone().unwrap()
     }
 
+    /// Wires the per-message click gesture: once in selection mode, a primary click
+    /// toggles this message. The selection *drag* lives on the stable list widget (see
+    /// `ChatHistory`), not here, so scrolling can't recycle it out from under the drag.
+    fn setup_selection_gestures(&self) {
+        let click = gtk::GestureClick::new();
+        click.set_button(1);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        click.connect_released(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |gesture, _, _, _| {
+                let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&obj) else {
+                    return;
+                };
+                let Ok(message) = obj.message().downcast::<model::Message>() else {
+                    return;
+                };
+                let shift = gesture
+                    .current_event_state()
+                    .contains(gdk::ModifierType::SHIFT_MASK);
+
+                if chat_history.is_selection_mode() {
+                    // Shift-click extends the range from the anchor; a plain click toggles.
+                    if shift {
+                        chat_history.extend_selection_to(message.id());
+                    } else {
+                        chat_history.toggle_message_selection(message.id());
+                    }
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                } else if shift {
+                    // Shift-click on a message enters selection mode with it selected.
+                    chat_history.select_message(message.id());
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                }
+            }
+        ));
+        self.add_controller(click);
+
+        // The trailing selection checkbox: a passive indicator (clicks fall through to
+        // the row's gesture). Hidden until selection mode; repositioned to the end after
+        // the content in `set_message`.
+        let check = gtk::CheckButton::builder()
+            .valign(gtk::Align::Center)
+            .can_target(false)
+            .can_focus(false)
+            .visible(false)
+            .css_classes(["selection-check"])
+            .build();
+        check.set_parent(self);
+        self.imp().selection_check.replace(Some(check));
+    }
+
+    /// Reflects multi-select state on this row: shows the trailing checkbox while in
+    /// selection mode and marks it checked when this message is selected.
+    pub(crate) fn set_selection_state(&self, in_selection_mode: bool, selected: bool) {
+        if let Some(check) = self.imp().selection_check.borrow().as_ref() {
+            check.set_visible(in_selection_mode);
+            check.set_active(selected);
+        }
+        // In multi-select mode a click must toggle the message, so caret text selection is
+        // suspended; otherwise the bubble text stays selectable/copyable.
+        if let Some(content) = self.imp().content.borrow().as_ref()
+            && let Some(label) = utils::descendant::<_, ui::MessageLabel>(content)
+        {
+            label.set_text_selectable(!in_selection_mode);
+        }
+    }
+
+    /// Applies message-combining visuals for a run of consecutive same-sender messages:
+    /// the avatar is kept only on the last (bottom) message, the sender name only on the
+    /// first (top) one, and the shared corners between grouped bubbles are tightened.
+    pub(crate) fn apply_grouping(&self, is_group_start: bool, is_group_end: bool) {
+        // The avatar (valign: End) belongs on the last message of the run; other rows
+        // keep it allocated but transparent so their bubbles stay aligned under it.
+        if let Some(avatar) = self.imp().avatar.borrow().as_ref() {
+            avatar.set_opacity(if is_group_end { 1.0 } else { 0.0 });
+        }
+
+        for class in [
+            "grouped-top",
+            "grouped-middle",
+            "grouped-bottom",
+            "group-start",
+        ] {
+            self.remove_css_class(class);
+        }
+        // The first message of a run (and standalone messages) gets extra top spacing to
+        // separate groups; messages continuing a run sit tight beneath the previous one.
+        if is_group_start {
+            self.add_css_class("group-start");
+        }
+        if !(is_group_start && is_group_end) {
+            self.add_css_class(if is_group_start {
+                "grouped-top"
+            } else if is_group_end {
+                "grouped-bottom"
+            } else {
+                "grouped-middle"
+            });
+        }
+
+        if !is_group_start
+            && let Some(content) = self.imp().content.borrow().as_ref()
+            && let Some(bubble) = utils::descendant::<_, ui::MessageBubble>(content)
+        {
+            bubble.hide_sender();
+        }
+    }
+
     pub(crate) fn set_message(&self, message: glib::Object) {
         let imp = self.imp();
 
@@ -408,6 +543,20 @@ impl Row {
                         let avatar = ui::Avatar::new();
                         avatar.set_size(AVATAR_SIZE);
                         avatar.set_valign(gtk::Align::End);
+
+                        // Clicking the avatar reveals the sender's profile in a popover.
+                        avatar.set_cursor_from_name(Some("pointer"));
+                        let gesture = gtk::GestureClick::new();
+                        gesture.set_button(1);
+                        gesture.connect_released(clone!(
+                            #[weak]
+                            avatar,
+                            move |gesture, _, _, _| {
+                                gesture.set_state(gtk::EventSequenceState::Claimed);
+                                show_avatar_profile(&avatar);
+                            }
+                        ));
+                        avatar.add_controller(gesture);
 
                         // Insert at the beginning
                         avatar.insert_after(self, gtk::Widget::NONE);
@@ -452,12 +601,39 @@ impl Row {
 
         self.update_content(message.clone());
 
+        // Keep the selection checkbox at the trailing edge, after the content.
+        if let Some(check) = imp.selection_check.borrow().as_ref() {
+            check.insert_before(self, gtk::Widget::NONE);
+        }
+
         imp.message.replace(Some(message));
 
         // TODO: Update actions when needed (e.g. chat permissions change)
         self.update_actions();
 
         self.notify("message");
+    }
+
+    /// Enters multi-select mode with this message selected (from the message menu).
+    fn begin_selection(&self) {
+        if let Ok(message) = self.message().downcast::<model::Message>()
+            && let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self)
+        {
+            chat_history.select_message(message.id());
+        }
+    }
+
+    fn show_sticker_pack(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let set_id = sticker_message_set_id(&message);
+        if set_id == 0 {
+            return;
+        }
+        if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
+            session.show_sticker_pack(set_id);
+        }
     }
 
     fn can_reply_to_message(&self) -> bool {
@@ -488,8 +664,15 @@ impl Row {
         self.action_set_enabled("message-row.edit", self.can_edit_message());
         self.action_set_enabled("message-row.copy", self.can_copy_text());
         self.action_set_enabled("message-row.copy-link", self.can_copy_link());
-        // The debug-entry action is a development-only tool.
-        self.action_set_enabled("message-row.copy-debug", config::PROFILE == "Devel");
+        // The debug-entry action is gated behind the Debug Options preference (and
+        // always available in development builds).
+        self.action_set_enabled("message-row.copy-debug", debug_options_enabled());
+        self.action_set_enabled(
+            "message-row.show-sticker-pack",
+            self.message()
+                .downcast_ref::<model::Message>()
+                .is_some_and(|message| sticker_message_set_id(message) != 0),
+        );
 
         if let Some(message) = self.message().downcast_ref::<model::Message>() {
             self.action_set_enabled("message-row.delete", message.can_be_deleted_only_for_self());
@@ -613,6 +796,110 @@ impl Row {
                 *content_ref = Some(content.upcast());
             }
         }
+    }
+}
+
+/// Shows a small popover with the sender's profile (avatar, name, username/status,
+/// phone) anchored to the clicked message avatar, plus a shortcut to open the chat.
+/// Non-user avatars (e.g. forwarded channels) are left alone.
+fn show_avatar_profile(avatar: &ui::Avatar) {
+    let Some(item) = avatar.item() else {
+        return;
+    };
+    let Some(user) = item.downcast_ref::<model::User>() else {
+        return;
+    };
+
+    let content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .margin_top(12)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .width_request(220)
+        .build();
+
+    let big_avatar = ui::Avatar::new();
+    big_avatar.set_size(96);
+    big_avatar.set_halign(gtk::Align::Center);
+    big_avatar.set_item(Some(item.clone()));
+    content.append(&big_avatar);
+
+    content.append(&profile_label(
+        &strings::user_display_name(user, true),
+        "title-4",
+    ));
+
+    let username = user.username();
+    if !username.is_empty() {
+        content.append(&profile_label(&format!("@{username}"), "dim-label"));
+    } else {
+        content.append(&profile_label(
+            &strings::user_status(&user.status().0),
+            "dim-label",
+        ));
+    }
+    let phone = user.phone_number();
+    if !phone.is_empty() {
+        content.append(&profile_label(&format!("+{phone}"), "dim-label"));
+    }
+
+    let popover = gtk::Popover::builder().child(&content).build();
+    popover.connect_closed(|popover| popover.unparent());
+
+    let user_id = user.id();
+    let button = gtk::Button::builder()
+        .label(gettext("Send Message"))
+        .css_classes(["pill", "suggested-action"])
+        .halign(gtk::Align::Center)
+        .margin_top(6)
+        .build();
+    button.connect_clicked(clone!(
+        #[weak]
+        avatar,
+        #[weak]
+        popover,
+        move |_| {
+            if let Some(session) = utils::ancestor::<_, ui::Session>(&avatar) {
+                session.select_chat(user_id);
+            }
+            popover.popdown();
+        }
+    ));
+    content.append(&button);
+
+    popover.set_parent(avatar);
+    popover.popup();
+}
+
+fn profile_label(text: &str, css_class: &str) -> gtk::Label {
+    gtk::Label::builder()
+        .label(text)
+        .wrap(true)
+        .justify(gtk::Justification::Center)
+        .css_classes([css_class])
+        .build()
+}
+
+/// Whether developer/debug message actions (e.g. "Copy Debug Entry") are available:
+/// on in development builds, or when the user enables Debug Options in preferences.
+fn debug_options_enabled() -> bool {
+    // Called on the hot message-menu/action-update path, so reuse one Settings.
+    thread_local! {
+        static SETTINGS: gio::Settings = gio::Settings::new(config::APP_ID);
+    }
+    config::PROFILE == "Devel"
+        || SETTINGS.with(|settings| settings.boolean("debug-options-enabled"))
+}
+
+/// The sticker set id of a sticker message, or 0 if the message is not a sticker or
+/// the sticker belongs to no set.
+fn sticker_message_set_id(message: &model::Message) -> i64 {
+    if let tdlib::enums::MessageContent::MessageSticker(data) = message.content().0 {
+        data.sticker.set_id
+    } else {
+        0
     }
 }
 

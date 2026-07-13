@@ -243,6 +243,12 @@ impl MessageBubble {
         imp.sender_label.set_visible(true);
     }
 
+    /// Hides the sender name, used for messages combined with an earlier one from the
+    /// same sender (only the first message of a run keeps the name).
+    pub(crate) fn hide_sender(&self) {
+        self.imp().sender_label.set_visible(false);
+    }
+
     pub(crate) fn set_prefix(&self, prefix: Option<&gtk::Widget>) {
         self.imp().prefix_bin.set_child(prefix);
     }

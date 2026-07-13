@@ -10,14 +10,24 @@ use futures::Future;
 use gettextrs::gettext;
 use glib::clone;
 use gtk::CompositeTemplate;
+use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
+use gtk::graphene;
 
 use crate::expressions;
 use crate::model;
 use crate::strings;
 use crate::ui;
 use crate::utils;
+
+/// Whether the gesture's current event came from a touchscreen. Selection dragging is
+/// mouse-only so touch input keeps kinetic-scrolling the list.
+fn is_touch(gesture: &gtk::GestureDrag) -> bool {
+    gesture
+        .current_event_device()
+        .is_some_and(|device| device.source() == gdk::InputSource::Touchscreen)
+}
 
 mod imp {
     use super::*;
@@ -34,6 +44,30 @@ mod imp {
         pub(super) sticky: Cell<bool>,
         pub(super) viewed_message_ids: RefCell<HashSet<i64>>,
         pub(super) viewed_message_ids_changed: Cell<bool>,
+        pub(super) selection_mode: Cell<bool>,
+        pub(super) selected_message_ids: RefCell<HashSet<i64>>,
+        /// State for an in-progress selection drag: whether one is active, the anchor
+        /// message it started from (the range is anchor..pointer), the latest pointer in
+        /// this widget's coordinates, and the running edge auto-scroll timer.
+        pub(super) selection_dragging: Cell<bool>,
+        /// Set when a mouse drag began over selectable bubble text (outside selection
+        /// mode): the drag is left to the label for text selection, not message sweeping.
+        pub(super) drag_skip_for_text: Cell<bool>,
+        pub(super) selection_anchor: Cell<Option<i64>>,
+        pub(super) selection_drag_point: Cell<(f64, f64)>,
+        pub(super) selection_autoscroll: RefCell<Option<glib::SourceId>>,
+        pub(super) selection_resweep_source: RefCell<Option<glib::SourceId>>,
+        /// While entering/leaving selection mode, the checkbox/toolbar relayout changes
+        /// the adjustment over several frames. During this window the scroll is pinned to
+        /// `preserved_scroll_value` (for non-drag transitions) so it doesn't jump to the
+        /// bottom. `selection_transition_source` releases the window after it settles.
+        pub(super) selection_transitioning: Cell<bool>,
+        pub(super) preserved_scroll_value: Cell<f64>,
+        pub(super) selection_transition_source: RefCell<Option<glib::SourceId>>,
+        #[template_child]
+        pub(super) selection_bar: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) selection_count_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) window_title: TemplateChild<adw::WindowTitle>,
         #[template_child]
@@ -89,6 +123,20 @@ mod imp {
                 None,
                 |widget, _, _| async move {
                     widget.show_leave_chat_dialog().await;
+                },
+            );
+
+            klass.install_action("chat-history.selection-clear", None, |widget, _, _| {
+                widget.clear_selection();
+            });
+            klass.install_action("chat-history.selection-forward", None, |widget, _, _| {
+                widget.forward_selection();
+            });
+            klass.install_action_async(
+                "chat-history.selection-delete",
+                None,
+                |widget, _, _| async move {
+                    widget.delete_selection().await;
                 },
             );
         }
@@ -169,9 +217,24 @@ mod imp {
                 move |adj| {
                     obj.view_messages();
 
+                    // While sweeping a selection, any scroll (wheel or auto-scroll)
+                    // brings new messages under the pointer — extend the range to them.
+                    if obj.imp().selection_dragging.get() {
+                        // pick() reflects the pre-scroll layout, so defer the resweep to
+                        // idle (after the frame clock re-lays-out the rows).
+                        obj.schedule_deferred_resweep();
+                    }
+
                     let imp = obj.imp();
 
                     if imp.is_loading_messages.get() {
+                        return;
+                    }
+
+                    // A selection-mode relayout (checkboxes/toolbar) changes the
+                    // adjustment but carries no scroll intent — pin the view and don't
+                    // latch `sticky` or load more.
+                    if obj.pin_scroll_during_transition() {
                         return;
                     }
 
@@ -212,10 +275,103 @@ mod imp {
                 }
             ));
 
+            // While a selection drag holds the pointer grab, the GtkScrolledWindow never
+            // processes wheel events, so the list can't scroll to bring more messages
+            // under the pointer. Intercept scroll in the capture phase and drive the
+            // adjustment ourselves (which re-fires value-changed → resweep_selection);
+            // when not dragging, let scrolling proceed normally.
+            let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+            scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
+            scroll.connect_scroll(clone!(
+                #[weak]
+                obj,
+                #[upgrade_or]
+                glib::Propagation::Proceed,
+                move |_, _dx, dy| {
+                    if !obj.imp().selection_dragging.get() {
+                        return glib::Propagation::Proceed;
+                    }
+                    let adj = obj.imp().list_view.vadjustment().unwrap();
+                    let step = adj.step_increment().max(40.0);
+                    let max = (adj.upper() - adj.page_size()).max(adj.lower());
+                    adj.set_value((adj.value() + dy * step).clamp(adj.lower(), max));
+                    glib::Propagation::Stop
+                }
+            ));
+            self.scrolled_window.add_controller(scroll);
+
+            // The selection drag lives on the list widget (which is never recycled),
+            // not on an individual message row — otherwise scrolling the starting row
+            // off-screen recycles it and GTK cancels the drag mid-selection.
+            let list_view = self.list_view.get();
+            let drag = gtk::GestureDrag::new();
+            drag.set_button(1);
+            drag.set_propagation_phase(gtk::PropagationPhase::Capture);
+            drag.connect_drag_begin(clone!(
+                #[weak]
+                obj,
+                #[weak]
+                list_view,
+                move |gesture, start_x, start_y| {
+                    // Mouse-only: on touch, leave the drag to the list's kinetic scroll.
+                    if is_touch(gesture) {
+                        return;
+                    }
+                    // Outside selection mode, a drag starting on selectable bubble text is
+                    // a text selection — leave it to the label rather than sweeping rows.
+                    let skip = !obj.is_selection_mode()
+                        && obj.point_over_selectable_text(&list_view, start_x, start_y);
+                    obj.imp().drag_skip_for_text.set(skip);
+                    if !skip {
+                        obj.begin_selection_drag();
+                    }
+                }
+            ));
+            drag.connect_drag_update(clone!(
+                #[weak]
+                obj,
+                #[weak]
+                list_view,
+                move |gesture, offset_x, offset_y| {
+                    if is_touch(gesture) || obj.imp().drag_skip_for_text.get() {
+                        return;
+                    }
+                    // Require a clear drag so plain clicks (open media/links) are unaffected.
+                    if offset_x.hypot(offset_y) < 8.0 {
+                        return;
+                    }
+                    let Some((start_x, start_y)) = gesture.start_point() else {
+                        return;
+                    };
+                    obj.sweep_selection(
+                        &list_view,
+                        start_x,
+                        start_y,
+                        start_x + offset_x,
+                        start_y + offset_y,
+                    );
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                }
+            ));
+            drag.connect_drag_end(clone!(
+                #[weak]
+                obj,
+                move |_, _, _| obj.end_selection_drag()
+            ));
+            drag.connect_cancel(clone!(
+                #[weak]
+                obj,
+                move |_, _| obj.end_selection_drag()
+            ));
+            list_view.add_controller(drag);
+
             adj.connect_upper_notify(clone!(
                 #[weak]
                 obj,
                 move |_| {
+                    if obj.pin_scroll_during_transition() {
+                        return;
+                    }
                     if obj.sticky() || obj.imp().is_auto_scrolling.get() {
                         obj.scroll_down();
                     }
@@ -418,6 +574,19 @@ impl ChatHistory {
 
             let model = model::ChatHistoryModel::new(chat);
 
+            // A new or deleted message flips its neighbour's grouping; refresh the
+            // visible rows so the repeated avatar/name/corners update at once. Older
+            // messages load at high positions (off-screen), so skip those bulk appends.
+            model.connect_items_changed(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, position, removed, _| {
+                    if position == 0 || removed > 0 {
+                        obj.refresh_grouping_visuals();
+                    }
+                }
+            ));
+
             // Request sponsored message, if needed
             let list_view_model: gio::ListModel = if matches!(chat.chat_type(), model::ChatType::Supergroup(supergroup) if supergroup.is_channel())
             {
@@ -436,6 +605,8 @@ impl ChatHistory {
                 model.clone().upcast()
             };
 
+            let last_read_inbox_message_id = chat.last_read_inbox_message_id();
+            let unread_count = chat.unread_count();
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -467,9 +638,33 @@ impl ChatHistory {
                     }
 
                     scrollbar.set_visible(true);
-
                     imp.is_loading_messages.set(false);
-                    obj.set_sticky(true);
+
+                    // If the chat has unread messages, place an "Unread messages" divider
+                    // and open at the first unread message instead of pinning to the
+                    // bottom. Load older messages until the read/unread boundary is in
+                    // range (capped, so a huge backlog doesn't load forever).
+                    let mut jumped = false;
+                    if unread_count > 0 && last_read_inbox_message_id != 0 {
+                        let mut guard = 0;
+                        while !model.insert_unread_divider(last_read_inbox_message_id) && guard < 40
+                        {
+                            match model.load_older_messages(10).await {
+                                Ok(true) => guard += 1,
+                                _ => break,
+                            }
+                        }
+                        if let Some(position) = obj.unread_divider_position() {
+                            obj.set_sticky(false);
+                            imp.list_view
+                                .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+                            jumped = true;
+                        }
+                    }
+
+                    if !jumped {
+                        obj.set_sticky(true);
+                    }
 
                     obj.view_messages();
                 }
@@ -504,27 +699,545 @@ impl ChatHistory {
         self.notify("chat");
     }
 
-    /// Scrolls the history to the pinned message, if it is currently loaded.
-    fn scroll_to_pinned(&self) {
+    /// The chat history data model backing the list, if a chat is loaded.
+    pub(crate) fn history_model(&self) -> Option<model::ChatHistoryModel> {
+        self.imp().model.borrow().clone()
+    }
+
+    // --- Multi-message selection (long-press / drag to select) ---
+
+    pub(crate) fn is_selection_mode(&self) -> bool {
+        self.imp().selection_mode.get()
+    }
+
+    /// Enters selection mode (if needed) and adds `message_id` to the selection.
+    pub(crate) fn select_message(&self, message_id: i64) {
         let imp = self.imp();
-        let message_id = imp.pinned_message_id.get();
+        let newly_entered = !imp.selection_mode.replace(true);
+        let inserted = imp.selected_message_ids.borrow_mut().insert(message_id);
+        imp.selection_anchor.set(Some(message_id));
+        if newly_entered {
+            self.guard_selection_relayout();
+            imp.selection_bar.set_visible(true);
+        }
+        if newly_entered || inserted {
+            self.update_selection_ui();
+            self.refresh_selection_visuals();
+        }
+    }
 
-        let Some(model) = imp.list_view.model() else {
-            return;
-        };
-
-        for pos in 0..model.n_items() {
-            if let Some(item) = model.item(pos).and_downcast::<model::ChatHistoryItem>()
-                && let Some(message) = item.message()
-                && message.id() == message_id
-            {
-                imp.list_view
-                    .scroll_to(pos, gtk::ListScrollFlags::FOCUS, None);
-                return;
+    /// Toggles `message_id` in the selection; leaves selection mode once the last
+    /// message is deselected.
+    pub(crate) fn toggle_message_selection(&self, message_id: i64) {
+        {
+            let mut ids = self.imp().selected_message_ids.borrow_mut();
+            if !ids.insert(message_id) {
+                ids.remove(&message_id);
             }
         }
+        // The clicked message becomes the anchor for a subsequent shift-click range.
+        self.imp().selection_anchor.set(Some(message_id));
+        if self.imp().selected_message_ids.borrow().is_empty() {
+            self.clear_selection();
+        } else {
+            self.imp().selection_mode.set(true);
+            self.imp().selection_bar.set_visible(true);
+            self.update_selection_ui();
+            self.refresh_selection_visuals();
+        }
+    }
 
-        log::debug!("Pinned message {message_id} is not in the loaded history");
+    /// Extends the selection to the range between the current anchor and `message_id`
+    /// (Shift+click). Replaces the current selection with that contiguous range.
+    pub(crate) fn extend_selection_to(&self, message_id: i64) {
+        let anchor = self.imp().selection_anchor.get().unwrap_or(message_id);
+        self.select_message_range(anchor, message_id);
+    }
+
+    pub(crate) fn is_message_selected(&self, message_id: i64) -> bool {
+        self.imp()
+            .selected_message_ids
+            .borrow()
+            .contains(&message_id)
+    }
+
+    pub(crate) fn clear_selection(&self) {
+        self.stop_selection_autoscroll();
+        if let Some(source) = self.imp().selection_resweep_source.borrow_mut().take() {
+            source.remove();
+        }
+        // Leaving selection mode hides the checkboxes/toolbar — a geometry change that
+        // must not re-pin the view to the bottom.
+        self.guard_selection_relayout();
+        let imp = self.imp();
+        imp.selection_mode.set(false);
+        imp.selection_dragging.set(false);
+        imp.selection_anchor.set(None);
+        imp.selected_message_ids.borrow_mut().clear();
+        imp.selection_bar.set_visible(false);
+        self.refresh_selection_visuals();
+    }
+
+    /// Pins the scroll position across a selection-mode geometry change (checkboxes and
+    /// toolbar appearing/disappearing). The list re-measures over several frames, so a
+    /// one-shot guard misses the late `upper` change that re-pins to the bottom; instead
+    /// the value-changed / upper-notify handlers restore `preserved_scroll_value` for the
+    /// whole window (skipping the pin while a drag is actively scrolling).
+    fn guard_selection_relayout(&self) {
+        let imp = self.imp();
+        if let Some(adj) = self.imp().list_view.vadjustment() {
+            imp.preserved_scroll_value.set(adj.value());
+        }
+        imp.selection_transitioning.set(true);
+        if let Some(source) = imp.selection_transition_source.borrow_mut().take() {
+            source.remove();
+        }
+        let source = glib::timeout_add_local_once(
+            std::time::Duration::from_millis(250),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move || {
+                    obj.imp().selection_transition_source.borrow_mut().take();
+                    obj.imp().selection_transitioning.set(false);
+                }
+            ),
+        );
+        imp.selection_transition_source.replace(Some(source));
+    }
+
+    /// Restores the pinned scroll value during a selection-mode transition (unless a drag
+    /// is actively scrolling), so the relayout can't drift the view. Returns whether the
+    /// caller should skip its normal sticky/scroll handling.
+    fn pin_scroll_during_transition(&self) -> bool {
+        let imp = self.imp();
+        if !imp.selection_transitioning.get() {
+            return false;
+        }
+        if !imp.selection_dragging.get()
+            && let Some(adj) = imp.list_view.vadjustment()
+        {
+            let max = (adj.upper() - adj.page_size()).max(adj.lower());
+            let target = imp.preserved_scroll_value.get().clamp(adj.lower(), max);
+            if (adj.value() - target).abs() > 0.5 {
+                adj.set_value(target);
+            }
+        }
+        true
+    }
+
+    /// Begins a selection drag: the next sweep anchors here and the selection becomes
+    /// the range from the anchor to the pointer.
+    pub(crate) fn begin_selection_drag(&self) {
+        let imp = self.imp();
+        imp.selection_dragging.set(true);
+        imp.selection_anchor.set(None);
+    }
+
+    /// Whether the point (in `list_view` coordinates) lands on a selectable label, i.e. a
+    /// bubble's text — where a drag should select text rather than sweep message rows.
+    fn point_over_selectable_text(&self, list_view: &gtk::ListView, x: f64, y: f64) -> bool {
+        let mut widget = list_view.pick(x, y, gtk::PickFlags::DEFAULT);
+        while let Some(w) = widget {
+            if w.downcast_ref::<gtk::Label>()
+                .is_some_and(|label| label.is_selectable())
+            {
+                return true;
+            }
+            widget = w.parent();
+        }
+        false
+    }
+
+    /// Ends an in-progress selection drag (releases the edge auto-scroll).
+    pub(crate) fn end_selection_drag(&self) {
+        self.imp().selection_dragging.set(false);
+        self.stop_selection_autoscroll();
+        if let Some(source) = self.imp().selection_resweep_source.borrow_mut().take() {
+            source.remove();
+        }
+    }
+
+    /// Extends the selection to cover every message between the drag anchor (the message
+    /// under `ax`/`ay`) and the pointer (`cx`/`cy`), all in `source`'s coordinate space.
+    pub(crate) fn sweep_selection(
+        &self,
+        source: &impl IsA<gtk::Widget>,
+        ax: f64,
+        ay: f64,
+        cx: f64,
+        cy: f64,
+    ) {
+        // Anchor to the message the drag started on (once per drag).
+        if self.imp().selection_anchor.get().is_none()
+            && let Some(point) =
+                source.compute_point(self, &graphene::Point::new(ax as f32, ay as f32))
+            && let Some(id) = self.message_id_at_point(point.x() as f64, point.y() as f64)
+        {
+            self.imp().selection_anchor.set(Some(id));
+        }
+
+        if let Some(point) = source.compute_point(self, &graphene::Point::new(cx as f32, cy as f32))
+        {
+            self.imp()
+                .selection_drag_point
+                .set((point.x() as f64, point.y() as f64));
+        }
+        self.resweep_selection();
+    }
+
+    /// Recomputes the drag selection from the stored pointer — invoked on pointer moves
+    /// and whenever the list scrolls (wheel or auto-scroll), so scrolled-in messages join.
+    fn resweep_selection(&self) {
+        let Some(anchor) = self.imp().selection_anchor.get() else {
+            return;
+        };
+        let (hx, hy) = self.imp().selection_drag_point.get();
+        // Clamp the pick point into the message list so a pointer over the scrollbar or
+        // up in the header still extends the range to the message at the nearest edge.
+        let (px, py) = self.clamp_point_to_list(hx, hy);
+        if let Some(current) = self.message_id_at_point(px, py) {
+            self.select_message_range(anchor, current);
+        }
+        self.update_selection_autoscroll(hy);
+    }
+
+    /// Re-runs the sweep after the list re-lays-out. `pick()` reflects the pre-scroll
+    /// layout immediately after a scroll changes the adjustment, so a synchronous
+    /// resweep keeps hitting the same message; idle runs after the frame clock's layout,
+    /// so `pick()` then sees the rows in their new positions. Debounced to one pending.
+    fn schedule_deferred_resweep(&self) {
+        if self.imp().selection_resweep_source.borrow().is_some() {
+            return;
+        }
+        let source = glib::idle_add_local_once(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move || {
+                obj.imp().selection_resweep_source.borrow_mut().take();
+                if obj.imp().selection_dragging.get() {
+                    obj.resweep_selection();
+                }
+            }
+        ));
+        self.imp().selection_resweep_source.replace(Some(source));
+    }
+
+    fn clamp_point_to_list(&self, hx: f64, hy: f64) -> (f64, f64) {
+        let Some(bounds) = self.imp().scrolled_window.compute_bounds(self) else {
+            return (hx, hy);
+        };
+        let (left, right) = (
+            bounds.x() as f64 + 8.0,
+            (bounds.x() + bounds.width()) as f64 - 8.0,
+        );
+        let (top, bottom) = (
+            bounds.y() as f64 + 4.0,
+            (bounds.y() + bounds.height()) as f64 - 4.0,
+        );
+        (hx.clamp(left, right), hy.clamp(top, bottom))
+    }
+
+    fn message_id_at_point(&self, hx: f64, hy: f64) -> Option<i64> {
+        self.pick(hx, hy, gtk::PickFlags::DEFAULT)
+            .and_then(|picked| utils::ancestor::<_, ui::MessageRow>(&picked))
+            .and_then(|row| row.message().downcast::<model::Message>().ok())
+            .map(|message| message.id())
+    }
+
+    /// Sets the selection to exactly the loaded messages between the ids `a` and `b`
+    /// (inclusive). Messages are ordered by id, so the range is every loaded message
+    /// whose id falls between them.
+    fn select_message_range(&self, a: i64, b: i64) {
+        let (lo, hi) = (a.min(b), a.max(b));
+        let Some(model) = self.history_model() else {
+            return;
+        };
+        let mut ids = HashSet::new();
+        for position in 0..model.n_items() {
+            if let Some(item) = model
+                .item(position)
+                .and_downcast::<model::ChatHistoryItem>()
+                && let Some(message) = item.message()
+                && (lo..=hi).contains(&message.id())
+            {
+                ids.insert(message.id());
+            }
+        }
+        let imp = self.imp();
+        // Guard the first sweep that enters selection mode (checkboxes first appear), but
+        // not during an active drag — the drag legitimately scrolls, and the guard would
+        // suppress its load-more. Later sweeps just change which rows are checked.
+        if !imp.selection_mode.replace(true) && !imp.selection_dragging.get() {
+            self.guard_selection_relayout();
+        }
+        imp.selection_bar.set_visible(true);
+        *imp.selected_message_ids.borrow_mut() = ids;
+        self.update_selection_ui();
+        self.refresh_selection_visuals();
+    }
+
+    /// The auto-scroll direction for a selection drag whose pointer is at height `hy`:
+    /// -1 near the top edge (or above the list), 1 near the bottom edge (or below), 0
+    /// in between.
+    fn selection_autoscroll_direction(&self, hy: f64) -> f64 {
+        const EDGE: f64 = 40.0;
+        let Some(bounds) = self.imp().scrolled_window.compute_bounds(self) else {
+            return 0.0;
+        };
+        if hy < bounds.y() as f64 + EDGE {
+            -1.0
+        } else if hy > (bounds.y() + bounds.height()) as f64 - EDGE {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
+    /// While sweeping a selection, scrolls the history when the pointer nears the top or
+    /// bottom edge so the drag can select messages beyond the visible area. The scroll
+    /// re-triggers `resweep_selection` via the adjustment's value-changed handler.
+    fn update_selection_autoscroll(&self, hy: f64) {
+        let direction = self.selection_autoscroll_direction(hy);
+        if !self.imp().selection_dragging.get() || direction == 0.0 {
+            self.stop_selection_autoscroll();
+            return;
+        }
+        if self.imp().selection_autoscroll.borrow().is_some() {
+            return;
+        }
+
+        let source = glib::timeout_add_local(
+            std::time::Duration::from_millis(16),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[upgrade_or]
+                glib::ControlFlow::Break,
+                move || {
+                    let (_, hy) = obj.imp().selection_drag_point.get();
+                    let direction = obj.selection_autoscroll_direction(hy);
+                    if !obj.imp().selection_dragging.get() || direction == 0.0 {
+                        obj.imp().selection_autoscroll.borrow_mut().take();
+                        return glib::ControlFlow::Break;
+                    }
+                    let adj = obj.imp().list_view.vadjustment().unwrap();
+                    let max = (adj.upper() - adj.page_size()).max(adj.lower());
+                    adj.set_value((adj.value() + direction * 24.0).clamp(adj.lower(), max));
+                    glib::ControlFlow::Continue
+                }
+            ),
+        );
+        self.imp().selection_autoscroll.replace(Some(source));
+    }
+
+    fn stop_selection_autoscroll(&self) {
+        if let Some(source) = self.imp().selection_autoscroll.borrow_mut().take() {
+            source.remove();
+        }
+    }
+
+    fn selected_ids(&self) -> Vec<i64> {
+        let mut ids: Vec<i64> = self
+            .imp()
+            .selected_message_ids
+            .borrow()
+            .iter()
+            .copied()
+            .collect();
+        // TDLib's forward_messages/delete_messages require strictly increasing ids.
+        ids.sort_unstable();
+        ids
+    }
+
+    fn update_selection_ui(&self) {
+        let count = self.imp().selected_message_ids.borrow().len();
+        self.imp()
+            .selection_count_label
+            .set_label(&gettext("{n} selected").replace("{n}", &count.to_string()));
+        self.action_set_enabled("chat-history.selection-forward", count > 0);
+        self.action_set_enabled("chat-history.selection-delete", count > 0);
+    }
+
+    fn refresh_selection_visuals(&self) {
+        fn walk(widget: &gtk::Widget) {
+            let mut child = widget.first_child();
+            while let Some(widget) = child {
+                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
+                    row.update_selection_visual();
+                }
+                walk(&widget);
+                child = widget.next_sibling();
+            }
+        }
+        walk(self.imp().list_view.upcast_ref());
+    }
+
+    /// Recomputes same-sender grouping for every visible row. Called when the model
+    /// changes, so a neighbour whose grouping flipped (e.g. a new message arrives from
+    /// the same sender, or one is deleted) updates its avatar/name/corners immediately
+    /// instead of only when it is scrolled off and rebound.
+    pub(crate) fn refresh_grouping_visuals(&self) {
+        fn walk(widget: &gtk::Widget) {
+            let mut child = widget.first_child();
+            while let Some(widget) = child {
+                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
+                    row.apply_message_grouping();
+                }
+                walk(&widget);
+                child = widget.next_sibling();
+            }
+        }
+        walk(self.imp().list_view.upcast_ref());
+    }
+
+    fn forward_selection(&self) {
+        let ids = self.selected_ids();
+        if ids.is_empty() {
+            return;
+        }
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let Some(session) = utils::ancestor::<_, ui::Session>(self) else {
+            return;
+        };
+        let parent = self.root().and_downcast::<gtk::Window>();
+        ui::ForwardWindow::new(parent.as_ref(), &session, chat.id(), ids).present();
+        self.clear_selection();
+    }
+
+    async fn delete_selection(&self) {
+        let ids = self.selected_ids();
+        if ids.is_empty() {
+            return;
+        }
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let dialog = ui::destructive_confirmation_dialog(
+            &gettext("Delete Messages"),
+            &gettext("Delete the selected messages?"),
+            ("no", &gettext("_Cancel")),
+            ("yes", &gettext("_Delete")),
+        );
+        if dialog.choose_future(Some(self)).await == "yes" {
+            let client_id = chat.session_().client_().id();
+            if let Err(e) =
+                tdlib::functions::delete_messages(chat.id(), ids, false, client_id).await
+            {
+                log::warn!("Failed to delete selected messages: {e:?}");
+            }
+            self.clear_selection();
+        }
+    }
+
+    /// Returns the list position of the "Unread messages" divider, if present.
+    fn unread_divider_position(&self) -> Option<u32> {
+        let model = self.imp().list_view.model()?;
+        (0..model.n_items()).find(|pos| {
+            model
+                .item(*pos)
+                .and_downcast::<model::ChatHistoryItem>()
+                .is_some_and(|item| {
+                    matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_))
+                })
+        })
+    }
+
+    /// The position of `message_id` in the loaded model, if present.
+    fn message_position(&self, message_id: i64) -> Option<u32> {
+        let model = self.imp().list_view.model()?;
+        (0..model.n_items()).find(|pos| {
+            model
+                .item(*pos)
+                .and_downcast::<model::ChatHistoryItem>()
+                .and_then(|item| item.message().map(|message| message.id()))
+                == Some(message_id)
+        })
+    }
+
+    /// Scrolls the history to the pinned message, if it is currently loaded.
+    fn scroll_to_pinned(&self) {
+        let message_id = self.imp().pinned_message_id.get();
+        match self.message_position(message_id) {
+            Some(position) => {
+                self.imp()
+                    .list_view
+                    .scroll_to(position, gtk::ListScrollFlags::FOCUS, None)
+            }
+            None => log::debug!("Pinned message {message_id} is not in the loaded history"),
+        }
+    }
+
+    /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
+    /// it — used when following a reply, jump, or link so the user can spot the target.
+    pub(crate) fn focus_message(&self, message_id: i64) {
+        let Some(position) = self.message_position(message_id) else {
+            return;
+        };
+        self.set_sticky(false);
+        self.imp()
+            .list_view
+            .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+        // Centre + flash once the row has been realised at its new position.
+        glib::idle_add_local_once(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move || obj.centre_and_flash_message(message_id)
+        ));
+    }
+
+    fn centre_and_flash_message(&self, message_id: i64) {
+        let Some(row) = self.find_message_row(message_id) else {
+            return;
+        };
+        let imp = self.imp();
+        if let Some(bounds) = row.compute_bounds(&*imp.scrolled_window) {
+            let adj = imp.list_view.vadjustment().unwrap();
+            let viewport = imp.scrolled_window.height() as f64;
+            let target =
+                adj.value() + bounds.y() as f64 - (viewport - bounds.height() as f64) / 2.0;
+            let max = (adj.upper() - adj.page_size()).max(adj.lower());
+            adj.set_value(target.clamp(adj.lower(), max));
+        }
+        // Flash the inner message row, not the outer ChatHistoryRow: the group-start top
+        // margin lives inside the outer row's box, so flashing it would paint empty space
+        // above the bubble with none below. The inner row's box hugs the content evenly.
+        let flash_target = row.child().unwrap_or_else(|| row.clone().upcast());
+        flash_target.add_css_class("message-flash");
+        glib::timeout_add_local_once(
+            std::time::Duration::from_millis(1500),
+            clone!(
+                #[weak]
+                flash_target,
+                move || flash_target.remove_css_class("message-flash")
+            ),
+        );
+    }
+
+    /// The realised `ChatHistoryRow` currently displaying `message_id`, if any.
+    fn find_message_row(&self, message_id: i64) -> Option<ui::ChatHistoryRow> {
+        fn walk(widget: &gtk::Widget, message_id: i64) -> Option<ui::ChatHistoryRow> {
+            let mut child = widget.first_child();
+            while let Some(widget) = child {
+                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>()
+                    && row
+                        .item()
+                        .and_downcast::<model::ChatHistoryItem>()
+                        .and_then(|item| item.message().map(|message| message.id()))
+                        == Some(message_id)
+                {
+                    return Some(row.clone());
+                }
+                if let Some(found) = walk(&widget, message_id) {
+                    return Some(found);
+                }
+                child = widget.next_sibling();
+            }
+            None
+        }
+        walk(self.imp().list_view.upcast_ref(), message_id)
     }
 
     /// Unpins the message currently shown in the pinned-message bar.
@@ -599,6 +1312,13 @@ impl ChatHistory {
 
         imp.scrolled_window
             .emit_by_name::<bool>("scroll-child", &[&gtk::ScrollType::End, &false]);
+    }
+
+    /// Jumps to the newest message, pinning the view to the bottom. Used when the user
+    /// re-activates the already-open chat in the sidebar.
+    pub(crate) fn scroll_to_latest(&self) {
+        self.set_sticky(true);
+        self.scroll_down();
     }
 
     pub(crate) fn view_messages(&self) {

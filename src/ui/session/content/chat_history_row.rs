@@ -62,6 +62,8 @@ mod imp {
         fn map(&self) {
             self.parent_map();
             self.perform_history_action(ui::ChatHistory::add_to_viewed_message_ids);
+            self.obj().apply_message_grouping();
+            self.obj().update_selection_visual();
         }
 
         fn unmap(&self) {
@@ -164,6 +166,10 @@ impl ChatHistoryRow {
                         let child = self.get_or_create_event_row();
                         child.set_label(&date);
                     }
+                    model::ChatHistoryItemType::UnreadDivider(_) => {
+                        let child = self.get_or_create_event_row();
+                        child.set_label(&gettext("Unread messages"));
+                    }
                 }
             } else if let Some(sponsored_message) = item.downcast_ref::<model::SponsoredMessage>() {
                 let content = &sponsored_message.content().0;
@@ -179,6 +185,52 @@ impl ChatHistoryRow {
 
         self.imp().item.replace(item);
         self.notify("item");
+
+        self.apply_message_grouping();
+        self.update_selection_visual();
+    }
+
+    /// Reflects multi-select state on this row: a subtle accent tint when selected, plus
+    /// the trailing checkbox (shown for every message while in selection mode).
+    pub(crate) fn update_selection_visual(&self) {
+        let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) else {
+            return;
+        };
+        let in_selection_mode = chat_history.is_selection_mode();
+        let selected = self
+            .item()
+            .and_downcast::<model::ChatHistoryItem>()
+            .and_then(|item| item.message().map(|message| message.id()))
+            .is_some_and(|id| chat_history.is_message_selected(id));
+
+        if selected {
+            self.add_css_class("message-selected");
+        } else {
+            self.remove_css_class("message-selected");
+        }
+
+        if let Some(row) = self.child().and_downcast::<ui::MessageRow>() {
+            row.set_selection_state(in_selection_mode, selected);
+        }
+    }
+
+    /// Recomputes and applies same-sender grouping visuals to the message row, using
+    /// the neighbouring items in the history model. No-op for dividers/event rows.
+    pub(crate) fn apply_message_grouping(&self) {
+        let Some(child) = self.child().and_downcast::<ui::MessageRow>() else {
+            return;
+        };
+        let Some(item) = self.item().and_downcast::<model::ChatHistoryItem>() else {
+            return;
+        };
+        if item.message().is_none() {
+            return;
+        }
+        let (is_start, is_end) = utils::ancestor::<_, ui::ChatHistory>(self)
+            .and_then(|chat_history| chat_history.history_model())
+            .map(|model| model.group_flags(&item))
+            .unwrap_or((true, true));
+        child.apply_grouping(is_start, is_end);
     }
 
     fn update_or_create_message_row(&self, message: glib::Object) {

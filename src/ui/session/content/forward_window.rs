@@ -21,7 +21,7 @@ mod imp {
     pub(crate) struct ForwardWindow {
         pub(super) session: RefCell<Option<ui::Session>>,
         pub(super) from_chat_id: Cell<ChatId>,
-        pub(super) message_id: Cell<MessageId>,
+        pub(super) message_ids: RefCell<Vec<MessageId>>,
         pub(super) search_text: RefCell<String>,
         #[template_child]
         pub(super) search_entry: TemplateChild<gtk::SearchEntry>,
@@ -114,7 +114,7 @@ impl ForwardWindow {
         parent: Option<&gtk::Window>,
         session: &ui::Session,
         from_chat_id: ChatId,
-        message_id: MessageId,
+        message_ids: Vec<MessageId>,
     ) -> Self {
         let obj: Self = glib::Object::builder()
             .property("transient-for", parent)
@@ -123,7 +123,7 @@ impl ForwardWindow {
         let imp = obj.imp();
         imp.session.replace(Some(session.clone()));
         imp.from_chat_id.set(from_chat_id);
-        imp.message_id.set(message_id);
+        imp.message_ids.replace(message_ids);
 
         if let Some(model) = session.model() {
             imp.filter_model.set_model(Some(&model.main_chat_list()));
@@ -142,14 +142,14 @@ impl ForwardWindow {
         };
         let client_id = model.client_().id();
         let from_chat_id = imp.from_chat_id.get();
-        let message_id = imp.message_id.get();
+        let message_ids = imp.message_ids.borrow().clone();
 
         utils::spawn(async move {
             if let Err(e) = tdlib::functions::forward_messages(
                 to_chat_id,
                 None,
                 from_chat_id,
-                vec![message_id],
+                message_ids,
                 None,
                 false,
                 false,
