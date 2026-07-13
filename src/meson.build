@@ -35,6 +35,7 @@ else
 endif
 
 cargo_env = [ 'CARGO_HOME=' + meson.project_build_root() / 'cargo-home' ]
+cargo_build = find_program('../build-aux/cargo-build.sh')
 
 custom_target(
   'cargo-build',
@@ -46,16 +47,15 @@ custom_target(
   install_dir: bindir,
   depends: resources,
   command: [
-    'env',
-    cargo_env,
-    cargo, 'build',
+    cargo_build,
+    cargo,
+    meson.project_build_root() / 'src' / rust_target / meson.project_name(),
+    '@OUTPUT@',
     cargo_options,
-    '&&',
-    'cp', 'src' / rust_target / meson.project_name(), '@OUTPUT@',
-  ]
+  ],
+  env: cargo_env,
 )
 
-cargo = find_program('cargo', required: true)
 cargo_target_dir = meson.project_build_root() / 'target'
 cargo_home = meson.project_build_root() / 'cargo-home'
 manifest_path = meson.project_source_root() / 'Cargo.toml'
