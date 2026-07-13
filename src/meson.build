@@ -44,7 +44,6 @@ custom_target(
   depends: resources,
   command: [
     cargo_build,
-    cargo,
     meson.project_build_root() / 'src' / rust_target / meson.project_name(),
     '@OUTPUT@',
     cargo_options,
