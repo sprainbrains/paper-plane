@@ -86,9 +86,7 @@ impl ClientStateAuthPassword {
         let client = self.auth_().client().unwrap();
 
         let result = tdlib::functions::request_authentication_password_recovery(client.id()).await;
-        if let Err(e) =
-            tdlib::functions::request_authentication_password_recovery(client.id()).await
-        {
+        if let Err(ref e) = result {
             log::error!("Failed to recover password: {e:?}");
         }
         imp.password_recovery_ongoing.set(result.is_ok());
@@ -114,7 +112,7 @@ impl ClientStateAuthPassword {
             Ok(_) => SendPasswordRecoveryCodeResult::Ok,
             Err(e) => {
                 if e.message == "PASSWORD_RECOVERY_EXPIRED" {
-                    log::error!("Password revovery code is expired.");
+                    log::error!("Password recovery code is expired.");
 
                     // The same procedure is used as for the official client (as far as I
                     // understood from the code). Alternatively, we could send the user a new
