@@ -192,12 +192,28 @@ impl Row {
         self.add_controller(drag);
 
         let drop = gtk::DropTarget::new(i32::static_type(), gdk::DragAction::MOVE);
+        drop.connect_enter(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[upgrade_or]
+            gdk::DragAction::empty(),
+            move |_, _, _| {
+                obj.set_drop_indicator(true);
+                gdk::DragAction::MOVE
+            }
+        ));
+        drop.connect_leave(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.set_drop_indicator(false)
+        ));
         drop.connect_drop(clone!(
             #[weak(rename_to = obj)]
             self,
             #[upgrade_or]
             false,
             move |_, value, _, _| {
+                obj.set_drop_indicator(false);
                 let Ok(from) = value.get::<i32>() else {
                     return false;
                 };
@@ -212,6 +228,20 @@ impl Row {
             }
         ));
         self.add_controller(drop);
+    }
+
+    /// Shows or hides the "insert here" line on this tab's leading edge — a top line in the
+    /// vertical rail, a left line in the horizontal strip.
+    fn set_drop_indicator(&self, show: bool) {
+        self.remove_css_class("drop-before-h");
+        self.remove_css_class("drop-before-v");
+        if show {
+            if self.chat_folder_bar().is_vertical() {
+                self.add_css_class("drop-before-h");
+            } else {
+                self.add_css_class("drop-before-v");
+            }
+        }
     }
 
     /// This row's position in the combined folder bar (folders + "All Chats").

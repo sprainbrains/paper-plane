@@ -143,6 +143,11 @@ glib::wrapper! {
 }
 
 impl Bar {
+    /// Whether the bar is laid out as a vertical rail (versus a horizontal tab strip).
+    pub(crate) fn is_vertical(&self) -> bool {
+        self.imp().vertical.get()
+    }
+
     /// Switches the folder bar between a horizontal tab strip (default) and a vertical
     /// rail (for the far-left folder layout).
     pub(crate) fn set_vertical(&self, vertical: bool) {
