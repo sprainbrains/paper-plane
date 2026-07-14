@@ -1313,17 +1313,17 @@ impl ChatHistory {
                 first_frame_time.set(now);
             }
 
-            // (Re-)acquire the sent row: the widget we hid may have been recycled for a
-            // different item (its opacity is restored by `set_item` in that case).
+            // (Re-)acquire the sent row every frame: the widget we hid may have been
+            // recycled for a different item, or the real row may only appear later (in
+            // which case the text fallback could have latched onto an older duplicate).
+            let row = obj.find_sent_row(message_id, &text);
             let stored = imp.send_flight_row.borrow().clone();
-            let row = match stored.filter(|row| Self::row_shows_sent(row, message_id, &text)) {
-                Some(row) => Some(row),
-                None => {
-                    let row = obj.find_sent_row(message_id, &text);
-                    imp.send_flight_row.replace(row.clone());
-                    row
+            if stored != row {
+                if let Some(stored) = stored {
+                    stored.set_opacity(1.0);
                 }
-            };
+                imp.send_flight_row.replace(row.clone());
+            }
             if let Some(row) = &row {
                 row.set_opacity(0.0);
             }
@@ -1422,9 +1422,10 @@ impl ChatHistory {
         imp.send_animation.replace(Some(animation.upcast()));
     }
 
-    /// A springy, macOS-like motion: underdamped so it settles with a soft bounce.
+    /// A springy, macOS-like motion: slightly underdamped, settling quickly with at most
+    /// one soft overshoot.
     fn send_spring() -> adw::SpringParams {
-        adw::SpringParams::new(0.45, 3.3, 100.0)
+        adw::SpringParams::new(0.85, 3.3, 100.0)
     }
 
     /// Stops any in-flight send animation and restores everything it touched. Called
@@ -1509,49 +1510,48 @@ impl ChatHistory {
         graphene::Rect::new(x, y, width, height)
     }
 
-    /// Whether `row` currently displays the just-sent message: same id, or — since TDLib
-    /// swaps the optimistic id for the final one (`updateMessageSendSucceeded`) — an
-    /// outgoing message with exactly the sent text.
-    fn row_shows_sent(row: &ui::ChatHistoryRow, message_id: i64, text: &str) -> bool {
-        row.item()
-            .and_downcast::<model::ChatHistoryItem>()
-            .is_some_and(|item| {
-                item.message().is_some_and(|message| {
-                    message.id() == message_id
-                        || (message.is_outgoing()
-                            && matches!(
-                                &message.content().0,
-                                tdlib::enums::MessageContent::MessageText(content)
-                                    if content.text.text.trim() == text
-                            ))
-                })
-            })
-    }
-
-    /// The realised row of the just-sent message: the bottom-most row matching
-    /// [`Self::row_shows_sent`]. Bottom-most matters because the same text may appear in
-    /// older messages; the fresh one is at the end of the history.
+    /// The realised row of the just-sent message. An id match always wins; failing that
+    /// (TDLib swaps the optimistic id for the final one via `updateMessageSendSucceeded`),
+    /// the *bottom-most message row overall* is accepted iff it is an outgoing message
+    /// with exactly the sent text — never an older duplicate higher up, since the fresh
+    /// message can only be the last one in the history.
     fn find_sent_row(&self, message_id: i64, text: &str) -> Option<ui::ChatHistoryRow> {
         let imp = self.imp();
-        let mut best: Option<(ui::ChatHistoryRow, f32)> = None;
+        let mut id_match: Option<ui::ChatHistoryRow> = None;
+        // (row, y in list coordinates, whether it looks like the sent message)
+        let mut bottom: Option<(ui::ChatHistoryRow, f32, bool)> = None;
         let mut stack = vec![imp.list_view.clone().upcast::<gtk::Widget>()];
         while let Some(widget) = stack.pop() {
             let mut child = widget.first_child();
             while let Some(widget) = child {
                 child = widget.next_sibling();
-                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
-                    if Self::row_shows_sent(row, message_id, text)
-                        && let Some(bounds) = row.compute_bounds(&*imp.list_view)
-                        && best.as_ref().is_none_or(|(_, y)| bounds.y() > *y)
-                    {
-                        best = Some((row.clone(), bounds.y()));
-                    }
-                } else {
+                let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() else {
                     stack.push(widget);
+                    continue;
+                };
+                let Some(item) = row.item().and_downcast::<model::ChatHistoryItem>() else {
+                    continue;
+                };
+                let Some(message) = item.message() else {
+                    continue;
+                };
+                if message.id() == message_id {
+                    id_match = Some(row.clone());
+                }
+                if let Some(bounds) = row.compute_bounds(&*imp.list_view)
+                    && bottom.as_ref().is_none_or(|(_, y, _)| bounds.y() > *y)
+                {
+                    let looks_sent = message.is_outgoing()
+                        && matches!(
+                            &message.content().0,
+                            tdlib::enums::MessageContent::MessageText(content)
+                                if content.text.text.trim() == text
+                        );
+                    bottom = Some((row.clone(), bounds.y(), looks_sent));
                 }
             }
         }
-        best.map(|(row, _)| row)
+        id_match.or_else(|| bottom.and_then(|(row, _, looks_sent)| looks_sent.then_some(row)))
     }
 
     pub(crate) fn focus_message(&self, message_id: i64) {
