@@ -242,14 +242,14 @@ messagebubble {
 .send-ghost-base {
   background-color: mix(@window_bg_color, @window_fg_color, 0.1);
   color: @window_fg_color;
-  border-radius: 14px;
+  border-radius: 15px;
   padding: 8px 12px;
 }
 
 .send-ghost-accent {
   background-color: @accent_bg_color;
   color: @accent_fg_color;
-  border-radius: 14px;
+  border-radius: 15px;
   padding: 8px 12px;
   box-shadow: 0 2px 6px alpha(black, 0.25);
 }
@@ -340,7 +340,7 @@ messagebubble > box {
 }
 
 messagebubble.location map {
-  border-radius: 14px;
+  border-radius: 15px;
 }
 
 messagebubble.location map,
@@ -467,7 +467,7 @@ messagebubble.media mediapicture {
   /* Negate margins to achieve 1px padding with the message bubble */
   margin: -5px -8px;
   /* Message bubble border-radius (15px) - padding (1px)  */
-  border-radius: 14px;
+  border-radius: 15px;
 }
 
 messagebubble.media.with-reply mediapicture,

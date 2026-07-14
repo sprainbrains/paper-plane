@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::OnceLock;
 
 use adw::prelude::*;
@@ -82,7 +83,10 @@ mod imp {
         pub(super) content_overlay: TemplateChild<gtk::Overlay>,
         #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
-        pub(super) send_animation: RefCell<Option<adw::SpringAnimation>>,
+        pub(super) send_animation: RefCell<Option<adw::Animation>>,
+        pub(super) send_poll: RefCell<Option<gtk::TickCallbackId>>,
+        pub(super) send_ghost: RefCell<Option<gtk::Overlay>>,
+        pub(super) send_flight_row: RefCell<Option<ui::ChatHistoryRow>>,
         #[template_child]
         pub(super) scrolled_window: TemplateChild<gtk::ScrolledWindow>,
         #[template_child]
@@ -1212,11 +1216,15 @@ impl ChatHistory {
 
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
     /// it — used when following a reply, jump, or link so the user can spot the target.
-    /// Morphs the just-sent text out of the composer and up into the history: a ghost that
-    /// starts as the grey composer field springs onto the real message's bubble, narrowing
-    /// to its shape and tinting to the accent colour, then hands off to the real bubble
-    /// (which is hidden during the flight so the ghost appears to *become* it). `start` is
-    /// the composer's rectangle in this widget's coordinates.
+    /// Animates a just-sent message in two phases. Phase 1 is fully deterministic: a ghost
+    /// that starts as the grey composer field springs up to a fixed *staging point* (bottom
+    /// of the message column, slightly left of where outgoing bubbles sit), cross-fading
+    /// grey → accent and narrowing to the text's bubble size. Meanwhile a per-frame poll
+    /// finds the real message row and hides it. Phase 2 converts the ghost into the real
+    /// bubble: the ghost is dropped and the row itself flies from the staging point to its
+    /// rest position via a *relative* snapshot translation, so concurrent auto-scrolling
+    /// can't misplace the landing — at the end the bubble simply is where it belongs.
+    /// `start` is the composer's rectangle in this widget's coordinates.
     pub(crate) fn play_send_animation(
         &self,
         text: &str,
@@ -1227,7 +1235,10 @@ impl ChatHistory {
         let Some(start) = start.filter(|_| !text.is_empty()) else {
             return;
         };
+        self.cancel_send_animation();
         let imp = self.imp();
+
+        let staging = self.staging_rect(&start, text);
 
         // Two stacked layers with the same text: a grey "field" underneath and an accent
         // "bubble" on top whose opacity is animated in, cross-fading grey → accent.
@@ -1235,7 +1246,8 @@ impl ChatHistory {
             let label = gtk::Label::builder()
                 .label(text)
                 .xalign(0.0)
-                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .wrap(true)
+                .wrap_mode(gtk::pango::WrapMode::WordChar)
                 .build();
             let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
             layer.set_hexpand(true);
@@ -1259,50 +1271,11 @@ impl ChatHistory {
         ghost.set_margin_top(start.y() as i32);
         ghost.set_size_request(start.width() as i32, start.height() as i32);
         imp.send_overlay.add_overlay(&ghost);
+        imp.send_ghost.replace(Some(ghost.clone()));
 
-        // Wait a frame for the sent message's row to be laid out, then spring the ghost
-        // exactly onto its bubble.
-        let text = text.to_owned();
-        glib::idle_add_local_once(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            #[weak]
-            ghost,
-            #[weak]
-            accent,
-            move || obj.spring_send_ghost(ghost, accent, start, message_id, text)
-        ));
-    }
-
-    /// Springs `ghost` from `start` onto the real message bubble (hidden for the duration so
-    /// the ghost visually becomes it), or onto a computed spot if the row isn't ready.
-    fn spring_send_ghost(
-        &self,
-        ghost: gtk::Overlay,
-        accent: gtk::Box,
-        start: graphene::Rect,
-        message_id: i64,
-        text: String,
-    ) {
-        let imp = self.imp();
-
-        // Prefer the real bubble's exact rectangle; hide the row so the ghost stands in for
-        // it until it lands.
-        let row = self.find_message_row(message_id);
-        let end = row
-            .as_ref()
-            .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
-            .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay));
-        let end = match end {
-            Some(rect) => {
-                if let Some(row) = &row {
-                    row.set_opacity(0.0);
-                }
-                rect
-            }
-            None => self.fallback_bubble_rect(start, &text),
-        };
-
+        // Phase 1: morph the ghost onto the staging rect. The done flag is what the poll
+        // below waits for before converting the ghost into the real bubble.
+        let morph_done = Rc::new(Cell::new(false));
         let target = adw::CallbackAnimationTarget::new(clone!(
             #[weak]
             ghost,
@@ -1311,64 +1284,231 @@ impl ChatHistory {
             move |value| {
                 let progress = value as f32;
                 let lerp = |a: f32, b: f32| a + (b - a) * progress;
-                ghost.set_margin_start(lerp(start.x(), end.x()) as i32);
-                ghost.set_margin_top(lerp(start.y(), end.y()) as i32);
+                ghost.set_margin_start(lerp(start.x(), staging.x()) as i32);
+                ghost.set_margin_top(lerp(start.y(), staging.y()) as i32);
                 ghost.set_size_request(
-                    lerp(start.width(), end.width()) as i32,
-                    lerp(start.height(), end.height()) as i32,
+                    lerp(start.width(), staging.width()) as i32,
+                    lerp(start.height(), staging.height()) as i32,
                 );
                 accent.set_opacity(value.clamp(0.0, 1.0));
             }
         ));
-        // A springy, macOS-like motion: underdamped so it settles with a soft bounce. The
-        // progress runs 0..1, so a large initial velocity would fling the ghost far past the
-        // target; keep it small so the overshoot stays a gentle bounce near the bubble.
-        let params = adw::SpringParams::new(0.45, 3.3, 100.0);
-        let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, params, target);
+        let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, Self::send_spring(), target);
         animation.set_initial_velocity(0.5);
         animation.connect_done(clone!(
+            #[strong]
+            morph_done,
+            move |_| morph_done.set(true)
+        ));
+        animation.play();
+        imp.send_animation.replace(Some(animation.upcast()));
+
+        // Poll every frame: hide the real row the moment it is realised (so it never
+        // flashes at its rest position behind the ghost), then, once the morph is done and
+        // the bubble has a real allocation, launch phase 2. Bail out with a fade if the
+        // row never shows up (send failed, chat switched, …).
+        let first_frame_time = Rc::new(Cell::new(0i64));
+        let id = self.add_tick_callback(move |obj, clock| {
+            let imp = obj.imp();
+            let now = clock.frame_time();
+            if first_frame_time.get() == 0 {
+                first_frame_time.set(now);
+            }
+
+            if imp.send_flight_row.borrow().is_none()
+                && let Some(row) = obj.find_sent_row(message_id)
+            {
+                row.set_opacity(0.0);
+                imp.send_flight_row.replace(Some(row));
+            }
+
+            if morph_done.get() {
+                let bounds = imp
+                    .send_flight_row
+                    .borrow()
+                    .as_ref()
+                    .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
+                    .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
+                    .filter(|bounds| bounds.width() > 1.0);
+                if let Some(bounds) = bounds {
+                    imp.send_poll.take();
+                    obj.launch_send_flight(staging, bounds);
+                    return glib::ControlFlow::Break;
+                }
+            }
+
+            if now - first_frame_time.get() > 800_000 {
+                imp.send_poll.take();
+                obj.abort_send_ghost();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+        imp.send_poll.replace(Some(id));
+    }
+
+    /// Phase 2: drop the ghost and let the real row fly from the staging point to its rest
+    /// position. The flight is a relative snapshot translation on the row (springing back
+    /// to zero), so the landing is exact no matter how the list scrolls underneath.
+    fn launch_send_flight(&self, staging: graphene::Rect, bounds: graphene::Rect) {
+        let imp = self.imp();
+        if let Some(ghost) = imp.send_ghost.take() {
+            imp.send_overlay.remove_overlay(&ghost);
+        }
+        let Some(row) = imp.send_flight_row.borrow().clone() else {
+            return;
+        };
+        row.set_opacity(1.0);
+
+        // Align the staging rect's right edge and top with the bubble's: outgoing bubbles
+        // are anchored right, so this reads as the bubble sliding into its lane.
+        let dx = (staging.x() + staging.width()) - (bounds.x() + bounds.width());
+        let dy = staging.y() - bounds.y();
+        row.set_flight_offset(dx, dy);
+
+        let target = adw::CallbackAnimationTarget::new(clone!(
+            #[weak]
+            row,
+            move |value| {
+                let remaining = 1.0 - value as f32;
+                row.set_flight_offset(dx * remaining, dy * remaining);
+            }
+        ));
+        let animation = adw::SpringAnimation::new(&row, 0.0, 1.0, Self::send_spring(), target);
+        animation.set_initial_velocity(0.5);
+        animation.connect_done(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| {
+                let imp = obj.imp();
+                if let Some(row) = imp.send_flight_row.take() {
+                    row.set_flight_offset(0.0, 0.0);
+                }
+                imp.send_animation.replace(None);
+            }
+        ));
+        animation.play();
+        imp.send_animation.replace(Some(animation.upcast()));
+    }
+
+    /// A springy, macOS-like motion: underdamped so it settles with a soft bounce.
+    fn send_spring() -> adw::SpringParams {
+        adw::SpringParams::new(0.45, 3.3, 100.0)
+    }
+
+    /// Stops any in-flight send animation and restores everything it touched. Called
+    /// before starting a new one so rapid sends don't fight over the shared state.
+    fn cancel_send_animation(&self) {
+        let imp = self.imp();
+        if let Some(id) = imp.send_poll.take() {
+            id.remove();
+        }
+        if let Some(animation) = imp.send_animation.take() {
+            animation.pause();
+        }
+        if let Some(ghost) = imp.send_ghost.take() {
+            imp.send_overlay.remove_overlay(&ghost);
+        }
+        if let Some(row) = imp.send_flight_row.take() {
+            row.set_opacity(1.0);
+            row.set_flight_offset(0.0, 0.0);
+        }
+    }
+
+    /// The row never appeared (send failed, chat switched): fade the ghost out gracefully
+    /// instead of leaving it parked at the staging point.
+    fn abort_send_ghost(&self) {
+        let imp = self.imp();
+        if let Some(row) = imp.send_flight_row.take() {
+            row.set_opacity(1.0);
+        }
+        let Some(ghost) = imp.send_ghost.take() else {
+            return;
+        };
+        let target = adw::PropertyAnimationTarget::new(&ghost, "opacity");
+        let fade = adw::TimedAnimation::new(&ghost, 1.0, 0.0, 150, target);
+        fade.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
             #[weak]
             ghost,
             move |_| {
                 obj.imp().send_overlay.remove_overlay(&ghost);
-                if let Some(row) = &row {
-                    row.set_opacity(1.0);
-                }
                 obj.imp().send_animation.replace(None);
             }
         ));
-        animation.play();
-        imp.send_animation.replace(Some(animation));
+        fade.play();
+        imp.send_animation.replace(Some(fade.upcast()));
     }
 
-    /// A fallback landing rectangle when the real bubble isn't laid out yet: a text-width
-    /// bubble at the bottom-right of the clamped (max-800) message column.
-    fn fallback_bubble_rect(&self, start: graphene::Rect, text: &str) -> graphene::Rect {
+    /// Where the ghost converts into the real bubble: a text-sized bubble rect at the
+    /// bottom of the clamped (max-800) message column, slightly left of the outgoing
+    /// bubbles' lane (they sit 38px in from the column edge, see style.css).
+    fn staging_rect(&self, start: &graphene::Rect, text: &str) -> graphene::Rect {
         let imp = self.imp();
-        let overlay_width = imp.send_overlay.width() as f32;
-        let text_natural = gtk::Label::new(Some(text))
-            .measure(gtk::Orientation::Horizontal, -1)
-            .1 as f32;
-        let (content_right, list_bottom) =
+        let (column_right, list_bottom) =
             match imp.scrolled_window.compute_bounds(&*imp.send_overlay) {
                 Some(bounds) => {
                     let content_width = bounds.width().min(800.0);
-                    let content_right = bounds.x() + (bounds.width() + content_width) / 2.0;
-                    (content_right - 8.0, bounds.y() + bounds.height())
+                    (
+                        bounds.x() + (bounds.width() + content_width) / 2.0,
+                        bounds.y() + bounds.height(),
+                    )
                 }
-                None => (overlay_width - 12.0, start.y()),
+                None => (imp.send_overlay.width() as f32 - 12.0, start.y()),
             };
-        let text_height = gtk::Label::new(Some(text))
-            .measure(gtk::Orientation::Vertical, -1)
+        let right_edge = column_right - 38.0 - 24.0;
+
+        let label = gtk::Label::builder()
+            .label(text)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
+            .build();
+        let max_text_width = (right_edge - 12.0 - 24.0).max(72.0);
+        let text_width =
+            (label.measure(gtk::Orientation::Horizontal, -1).1 as f32).clamp(72.0, max_text_width);
+        let text_height = label
+            .measure(gtk::Orientation::Vertical, text_width as i32)
             .1 as f32;
-        let end_height = text_height + 16.0;
-        let max_width = (content_right - 12.0).max(120.0);
-        let end_width = (text_natural + 24.0).clamp(96.0, max_width);
-        let end_x = (content_right - end_width).max(12.0);
-        let end_y = (list_bottom - end_height - 6.0).max(6.0);
-        graphene::Rect::new(end_x, end_y, end_width, end_height)
+
+        let width = text_width + 24.0;
+        let height = text_height + 16.0;
+        let x = (right_edge - width).max(12.0);
+        let y = (list_bottom - height - 8.0).max(6.0);
+        graphene::Rect::new(x, y, width, height)
+    }
+
+    /// The realised row of the just-sent message. Matched by id first; if TDLib has
+    /// already swapped the optimistic id for the final one (`updateMessageSendSucceeded`),
+    /// fall back to the bottom-most outgoing message row.
+    fn find_sent_row(&self, message_id: i64) -> Option<ui::ChatHistoryRow> {
+        self.find_message_row(message_id).or_else(|| {
+            let imp = self.imp();
+            let mut best: Option<(ui::ChatHistoryRow, f32)> = None;
+            let mut stack = vec![imp.list_view.clone().upcast::<gtk::Widget>()];
+            while let Some(widget) = stack.pop() {
+                let mut child = widget.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
+                        let outgoing = row
+                            .item()
+                            .and_downcast::<model::ChatHistoryItem>()
+                            .is_some_and(|item| {
+                                item.message().is_some_and(|message| message.is_outgoing())
+                            });
+                        if outgoing && let Some(bounds) = row.compute_bounds(&*imp.list_view) {
+                            if best.as_ref().is_none_or(|(_, y)| bounds.y() > *y) {
+                                best = Some((row.clone(), bounds.y()));
+                            }
+                        }
+                    } else {
+                        stack.push(widget);
+                    }
+                }
+            }
+            best.map(|(row, _)| row)
+        })
     }
 
     pub(crate) fn focus_message(&self, message_id: i64) {

@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
@@ -18,6 +19,10 @@ mod imp {
     pub(crate) struct ChatHistoryRow {
         /// An `ChatHistoryItem` or `SponsoredMessage`
         pub(super) item: RefCell<Option<glib::Object>>,
+        /// Transient translation applied while the row flies in from the send-animation
+        /// staging point (see `ChatHistory::play_send_animation`). Relative to the row's
+        /// rest position, so concurrent scrolling can't misplace the landing.
+        pub(super) flight_offset: Cell<(f32, f32)>,
     }
 
     #[glib::object_subclass]
@@ -70,6 +75,16 @@ mod imp {
             self.parent_unmap();
             self.perform_history_action(ui::ChatHistory::remove_from_viewed_message_ids);
         }
+
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            let (dx, dy) = self.flight_offset.get();
+            if dx == 0.0 && dy == 0.0 {
+                self.parent_snapshot(snapshot);
+            } else {
+                snapshot.translate(&gtk::graphene::Point::new(dx, dy));
+                self.parent_snapshot(snapshot);
+            }
+        }
     }
     impl BinImpl for ChatHistoryRow {}
 
@@ -111,6 +126,14 @@ impl ChatHistoryRow {
 
     pub(crate) fn item(&self) -> Option<glib::Object> {
         self.imp().item.borrow().to_owned()
+    }
+
+    /// Translates the row's rendering by (`dx`, `dy`) relative to its rest position;
+    /// driven each frame by the send animation's flight phase.
+    pub(crate) fn set_flight_offset(&self, dx: f32, dy: f32) {
+        if self.imp().flight_offset.replace((dx, dy)) != (dx, dy) {
+            self.queue_draw();
+        }
     }
 
     pub(crate) fn set_item(&self, item: Option<glib::Object>) {
@@ -182,6 +205,9 @@ impl ChatHistoryRow {
                 unreachable!("Unexpected item type: {:?}", item);
             }
         }
+
+        // Recycled rows must not inherit a leftover send-flight translation.
+        self.set_flight_offset(0.0, 0.0);
 
         self.imp().item.replace(item);
         self.notify("item");
