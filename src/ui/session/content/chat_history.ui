@@ -5,6 +5,8 @@
     <child>
       <object class="GtkOverlay" id="send_overlay">
         <child>
+          <object class="AdwToastOverlay" id="toast_overlay">
+            <property name="child">
           <object class="AdwToolbarView">
         <child type="top">
           <object class="GtkOverlay">
@@ -88,11 +90,6 @@
               <class name="pinned-message"/>
             </style>
             <child>
-              <object class="GtkImage">
-                <property name="icon-name">view-pin-symbolic</property>
-              </object>
-            </child>
-            <child>
               <object class="GtkBox">
                 <property name="orientation">vertical</property>
                 <property name="hexpand">True</property>
@@ -121,9 +118,21 @@
             </child>
             <child>
               <object class="GtkButton" id="unpin_button">
-                <property name="icon-name">window-close-symbolic</property>
+                <property name="icon-name">pin-crossed-symbolic</property>
                 <property name="valign">center</property>
-                <property name="tooltip-text" translatable="yes">Unpin</property>
+                <property name="tooltip-text" translatable="yes">Unpin for Everyone</property>
+                <style>
+                  <class name="flat"/>
+                  <class name="circular"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="icon-name">view-conceal-symbolic</property>
+                <property name="action-name">chat-history.hide-pinned</property>
+                <property name="valign">center</property>
+                <property name="tooltip-text" translatable="yes">Hide Pinned Panel</property>
                 <style>
                   <class name="flat"/>
                   <class name="circular"/>
@@ -326,6 +335,8 @@
           </object>
         </child>
           </object>
+            </property>
+          </object>
         </child>
       </object>
     </child>
@@ -335,6 +346,11 @@
       <item>
         <attribute name="label" translatable="yes">View Info</attribute>
         <attribute name="action">chat-history.view-info</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Show Pinned Panel</attribute>
+        <attribute name="action">chat-history.show-pinned</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">Leave Chat</attribute>

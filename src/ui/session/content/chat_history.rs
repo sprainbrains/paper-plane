@@ -106,6 +106,10 @@ mod imp {
         #[template_child]
         pub(super) unpin_button: TemplateChild<gtk::Button>,
         pub(super) pinned_message_id: Cell<i64>,
+        #[template_child]
+        pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
+        /// Chats whose pinned-message panel the user hid (session-local, per chat).
+        pub(super) hidden_pinned_chats: RefCell<HashSet<i64>>,
     }
 
     #[glib::object_subclass]
@@ -146,6 +150,13 @@ mod imp {
                     widget.show_leave_chat_dialog().await;
                 },
             );
+
+            klass.install_action("chat-history.hide-pinned", None, |widget, _, _| {
+                widget.hide_pinned_bar();
+            });
+            klass.install_action("chat-history.show-pinned", None, |widget, _, _| {
+                widget.show_pinned_bar();
+            });
 
             klass.install_action("chat-history.selection-clear", None, |widget, _, _| {
                 widget.clear_selection();
@@ -606,11 +617,16 @@ impl ChatHistory {
         // Reset the pinned-message bar; it's re-populated below if the new chat
         // has a pinned message.
         imp.pinned_message_bar.set_visible(false);
+        imp.pinned_message_id.set(0);
 
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
             perform_chat_action(chat.as_ref(), tdlib::functions::close_chat);
         }
+        self.action_set_enabled(
+            "chat-history.show-pinned",
+            chat.is_some_and(|chat| imp.hidden_pinned_chats.borrow().contains(&chat.id())),
+        );
 
         if let Some(chat) = chat {
             self.fetch_pinned_message(chat);
@@ -1754,6 +1770,42 @@ impl ChatHistory {
     }
 
     /// Unpins the message currently shown in the pinned-message bar.
+    /// Hides the pinned-message panel for this chat — locally only, the message stays
+    /// pinned — and offers an undo via toast (and the header menu's "Show Pinned Panel").
+    fn hide_pinned_bar(&self) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let imp = self.imp();
+        imp.hidden_pinned_chats.borrow_mut().insert(chat.id());
+        imp.pinned_message_bar.set_visible(false);
+        self.action_set_enabled("chat-history.show-pinned", true);
+
+        let toast = adw::Toast::builder()
+            .title(gettext("Pinned panel was hidden"))
+            .button_label(gettext("Show"))
+            .build();
+        toast.connect_button_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.show_pinned_bar()
+        ));
+        imp.toast_overlay.add_toast(toast);
+    }
+
+    /// Reveals this chat's previously hidden pinned-message panel.
+    fn show_pinned_bar(&self) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let imp = self.imp();
+        imp.hidden_pinned_chats.borrow_mut().remove(&chat.id());
+        if imp.pinned_message_id.get() != 0 {
+            imp.pinned_message_bar.set_visible(true);
+        }
+        self.action_set_enabled("chat-history.show-pinned", false);
+    }
+
     fn unpin_message(&self) {
         let imp = self.imp();
         let Some(chat) = self.chat() else {
@@ -1799,7 +1851,10 @@ impl ChatHistory {
                     imp.pinned_message_id.set(message.id());
                     imp.pinned_message_label
                         .set_label(&strings::message_content(&message));
-                    imp.pinned_message_bar.set_visible(true);
+                    // Stay hidden if the user dismissed this chat's panel earlier; the
+                    // header menu's "Show Pinned Panel" brings it back.
+                    let hidden = imp.hidden_pinned_chats.borrow().contains(&chat_id);
+                    imp.pinned_message_bar.set_visible(!hidden);
                 }
             }
         ));
