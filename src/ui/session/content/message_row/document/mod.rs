@@ -1,6 +1,7 @@
 mod file_status;
 mod status_indicator;
 
+use std::cell::Cell;
 use std::cell::RefCell;
 
 use file_status::FileStatus;
@@ -27,6 +28,11 @@ mod imp {
         pub(super) bindings: RefCell<Vec<gtk::ExpressionWatch>>,
         pub(super) handler_id: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) status_handler_id: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) target_generation: Cell<u64>,
+        pub(super) thumbnail_generation: Cell<u64>,
+        pub(super) thumbnail_demand: Cell<bool>,
+        pub(super) thumbnail_file_id: Cell<Option<i32>>,
+        pub(super) thumbnail_request_id: Cell<Option<i32>>,
         #[property(
             type = Option<glib::Object>,
             get = Self::message,
@@ -67,6 +73,13 @@ mod imp {
     }
 
     impl ObjectImpl for MessageDocument {
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            self.obj().connect_map(|obj| obj.start_thumbnail_work());
+            self.obj().connect_unmap(|obj| obj.stop_thumbnail_work());
+        }
+
         fn properties() -> &'static [glib::ParamSpec] {
             Self::derived_properties()
         }
@@ -77,6 +90,28 @@ mod imp {
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             self.derived_property(id, pspec)
+        }
+
+        fn dispose(&self) {
+            self.thumbnail_demand.set(false);
+            self.target_generation
+                .set(self.target_generation.get().wrapping_add(1));
+            self.thumbnail_generation
+                .set(self.thumbnail_generation.get().wrapping_add(1));
+
+            if let Some(handler_id) = self.handler_id.take()
+                && let Some(message) = self.message.upgrade()
+            {
+                message.disconnect(handler_id);
+            }
+            if let Some(handler_id) = self.status_handler_id.take() {
+                self.click.disconnect(handler_id);
+            }
+
+            let bindings = std::mem::take(&mut *self.bindings.borrow_mut());
+            for binding in bindings {
+                binding.unwatch();
+            }
         }
     }
 
@@ -111,25 +146,42 @@ impl ui::MessageBaseExt for MessageDocument {
             return;
         }
 
-        let mut bindings = imp.bindings.borrow_mut();
+        imp.target_generation
+            .set(imp.target_generation.get().wrapping_add(1));
+        imp.thumbnail_generation
+            .set(imp.thumbnail_generation.get().wrapping_add(1));
+        imp.thumbnail_file_id.set(None);
+        imp.thumbnail_request_id.set(None);
 
-        while let Some(binding) = bindings.pop() {
+        if let Some(handler_id) = imp.status_handler_id.take() {
+            imp.click.disconnect(handler_id);
+        }
+        if let Some(handler_id) = imp.handler_id.take()
+            && let Some(previous_message) = imp.message.upgrade()
+        {
+            previous_message.disconnect(handler_id);
+        }
+
+        let bindings = std::mem::take(&mut *imp.bindings.borrow_mut());
+        for binding in bindings {
             binding.unwatch();
         }
 
+        imp.message.set(Some(message));
         imp.message_bubble.update_from_message(message, false);
 
         let handler_id = message.connect_content_notify(clone!(
             #[weak(rename_to = obj)]
             self,
             move |message| {
-                obj.update_document(message);
+                if obj.imp().message.upgrade().as_ref() == Some(message) {
+                    obj.update_document(message);
+                }
             }
         ));
         imp.handler_id.replace(Some(handler_id));
         self.update_document(message);
 
-        imp.message.set(Some(message));
         self.notify("message");
     }
 }
@@ -183,6 +235,7 @@ impl MessageDocument {
             }
             FileStatus::CanBeDownloaded => {
                 // Download file
+                let generation = imp.target_generation.get();
                 click.connect_released(clone!(
                     #[weak(rename_to = obj)]
                     self,
@@ -199,7 +252,9 @@ impl MessageDocument {
                                 #[weak]
                                 session,
                                 move |file| {
-                                    obj.update_status(file, session);
+                                    if obj.imp().target_generation.get() == generation {
+                                        obj.update_status(file, session);
+                                    }
                                 }
                             ),
                         );
@@ -263,28 +318,61 @@ impl MessageDocument {
         if let tdlib::enums::MessageContent::MessageDocument(data) = message.content().0 {
             let imp = self.imp();
             if let Some(thumbnail) = data.document.thumbnail {
+                let file_id = thumbnail.file.id;
+                if imp.thumbnail_file_id.replace(Some(file_id)) != Some(file_id) {
+                    imp.thumbnail_generation
+                        .set(imp.thumbnail_generation.get().wrapping_add(1));
+                    imp.thumbnail_request_id.set(None);
+                    imp.file_thumbnail_picture
+                        .set_paintable(gdk::Paintable::NONE);
+                }
+
                 imp.status_indicator.set_masked(false);
                 imp.file_thumbnail_picture.set_visible(true);
                 imp.file_box.add_css_class("with-thumbnail");
+                if !imp.thumbnail_demand.get() || !self.is_mapped() {
+                    return;
+                }
+
                 if thumbnail.file.local.is_downloading_completed {
+                    imp.thumbnail_request_id.set(None);
                     imp.file_thumbnail_picture
                         .set_filename(Some(&thumbnail.file.local.path));
                 } else {
                     if let Some(minithumbnail) = data.document.minithumbnail {
-                        let minithumbnail = gdk::Texture::from_bytes(&glib::Bytes::from_owned(
-                            glib::base64_decode(&minithumbnail.data),
-                        ))
-                        .unwrap();
-                        imp.file_thumbnail_picture
-                            .set_paintable(Some(&minithumbnail));
+                        if let Ok(minithumbnail) = gdk::Texture::from_bytes(
+                            &glib::Bytes::from_owned(glib::base64_decode(&minithumbnail.data)),
+                        ) {
+                            imp.file_thumbnail_picture
+                                .set_paintable(Some(&minithumbnail));
+                        }
                     }
 
+                    if imp.thumbnail_request_id.replace(Some(file_id)) == Some(file_id) {
+                        return;
+                    }
+
+                    let generation = imp.thumbnail_generation.get().wrapping_add(1);
+                    imp.thumbnail_generation.set(generation);
+                    let target_generation = imp.target_generation.get();
                     let session = message.chat_().session_();
                     utils::spawn(clone!(
                         #[weak(rename_to = obj)]
                         self,
                         async move {
-                            if let Ok(file) = session.download_file(thumbnail.file.id).await {
+                            let result = session.download_file(file_id).await;
+                            let imp = obj.imp();
+                            if !imp.thumbnail_demand.get()
+                                || !obj.is_mapped()
+                                || imp.target_generation.get() != target_generation
+                                || imp.thumbnail_generation.get() != generation
+                                || imp.thumbnail_file_id.get() != Some(file_id)
+                            {
+                                return;
+                            }
+
+                            imp.thumbnail_request_id.set(None);
+                            if let Ok(file) = result {
                                 obj.imp()
                                     .file_thumbnail_picture
                                     .set_filename(Some(&file.local.path));
@@ -293,11 +381,31 @@ impl MessageDocument {
                     ));
                 }
             } else {
+                imp.thumbnail_generation
+                    .set(imp.thumbnail_generation.get().wrapping_add(1));
+                imp.thumbnail_file_id.set(None);
+                imp.thumbnail_request_id.set(None);
                 imp.status_indicator.set_masked(true);
                 imp.file_thumbnail_picture.set_visible(false);
+                imp.file_box.remove_css_class("with-thumbnail");
                 imp.file_thumbnail_picture
                     .set_paintable(gdk::Paintable::NONE);
             }
         }
+    }
+
+    fn start_thumbnail_work(&self) {
+        self.imp().thumbnail_demand.set(true);
+        if let Some(message) = self.imp().message.upgrade() {
+            self.try_load_thumbnail(&message);
+        }
+    }
+
+    fn stop_thumbnail_work(&self) {
+        let imp = self.imp();
+        imp.thumbnail_demand.set(false);
+        imp.thumbnail_generation
+            .set(imp.thumbnail_generation.get().wrapping_add(1));
+        imp.thumbnail_request_id.set(None);
     }
 }
