@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cell::RefCell;
 
 use gettextrs::gettext;
@@ -9,8 +10,6 @@ use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
-
-use std::cell::Cell;
 
 use crate::model;
 use crate::strings;

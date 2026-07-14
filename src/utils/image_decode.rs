@@ -39,13 +39,9 @@ pub(crate) fn decode_image_from_path_at_size(
 
     let mut decoder = reader.into_decoder().map_err(DecodeError::ImageError)?;
     let (width, height) = decoder.dimensions();
-    let remaining_limits = validate_image_resources(
-        width,
-        height,
-        decoder.total_bytes(),
-        maximum_size,
-    )
-    .map_err(DecodeError::ImageError)?;
+    let remaining_limits =
+        validate_image_resources(width, height, decoder.total_bytes(), maximum_size)
+            .map_err(DecodeError::ImageError)?;
     decoder
         .set_limits(remaining_limits)
         .map_err(DecodeError::ImageError)?;
@@ -189,12 +185,7 @@ mod tests {
     #[test]
     fn rejects_excessive_decoded_allocation_before_decode() {
         assert_eq!(
-            limit_error_kind(validate_image_resources(
-                1,
-                1,
-                MAX_DECODE_ALLOC + 1,
-                None,
-            )),
+            limit_error_kind(validate_image_resources(1, 1, MAX_DECODE_ALLOC + 1, None,)),
             LimitErrorKind::InsufficientMemory
         );
     }
