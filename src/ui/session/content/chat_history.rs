@@ -147,6 +147,9 @@ mod imp {
             klass.install_action("chat-history.selection-forward", None, |widget, _, _| {
                 widget.forward_selection();
             });
+            klass.install_action("chat-history.selection-copy", None, |widget, _, _| {
+                widget.copy_selection();
+            });
             klass.install_action_async(
                 "chat-history.selection-delete",
                 None,
@@ -1103,6 +1106,7 @@ impl ChatHistory {
             .selection_count_label
             .set_label(&gettext("{n} selected").replace("{n}", &count.to_string()));
         self.action_set_enabled("chat-history.selection-forward", count > 0);
+        self.action_set_enabled("chat-history.selection-copy", count > 0);
         self.action_set_enabled("chat-history.selection-delete", count > 0);
     }
 
@@ -1136,6 +1140,36 @@ impl ChatHistory {
             }
         }
         walk(self.imp().list_view.upcast_ref());
+    }
+
+    /// Copies the selected messages' text to the clipboard, oldest first, each prefixed
+    /// with a `[sender dd/mm/yy hh:mm]:` header line and separated by blank lines.
+    fn copy_selection(&self) {
+        let ids = self.selected_ids();
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let blocks: Vec<String> = ids
+            .into_iter()
+            .filter_map(|id| chat.message(id))
+            .map(|message| {
+                let sender = strings::message_sender(&message.sender(), true);
+                let when = glib::DateTime::from_unix_local(message.date() as i64)
+                    .ok()
+                    .and_then(|datetime| datetime.format("%d/%m/%y %H:%M").ok())
+                    .unwrap_or_default();
+                let text = match message.content().0 {
+                    tdlib::enums::MessageContent::MessageText(content) => content.text.text,
+                    _ => strings::message_content(&message),
+                };
+                format!("[{sender} {when}]:\n{text}")
+            })
+            .collect();
+        if blocks.is_empty() {
+            return;
+        }
+        self.clipboard().set_text(&blocks.join("\n\n"));
+        self.clear_selection();
     }
 
     fn forward_selection(&self) {

@@ -158,6 +158,23 @@
             </child>
             <child>
               <object class="GtkButton">
+                <property name="action-name">chat-history.selection-copy</property>
+                <property name="valign">center</property>
+                <property name="tooltip-text" translatable="yes">Copy Text</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">edit-copy-symbolic</property>
+                    <property name="label" translatable="yes">Copy Text</property>
+                    <property name="can-shrink">True</property>
+                  </object>
+                </property>
+                <style>
+                  <class name="flat"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
                 <property name="action-name">chat-history.selection-delete</property>
                 <property name="valign">center</property>
                 <property name="tooltip-text" translatable="yes">Delete</property>

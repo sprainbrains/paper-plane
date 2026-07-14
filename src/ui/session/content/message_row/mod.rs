@@ -415,7 +415,7 @@ impl Row {
         click.connect_released(clone!(
             #[weak(rename_to = obj)]
             self,
-            move |gesture, _, _, _| {
+            move |gesture, _, x, y| {
                 let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&obj) else {
                     return;
                 };
@@ -427,9 +427,12 @@ impl Row {
                     .contains(gdk::ModifierType::SHIFT_MASK);
 
                 if chat_history.is_selection_mode() {
-                    // Shift-click extends the range from the anchor; a plain click toggles.
+                    // Shift-click extends the range from the anchor; a plain click selects,
+                    // or — on an already-selected message — offers the selection actions.
                     if shift {
                         chat_history.extend_selection_to(message.id());
+                    } else if chat_history.is_message_selected(message.id()) {
+                        obj.show_selection_menu(x, y);
                     } else {
                         chat_history.toggle_message_selection(message.id());
                     }
@@ -455,6 +458,41 @@ impl Row {
             .build();
         check.set_parent(self);
         self.imp().selection_check.replace(Some(check));
+    }
+
+    /// Pops a menu with the selection actions at the click point — clicking a message
+    /// that is already selected offers what the selection bar does, right at hand.
+    fn show_selection_menu(&self, x: f64, y: f64) {
+        let menu = gio::Menu::new();
+        menu.append(
+            Some(&gettext("Forward")),
+            Some("chat-history.selection-forward"),
+        );
+        menu.append(
+            Some(&gettext("Copy Text")),
+            Some("chat-history.selection-copy"),
+        );
+        menu.append(
+            Some(&gettext("Delete")),
+            Some("chat-history.selection-delete"),
+        );
+        menu.append(
+            Some(&gettext("Clear Selection")),
+            Some("chat-history.selection-clear"),
+        );
+
+        let popover = gtk::PopoverMenu::from_model(Some(&menu));
+        popover.set_parent(self);
+        popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+        popover.connect_closed(|popover| {
+            // Unparent once the close is fully processed, not from within the signal.
+            glib::idle_add_local_once(clone!(
+                #[weak]
+                popover,
+                move || popover.unparent()
+            ));
+        });
+        popover.popup();
     }
 
     /// Reflects multi-select state on this row: shows the trailing checkbox while in
