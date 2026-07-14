@@ -13,6 +13,8 @@ use crate::ui;
 use crate::utils;
 
 mod imp {
+    use std::cell::RefCell;
+
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate, Properties)]
@@ -21,6 +23,7 @@ mod imp {
     pub(crate) struct OtherDevice {
         #[property(get, set)]
         pub(super) model: glib::WeakRef<model::ClientStateAuthOtherDevice>,
+        pub(super) manager_handler: RefCell<Option<(model::ClientManager, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) image: TemplateChild<gtk::Image>,
     }
@@ -66,6 +69,7 @@ mod imp {
         }
 
         fn dispose(&self) {
+            self.disconnect_manager_handler();
             self.dispose_template();
         }
     }
@@ -85,21 +89,31 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl OtherDevice {
+        fn disconnect_manager_handler(&self) {
+            if let Some((manager, handler)) = self.manager_handler.take() {
+                manager.disconnect(handler);
+            }
+        }
+
         #[template_callback]
         fn on_notify_model(&self) {
             let obj = &*self.obj();
+
+            self.disconnect_manager_handler();
 
             if let Some(model) = obj.model() {
                 let client_manager = model.auth_().client_().client_manager_();
 
                 obj.action_set_enabled("login.exit", !client_manager.sessions().is_empty());
-                client_manager.connect_items_changed(clone!(
+                let handler = client_manager.connect_items_changed(clone!(
                     #[weak]
                     obj,
                     move |client_manager, _, _, _| {
                         obj.action_set_enabled("login.exit", !client_manager.sessions().is_empty());
                     }
                 ));
+                self.manager_handler
+                    .replace(Some((client_manager, handler)));
             }
         }
     }

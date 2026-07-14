@@ -11,19 +11,26 @@ use crate::ui;
 use crate::utils;
 
 #[derive(Debug, Default)]
-pub(super) struct MessageHandler(RefCell<Option<glib::SignalHandlerId>>);
+pub(super) struct MessageHandler(RefCell<Option<(crate::model::Message, glib::SignalHandlerId)>>);
 
 impl MessageHandler {
-    pub(super) fn disconnect(&self, message: &glib::WeakRef<crate::model::Message>) {
-        if let Some(handler) = self.0.take()
-            && let Some(message) = message.upgrade()
-        {
+    pub(super) fn disconnect(&self) {
+        if let Some((message, handler)) = self.0.take() {
             message.disconnect(handler);
         }
     }
 
-    pub(super) fn set(&self, handler: glib::SignalHandlerId) {
-        self.0.replace(Some(handler));
+    pub(super) fn set(&self, message: &crate::model::Message, handler: glib::SignalHandlerId) {
+        self.disconnect();
+        self.0.replace(Some((message.clone(), handler)));
+    }
+}
+
+impl Drop for MessageHandler {
+    fn drop(&mut self) {
+        if let Some((message, handler)) = self.0.get_mut().take() {
+            message.disconnect(handler);
+        }
     }
 }
 

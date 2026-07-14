@@ -108,7 +108,7 @@ impl ui::MessageBaseExt for MessageVideoNote {
             return;
         }
 
-        imp.handler.disconnect(&imp.message);
+        imp.handler.disconnect();
 
         imp.message_bubble.update_from_message(message, true);
 
@@ -119,7 +119,7 @@ impl ui::MessageBaseExt for MessageVideoNote {
                 obj.update_content(message.content().0, &message.chat_().session_());
             }
         ));
-        imp.handler.set(handler_id);
+        imp.handler.set(message, handler_id);
 
         imp.message.set(Some(message));
         self.update_content(message.content().0, &message.chat_().session_());

@@ -19,7 +19,7 @@ mod imp {
     #[properties(wrapper_type = super::ChatList)]
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/chat_list.ui")]
     pub(crate) struct ChatList {
-        pub(super) marked_as_unread_handler_id: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) marked_as_unread_handler: RefCell<Option<(model::Chat, glib::SignalHandlerId)>>,
         #[property(get, set = Self::set_selected_chat, nullable, explicit_notify)]
         pub(super) selected_chat: glib::WeakRef<model::Chat>,
         #[property(get, set)]
@@ -61,6 +61,7 @@ mod imp {
         }
 
         fn dispose(&self) {
+            self.disconnect_marked_as_unread_handler();
             self.dispose_template();
         }
     }
@@ -69,15 +70,19 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl ChatList {
+        fn disconnect_marked_as_unread_handler(&self) {
+            if let Some((chat, handler)) = self.marked_as_unread_handler.take() {
+                chat.disconnect(handler);
+            }
+        }
+
         pub(crate) fn set_selected_chat(&self, selected_chat: Option<&model::Chat>) {
             let obj = &*self.obj();
             if obj.selected_chat().as_ref() == selected_chat {
                 return;
             }
 
-            if let Some(handler_id) = self.marked_as_unread_handler_id.take() {
-                obj.selected_chat().unwrap().disconnect(handler_id);
-            }
+            self.disconnect_marked_as_unread_handler();
 
             match selected_chat {
                 Some(chat) => {
@@ -93,7 +98,8 @@ mod imp {
                             }
                         ),
                     );
-                    self.marked_as_unread_handler_id.replace(Some(handler_id));
+                    self.marked_as_unread_handler
+                        .replace(Some((chat.clone(), handler_id)));
 
                     self.selection.set_selected_chat(Some(chat));
 

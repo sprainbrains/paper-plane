@@ -22,7 +22,7 @@ mod imp {
     pub(crate) struct MessageReactions {
         #[property(get, set = Self::set_message, explicit_notify, nullable)]
         pub(super) message: glib::WeakRef<model::Message>,
-        pub(super) items_changed_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) items_changed_handler: RefCell<Option<(gio::ListStore, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) flow_box: TemplateChild<gtk::FlowBox>,
     }
@@ -54,6 +54,7 @@ mod imp {
         }
 
         fn dispose(&self) {
+            self.disconnect_items_changed_handler();
             self.flow_box.unparent();
         }
     }
@@ -61,6 +62,12 @@ mod imp {
     impl WidgetImpl for MessageReactions {}
 
     impl MessageReactions {
+        fn disconnect_items_changed_handler(&self) {
+            if let Some((reactions, handler)) = self.items_changed_handler.take() {
+                reactions.disconnect(handler);
+            }
+        }
+
         fn set_message(&self, message: Option<model::Message>) {
             let obj = self.obj();
             let old_message = self.message.upgrade();
@@ -69,11 +76,7 @@ mod imp {
             }
 
             // Drop the previous items-changed subscription.
-            if let Some(handler) = self.items_changed_handler.take()
-                && let Some(old) = old_message
-            {
-                old.interaction_info().reactions().disconnect(handler);
-            }
+            self.disconnect_items_changed_handler();
 
             if let Some(ref message) = message {
                 let reactions = message.interaction_info().reactions();
@@ -100,7 +103,8 @@ mod imp {
                     }
                 ));
                 obj.set_visible(reactions.n_items() > 0);
-                self.items_changed_handler.replace(Some(handler));
+                self.items_changed_handler
+                    .replace(Some((reactions, handler)));
             } else {
                 self.flow_box
                     .bind_model(gio::ListModel::NONE, |_| gtk::Label::new(None).upcast());

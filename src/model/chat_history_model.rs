@@ -31,6 +31,8 @@ mod imp {
     pub(crate) struct ChatHistoryModel {
         #[property(get)]
         pub(super) chat: glib::WeakRef<model::Chat>,
+        pub(super) new_message_handler: RefCell<Option<glib::SignalHandlerId>>,
+        pub(super) deleted_message_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) is_loading: Cell<bool>,
         pub(super) list: RefCell<VecDeque<model::ChatHistoryItem>>,
         /// Whether the loaded window includes the chat's newest message. `false` after
@@ -52,6 +54,17 @@ mod imp {
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             self.derived_property(id, pspec)
+        }
+
+        fn dispose(&self) {
+            if let Some(chat) = self.chat.upgrade() {
+                if let Some(handler) = self.new_message_handler.take() {
+                    chat.disconnect(handler);
+                }
+                if let Some(handler) = self.deleted_message_handler.take() {
+                    chat.disconnect(handler);
+                }
+            }
         }
     }
 
@@ -86,7 +99,7 @@ impl ChatHistoryModel {
         obj.imp().chat.set(Some(chat));
         obj.imp().newest_loaded.set(true);
 
-        chat.connect_new_message(clone!(
+        let new_message_handler = chat.connect_new_message(clone!(
             #[weak]
             obj,
             move |_, message| {
@@ -98,13 +111,19 @@ impl ChatHistoryModel {
                 }
             }
         ));
-        chat.connect_deleted_message(clone!(
+        let deleted_message_handler = chat.connect_deleted_message(clone!(
             #[weak]
             obj,
             move |_, message| {
                 obj.remove(message);
             }
         ));
+        obj.imp()
+            .new_message_handler
+            .replace(Some(new_message_handler));
+        obj.imp()
+            .deleted_message_handler
+            .replace(Some(deleted_message_handler));
 
         obj
     }

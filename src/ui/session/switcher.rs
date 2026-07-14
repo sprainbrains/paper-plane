@@ -10,6 +10,8 @@ use crate::ui;
 use crate::utils;
 
 mod imp {
+    use std::cell::RefCell;
+
     use super::*;
 
     #[derive(Debug, Default, Properties, CompositeTemplate)]
@@ -18,6 +20,8 @@ mod imp {
     pub(crate) struct Switcher {
         #[property(get, set, construct, nullable)]
         pub(super) client_manager: glib::WeakRef<model::ClientManager>,
+        pub(super) active_client_handler:
+            RefCell<Option<(ui::ClientManagerView, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) popover_menu: TemplateChild<gtk::PopoverMenu>,
         #[template_child]
@@ -64,6 +68,7 @@ mod imp {
         }
 
         fn dispose(&self) {
+            self.disconnect_active_client_handler();
             self.popover_menu.unparent();
             self.dispose_template();
         }
@@ -79,18 +84,31 @@ mod imp {
             };
 
             self.set_selected(&client_manager_view);
-            client_manager_view.connect_active_client_notify(clone!(
+            let handler = client_manager_view.connect_active_client_notify(clone!(
                 #[weak]
                 obj,
                 move |manager| {
                     obj.imp().set_selected(manager);
                 }
             ));
+            self.active_client_handler
+                .replace(Some((client_manager_view, handler)));
+        }
+
+        fn unroot(&self) {
+            self.disconnect_active_client_handler();
+            self.parent_unroot();
         }
     }
 
     #[gtk::template_callbacks]
     impl Switcher {
+        fn disconnect_active_client_handler(&self) {
+            if let Some((manager, handler)) = self.active_client_handler.take() {
+                manager.disconnect(handler);
+            }
+        }
+
         fn set_selected(&self, client_manager_view: &ui::ClientManagerView) {
             let position = self
                 .selection

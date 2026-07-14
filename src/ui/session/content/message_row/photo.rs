@@ -29,6 +29,7 @@ mod imp {
         pub(super) message: glib::WeakRef<model::Message>,
         pub(super) generation: Cell<u64>,
         pub(super) demand: Cell<bool>,
+        pub(super) loaded_file_id: Cell<Option<i32>>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
@@ -67,7 +68,9 @@ mod imp {
             self.parent_constructed();
 
             self.obj().connect_scale_factor_notify(|obj| {
-                obj.update_photo(&obj.imp().message.upgrade().unwrap());
+                if let Some(message) = obj.imp().message.upgrade() {
+                    obj.update_photo(&message);
+                }
             });
         }
     }
@@ -117,7 +120,7 @@ impl ui::MessageBaseExt for MessagePhoto {
             binding.unwatch();
         }
 
-        imp.handler.disconnect(&imp.message);
+        imp.handler.disconnect();
 
         imp.message.set(Some(message));
 
@@ -145,7 +148,7 @@ impl ui::MessageBaseExt for MessagePhoto {
                 obj.update_photo(message);
             }
         ));
-        imp.handler.set(handler_id);
+        imp.handler.set(message, handler_id);
         self.update_photo(message);
 
         self.notify("message");
@@ -166,18 +169,42 @@ impl MessagePhoto {
             // See https://core.telegram.org/api/files#image-thumbnail-types for more
             // information about photo sizes.
             let photo_size = if self.scale_factor() > 2 {
-                data.photo.sizes.pop().unwrap()
+                data.photo.sizes.pop()
             } else {
                 let type_ = if self.scale_factor() > 1 { "y" } else { "x" };
 
                 match data.photo.sizes.iter().position(|s| s.r#type == type_) {
-                    Some(pos) => data.photo.sizes.swap_remove(pos),
-                    None => data.photo.sizes.pop().unwrap(),
+                    Some(pos) => Some(data.photo.sizes.swap_remove(pos)),
+                    None => data.photo.sizes.pop(),
                 }
             };
+            let Some(photo_size) = photo_size else {
+                imp.picture.set_aspect_ratio(1.0);
+                log::warn!("Photo message {} has no available sizes", message.id());
+                return;
+            };
+
+            if photo_size.width <= 0 || photo_size.height <= 0 {
+                imp.picture.set_aspect_ratio(1.0);
+                log::warn!(
+                    "Photo message {} has invalid dimensions {}x{}",
+                    message.id(),
+                    photo_size.width,
+                    photo_size.height
+                );
+                return;
+            }
 
             imp.picture
                 .set_aspect_ratio(photo_size.width as f64 / photo_size.height as f64);
+
+            if imp.loaded_file_id.get() == Some(photo_size.photo.id)
+                && imp.picture.paintable().is_some()
+            {
+                return;
+            }
+            imp.loaded_file_id.set(None);
+            imp.picture.set_paintable(gdk::Paintable::NONE);
 
             if photo_size.photo.local.is_downloading_completed {
                 if imp.demand.get() {
@@ -238,9 +265,16 @@ impl MessagePhoto {
                 #[weak(rename_to = obj)]
                 self,
                 async move {
-                    let result = gio::spawn_blocking(move || utils::decode_image_from_path(&path))
-                        .await
-                        .unwrap();
+                    let result =
+                        match gio::spawn_blocking(move || utils::decode_image_from_path(&path))
+                            .await
+                        {
+                            Ok(result) => result,
+                            Err(error) => {
+                                log::warn!("Photo decoder task failed: {error:?}");
+                                return;
+                            }
+                        };
 
                     // Check if the current message id is the same as the one at
                     // the time of the request. It may be changed because of the
@@ -257,6 +291,7 @@ impl MessagePhoto {
                         match result {
                             Ok(texture) => {
                                 obj.imp().picture.set_paintable(Some(&texture));
+                                obj.imp().loaded_file_id.set(Some(file_id));
                             }
                             Err(e) => {
                                 log::warn!("Error decoding a photo: {e:?}");

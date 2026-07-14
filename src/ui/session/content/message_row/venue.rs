@@ -109,7 +109,7 @@ impl MessageBaseExt for MessageVenue {
             return;
         }
 
-        imp.handler.disconnect(&imp.message);
+        imp.handler.disconnect();
 
         imp.message_bubble.update_from_message(message, true);
         imp.message_bubble.add_message_label_class("caption");
@@ -124,7 +124,7 @@ impl MessageBaseExt for MessageVenue {
                 obj.update_map_window(message);
             }
         ));
-        imp.handler.set(handler_id);
+        imp.handler.set(message, handler_id);
         self.update_row(message);
 
         imp.message.set(Some(message));

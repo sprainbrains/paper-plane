@@ -38,6 +38,8 @@ fn set_input_frozen(input: &impl IsA<gtk::Widget>, button_stack: &gtk::Stack, fr
 }
 
 mod imp {
+    use std::cell::RefCell;
+
     use super::*;
 
     #[derive(Debug, Default, CompositeTemplate, Properties)]
@@ -46,6 +48,7 @@ mod imp {
     pub(crate) struct Login {
         #[property(get, set = Self::set_model, construct, explicit_notify)]
         pub(super) model: glib::WeakRef<model::ClientStateAuth>,
+        pub(super) state_handler: RefCell<Option<(model::ClientStateAuth, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) animated_bin: TemplateChild<ui::AnimatedBin>,
     }
@@ -81,6 +84,7 @@ mod imp {
         }
 
         fn dispose(&self) {
+            self.disconnect_state_handler();
             self.dispose_template();
         }
     }
@@ -88,16 +92,24 @@ mod imp {
     impl WidgetImpl for Login {}
 
     impl Login {
+        fn disconnect_state_handler(&self) {
+            if let Some((model, handler)) = self.state_handler.take() {
+                model.disconnect(handler);
+            }
+        }
+
         fn set_model(&self, model: &model::ClientStateAuth) {
             let obj = &*self.obj();
             if obj.model().as_ref() == Some(model) {
                 return;
             }
 
+            self.disconnect_state_handler();
+
             if let Some(state) = model.state() {
                 obj.update_state(state);
             }
-            model.connect_state_notify(clone!(
+            let handler = model.connect_state_notify(clone!(
                 #[weak]
                 obj,
                 move |auth| {
@@ -106,6 +118,7 @@ mod imp {
                     }
                 }
             ));
+            self.state_handler.replace(Some((model.clone(), handler)));
 
             self.model.set(Some(model));
             obj.notify_model();

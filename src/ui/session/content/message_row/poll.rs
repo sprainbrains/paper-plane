@@ -87,7 +87,7 @@ impl ui::MessageBaseExt for MessagePoll {
             return;
         }
 
-        imp.handler.disconnect(&imp.message);
+        imp.handler.disconnect();
 
         imp.message_bubble.update_from_message(message, true);
 
@@ -99,7 +99,7 @@ impl ui::MessageBaseExt for MessagePoll {
                 obj.update_poll(message);
             }
         ));
-        imp.handler.set(handler_id);
+        imp.handler.set(message, handler_id);
 
         self.update_poll(message);
 
