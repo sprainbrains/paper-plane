@@ -150,7 +150,10 @@ mod imp {
                 if old_position == gtk::INVALID_LIST_POSITION {
                     obj.selection_changed(position, 1);
                 } else if position == gtk::INVALID_LIST_POSITION {
-                    obj.selection_changed(old_position.min(self.n_items() - 1), 1);
+                    let n_items = self.n_items();
+                    if n_items > 0 {
+                        obj.selection_changed(old_position.min(n_items - 1), 1);
+                    }
                 } else if position < old_position {
                     obj.selection_changed(
                         position,
