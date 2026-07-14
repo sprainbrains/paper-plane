@@ -90,49 +90,58 @@
               <class name="pinned-message"/>
             </style>
             <child>
-              <object class="GtkBox" id="pinned_dots">
-                <property name="orientation">vertical</property>
-                <property name="valign">center</property>
-                <property name="spacing">2</property>
-              </object>
-            </child>
-            <child>
-              <object class="GtkPicture" id="pinned_thumbnail">
-                <property name="visible">False</property>
-                <property name="content-fit">cover</property>
-                <property name="overflow">hidden</property>
-                <property name="width-request">34</property>
-                <property name="height-request">34</property>
-                <property name="valign">center</property>
-                <style>
-                  <class name="pinned-thumbnail"/>
-                </style>
-              </object>
-            </child>
-            <child>
-              <object class="GtkBox">
-                <property name="orientation">vertical</property>
+              <object class="GtkBox" id="pinned_content">
+                <property name="spacing">8</property>
                 <property name="hexpand">True</property>
-                <property name="valign">center</property>
+                <style>
+                  <class name="pinned-content"/>
+                </style>
                 <child>
-                  <object class="GtkLabel" id="pinned_title_label">
-                    <property name="label" translatable="yes">Pinned Message</property>
-                    <property name="xalign">0</property>
+                  <object class="GtkBox" id="pinned_dots">
+                    <property name="orientation">vertical</property>
+                    <property name="valign">center</property>
+                    <property name="spacing">2</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkPicture" id="pinned_thumbnail">
+                    <property name="visible">False</property>
+                    <property name="content-fit">cover</property>
+                    <property name="overflow">hidden</property>
+                    <property name="width-request">34</property>
+                    <property name="height-request">34</property>
+                    <property name="valign">center</property>
                     <style>
-                      <class name="caption-heading"/>
-                      <class name="accent"/>
+                      <class name="pinned-thumbnail"/>
                     </style>
                   </object>
                 </child>
                 <child>
-                  <object class="GtkLabel" id="pinned_message_label">
-                    <property name="xalign">0</property>
-                    <property name="ellipsize">end</property>
-                    <property name="single-line-mode">True</property>
-                    <style>
-                      <class name="dim-label"/>
-                      <class name="caption"/>
-                    </style>
+                  <object class="GtkBox">
+                    <property name="orientation">vertical</property>
+                    <property name="hexpand">True</property>
+                    <property name="valign">center</property>
+                    <child>
+                      <object class="GtkLabel" id="pinned_title_label">
+                        <property name="label" translatable="yes">Pinned Message</property>
+                        <property name="xalign">0</property>
+                        <style>
+                          <class name="caption-heading"/>
+                          <class name="accent"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="pinned_message_label">
+                        <property name="xalign">0</property>
+                        <property name="ellipsize">end</property>
+                        <property name="single-line-mode">True</property>
+                        <style>
+                          <class name="dim-label"/>
+                          <class name="caption"/>
+                        </style>
+                      </object>
+                    </child>
                   </object>
                 </child>
               </object>

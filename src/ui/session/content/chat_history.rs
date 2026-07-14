@@ -136,6 +136,8 @@ mod imp {
         #[template_child]
         pub(super) pinned_message_bar: TemplateChild<gtk::Box>,
         #[template_child]
+        pub(super) pinned_content: TemplateChild<gtk::Box>,
+        #[template_child]
         pub(super) pinned_message_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) pinned_title_label: TemplateChild<gtk::Label>,
@@ -302,9 +304,8 @@ mod imp {
                     obj.scroll_to_pinned();
                 }
             ));
-            self.pinned_message_bar.add_controller(pinned_gesture);
-            self.pinned_message_bar
-                .set_cursor_from_name(Some("pointer"));
+            self.pinned_content.add_controller(pinned_gesture);
+            self.pinned_content.set_cursor_from_name(Some("pointer"));
 
             let adj = self.list_view.vadjustment().unwrap();
             adj.connect_value_changed(clone!(
