@@ -160,7 +160,7 @@ impl Window {
 
             let notification = match notification.r#type {
                 tdlib::enums::NotificationType::NewMessage(data) => {
-                    let message = model::Message::new(&chat, data.message);
+                    let message = chat.upsert_message(data.message);
                     let mut body = strings::message_content(&message);
 
                     // Add the sender's name to the body if the chat is a group

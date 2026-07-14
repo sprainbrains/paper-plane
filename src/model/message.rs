@@ -55,27 +55,27 @@ mod imp {
         #[property(get, set, construct_only)]
         pub(super) chat: glib::WeakRef<model::Chat>,
         #[property(get, set, construct_only)]
-        pub(super) id: OnceCell<i64>,
+        pub(super) id: Cell<i64>,
         #[property(get, set, construct_only)]
         pub(super) sender: OnceCell<MessageSender>,
         #[property(get, set, construct_only)]
-        pub(super) is_outgoing: OnceCell<bool>,
+        pub(super) is_outgoing: Cell<bool>,
         #[property(get, set, construct_only)]
-        pub(super) can_be_edited: OnceCell<bool>,
+        pub(super) can_be_edited: Cell<bool>,
         #[property(get, set, construct_only)]
-        pub(super) can_be_deleted_only_for_self: OnceCell<bool>,
+        pub(super) can_be_deleted_only_for_self: Cell<bool>,
         #[property(get, set, construct_only)]
-        pub(super) can_be_deleted_for_all_users: OnceCell<bool>,
+        pub(super) can_be_deleted_for_all_users: Cell<bool>,
         #[property(get, set, construct_only)]
-        pub(super) sending_state: OnceCell<Option<model::BoxedMessageSendingState>>,
+        pub(super) sending_state: RefCell<Option<model::BoxedMessageSendingState>>,
         #[property(get, set, construct_only)]
-        pub(super) date: OnceCell<i32>,
+        pub(super) date: Cell<i32>,
         #[property(get, set, construct_only)]
         pub(super) interaction_info: OnceCell<model::MessageInteractionInfo>,
         #[property(get, set, construct_only)]
-        pub(super) forward_info: OnceCell<Option<model::MessageForwardInfo>>,
+        pub(super) forward_info: RefCell<Option<model::MessageForwardInfo>>,
         #[property(get, set, construct_only)]
-        pub(super) reply_to: OnceCell<Option<model::BoxedMessageReplyTo>>,
+        pub(super) reply_to: RefCell<Option<model::BoxedMessageReplyTo>>,
         #[property(get)]
         pub(super) content: RefCell<model::BoxedMessageContent>,
         #[property(get)]
@@ -174,6 +174,64 @@ impl Message {
             MessageInteractionInfo(data) => self.interaction_info().update(data.interaction_info),
             _ => {}
         }
+    }
+
+    pub(crate) fn update_from_td_message(&self, td_message: tdlib::types::Message) {
+        let imp = self.imp();
+
+        if self.id() != td_message.id {
+            imp.id.set(td_message.id);
+            self.notify_id();
+        }
+
+        if self.is_outgoing() != td_message.is_outgoing {
+            imp.is_outgoing.set(td_message.is_outgoing);
+            self.notify_is_outgoing();
+        }
+
+        // See the constructor's note about these approximated properties.
+        if self.can_be_edited() != td_message.is_outgoing {
+            imp.can_be_edited.set(td_message.is_outgoing);
+            self.notify_can_be_edited();
+        }
+        if !self.can_be_deleted_only_for_self() {
+            imp.can_be_deleted_only_for_self.set(true);
+            self.notify_can_be_deleted_only_for_self();
+        }
+        if self.can_be_deleted_for_all_users() != td_message.is_outgoing {
+            imp.can_be_deleted_for_all_users.set(td_message.is_outgoing);
+            self.notify_can_be_deleted_for_all_users();
+        }
+
+        imp.sending_state.replace(
+            td_message
+                .sending_state
+                .map(model::BoxedMessageSendingState),
+        );
+        self.notify_sending_state();
+
+        if self.date() != td_message.date {
+            imp.date.set(td_message.date);
+            self.notify_date();
+        }
+
+        self.interaction_info().update(td_message.interaction_info);
+        imp.forward_info.replace(
+            td_message
+                .forward_info
+                .map(|forward_info| model::MessageForwardInfo::new(&self.chat_(), forward_info)),
+        );
+        self.notify_forward_info();
+
+        let reply_to = td_message.reply_to.map(model::BoxedMessageReplyTo);
+        if self.reply_to() != reply_to {
+            imp.reply_to.replace(reply_to);
+            self.notify_reply_to();
+        }
+
+        self.set_content(model::BoxedMessageContent(td_message.content));
+        self.set_is_edited(td_message.edit_date > 0);
+        self.set_is_pinned(td_message.is_pinned);
     }
 
     pub(crate) async fn delete(&self, revoke: bool) -> Result<(), tdlib::types::Error> {

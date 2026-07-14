@@ -189,7 +189,7 @@ impl Chat {
         imp.last_message.replace(
             td_chat
                 .last_message
-                .map(|message| model::Message::new(&obj, message)),
+                .map(|message| obj.upsert_message(message)),
         );
         imp.unread_mention_count.set(td_chat.unread_mention_count);
         imp.unread_count.set(td_chat.unread_count);
@@ -227,7 +227,7 @@ impl Chat {
             }
             ChatIsMarkedAsUnread(update) => self.set_marked_as_unread(update.is_marked_as_unread),
             ChatLastMessage(update) => {
-                self.set_last_message(update.last_message.map(|m| model::Message::new(self, m)));
+                self.set_last_message(update.last_message.map(|m| self.upsert_message(m)));
             }
             ChatNotificationSettings(update) => {
                 self.set_notification_settings(model::BoxedChatNotificationSettings(
@@ -292,24 +292,25 @@ impl Chat {
                 }
             }
             MessageSendSucceeded(data) => {
-                let mut messages = imp.messages.borrow_mut();
-                let old_message = messages.remove(&data.old_message_id);
-
                 let message_id = data.message.id;
-                let message = model::Message::new(self, data.message);
-                messages.insert(message_id, message.clone());
+                let old_message = imp.messages.borrow_mut().remove(&data.old_message_id);
+                if let Some(message) = old_message.as_ref() {
+                    self.emit_by_name::<()>("deleted-message", &[message]);
+                }
 
-                drop(messages);
-                self.emit_by_name::<()>("deleted-message", &[&old_message]);
+                let message = if let Some(message) = self.message(message_id).or(old_message) {
+                    message.update_from_td_message(data.message);
+                    imp.messages
+                        .borrow_mut()
+                        .insert(message_id, message.clone());
+                    message
+                } else {
+                    self.upsert_message(data.message)
+                };
                 self.emit_by_name::<()>("new-message", &[&message]);
             }
             NewMessage(data) => {
-                let message_id = data.message.id;
-                let message = model::Message::new(self, data.message);
-                imp.messages
-                    .borrow_mut()
-                    .insert(message_id, message.clone());
-
+                let message = self.upsert_message(data.message);
                 self.emit_by_name::<()>("new-message", &[&message]);
             }
             MessageMentionRead(update) => {
@@ -466,6 +467,18 @@ impl Chat {
         self.imp().messages.borrow().get(&id).cloned()
     }
 
+    pub(crate) fn upsert_message(&self, td_message: tdlib::types::Message) -> model::Message {
+        let id = td_message.id;
+        if let Some(message) = self.message(id) {
+            message.update_from_td_message(td_message);
+            return message;
+        }
+
+        let message = model::Message::new(self, td_message);
+        self.imp().messages.borrow_mut().insert(id, message.clone());
+        message
+    }
+
     /// Returns the `Message` of the specified id, if present in the cache. Otherwise it
     /// fetches it from the server and then it returns the result.
     pub(crate) async fn fetch_message(
@@ -481,13 +494,7 @@ impl Chat {
 
         result.map(|r| {
             let tdlib::enums::Message::Message(message) = r;
-
-            self.imp()
-                .messages
-                .borrow_mut()
-                .entry(id)
-                .or_insert_with(|| model::Message::new(self, message))
-                .clone()
+            self.upsert_message(message)
         })
     }
 
@@ -515,17 +522,12 @@ impl Chat {
 
         let tdlib::enums::Messages::Messages(data) = result?;
 
-        let mut messages = self.imp().messages.borrow_mut();
         let loaded_messages: Vec<model::Message> = data
             .messages
             .into_iter()
             .flatten()
-            .map(|m| model::Message::new(self, m))
+            .map(|m| self.upsert_message(m))
             .collect();
-
-        for message in &loaded_messages {
-            messages.insert(message.id(), message.clone());
-        }
 
         Ok(loaded_messages)
     }
