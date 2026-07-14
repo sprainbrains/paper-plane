@@ -301,13 +301,10 @@ listview.chat-history > row.selection-run-end {
   padding: 0;
 }
 
-/* Symbolic icons are authored at 16px; forcing another size renders them scaled and
-   blurry, so the indicator circle grows to 20px around a native-size checkmark. */
+/* Stock size and icon rendering (which GTK draws crisply) — only the shape is made
+   round; any size override forces a scaled, blurry checkmark. */
 .selection-check > check {
   border-radius: 100%;
-  min-width: 20px;
-  min-height: 20px;
-  -gtk-icon-size: 16px;
 }
 
 /* Consecutive messages from the same sender are combined: the corners on the side
