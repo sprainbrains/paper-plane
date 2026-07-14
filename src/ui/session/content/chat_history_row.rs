@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
@@ -19,10 +18,6 @@ mod imp {
     pub(crate) struct ChatHistoryRow {
         /// An `ChatHistoryItem` or `SponsoredMessage`
         pub(super) item: RefCell<Option<glib::Object>>,
-        /// Transient translation + scale applied while the row flies in from the send
-        /// animation's ghost (see `ChatHistory::play_send_animation`). Relative to the
-        /// row's rest position, so concurrent scrolling can't misplace the landing.
-        pub(super) flight_transform: Cell<Option<(f32, f32, f32, f32)>>,
     }
 
     #[glib::object_subclass]
@@ -75,14 +70,6 @@ mod imp {
             self.parent_unmap();
             self.perform_history_action(ui::ChatHistory::remove_from_viewed_message_ids);
         }
-
-        fn snapshot(&self, snapshot: &gtk::Snapshot) {
-            if let Some((dx, dy, sx, sy)) = self.flight_transform.get() {
-                snapshot.translate(&gtk::graphene::Point::new(dx, dy));
-                snapshot.scale(sx, sy);
-            }
-            self.parent_snapshot(snapshot);
-        }
     }
     impl BinImpl for ChatHistoryRow {}
 
@@ -124,14 +111,6 @@ impl ChatHistoryRow {
 
     pub(crate) fn item(&self) -> Option<glib::Object> {
         self.imp().item.borrow().to_owned()
-    }
-
-    /// Translates and scales the row's rendering relative to its rest position; driven
-    /// each frame by the send animation's flight phase. `None` restores identity.
-    pub(crate) fn set_flight_transform(&self, transform: Option<(f32, f32, f32, f32)>) {
-        if self.imp().flight_transform.replace(transform) != transform {
-            self.queue_draw();
-        }
     }
 
     pub(crate) fn set_item(&self, item: Option<glib::Object>) {
@@ -204,9 +183,8 @@ impl ChatHistoryRow {
             }
         }
 
-        // Recycled rows must not inherit a leftover send-flight transform, nor stay
-        // invisible because the send animation hid them for a different message.
-        self.set_flight_transform(None);
+        // Recycled rows must not stay invisible because the send animation hid them
+        // while they displayed a different message.
         self.set_opacity(1.0);
 
         self.imp().item.replace(item);

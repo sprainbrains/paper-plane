@@ -1221,10 +1221,11 @@ impl ChatHistory {
     /// of the message column, slightly left of where outgoing bubbles sit), cross-fading
     /// grey → accent and narrowing to the text's bubble size. Meanwhile a per-frame poll
     /// keeps the real message row hidden. Phase 2 begins the moment the real bubble is laid
-    /// out (mid-morph is fine): the ghost is dropped and the real bubble *grows out of it* —
-    /// the row is drawn translated + scaled so its bubble covers the ghost's last rectangle,
-    /// then springs to identity. Ending at identity makes the landing exact no matter how
-    /// the list scrolls underneath, and the bubble that lands is the real one, for good.
+    /// out (mid-morph is fine): the ghost springs from wherever it currently is onto the
+    /// real bubble, re-reading the bubble's live bounds every frame so a settling
+    /// auto-scroll can't stale the target, and hands off to the real row when it lands.
+    /// Staying in the overlay for the whole trip means the ghost is never clipped at the
+    /// composer edge the way rows are.
     /// `start` is the composer's rectangle in this widget's coordinates.
     pub(crate) fn play_send_animation(
         &self,
@@ -1313,56 +1314,20 @@ impl ChatHistory {
                 first_frame_time.set(now);
             }
 
-            // (Re-)acquire the sent row every frame: the widget we hid may have been
-            // recycled for a different item, or the real row may only appear later (in
-            // which case the text fallback could have latched onto an older duplicate).
-            let row = obj.find_sent_row(message_id, &text);
-            let stored = imp.send_flight_row.borrow().clone();
-            if stored != row {
-                if let Some(stored) = stored {
-                    stored.set_opacity(1.0);
-                }
-                imp.send_flight_row.replace(row.clone());
-            }
-            if let Some(row) = &row {
-                row.set_opacity(0.0);
-            }
-
-            // Convert only once everything the row-flight will draw stays inside the
-            // scrolled window: the ghost (flight start) must have risen clear of the
-            // composer, and the bubble's rest position (flight end) must not still be
-            // below the viewport edge while the sticky auto-scroll settles — the row is
-            // clipped at that edge, so converting earlier cuts its bottom off. Until
-            // then the ghost, which lives in the overlay and is never clipped, carries
-            // the animation.
+            // Keep the sent row hidden while the ghost stands in for it, then start the
+            // flight as soon as the bubble is laid out and the colour cross-fade is done.
+            let row = obj.acquire_sent_row(message_id, &text);
             let colour_settled =
                 animation.value() >= 0.5 || animation.state() != adw::AnimationState::Playing;
             if colour_settled {
-                let viewport_bottom = imp
-                    .scrolled_window
-                    .compute_bounds(&*imp.send_overlay)
-                    .map(|viewport| viewport.y() + viewport.height());
-                let ghost_clear = imp
-                    .send_ghost
-                    .borrow()
-                    .as_ref()
-                    .and_then(|ghost| ghost.compute_bounds(&*imp.send_overlay))
-                    .zip(viewport_bottom)
-                    .is_some_and(|(ghost, bottom)| ghost.y() + ghost.height() <= bottom - 2.0);
                 let bounds = row
                     .as_ref()
                     .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
                     .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
-                    .filter(|bounds| bounds.width() > 1.0)
-                    .filter(|bounds| {
-                        viewport_bottom
-                            .is_some_and(|bottom| bounds.y() + bounds.height() <= bottom + 1.0)
-                    });
-                if let Some(bounds) = bounds
-                    && ghost_clear
-                {
+                    .filter(|bounds| bounds.width() > 1.0);
+                if bounds.is_some() {
                     imp.send_poll.take();
-                    obj.launch_send_flight(bounds);
+                    obj.fly_send_ghost(message_id, text.clone());
                     return glib::ControlFlow::Break;
                 }
             }
@@ -1377,67 +1342,88 @@ impl ChatHistory {
         imp.send_poll.replace(Some(id));
     }
 
-    /// Phase 2: the real bubble grows out of the ghost. The flight starts from the ghost's
-    /// *current* rectangle (mid-morph) and the row is drawn translated and scaled so its
-    /// bubble exactly covers that rectangle, springing to identity. Because the transform
-    /// ends at identity, the landing is exact no matter how the list scrolls underneath.
-    fn launch_send_flight(&self, bounds: graphene::Rect) {
+    /// (Re-)acquires the just-sent message's realised row and keeps it hidden: the widget
+    /// hidden earlier may have been recycled for a different item, or the real row may
+    /// only appear (or be re-created by TDLib's id swap) later. Any previously hidden
+    /// widget that no longer shows the message gets its opacity back.
+    fn acquire_sent_row(&self, message_id: i64, text: &str) -> Option<ui::ChatHistoryRow> {
         let imp = self.imp();
-        let from = imp.send_ghost.take().and_then(|ghost| {
-            let rect = ghost.compute_bounds(&*imp.send_overlay);
-            imp.send_overlay.remove_overlay(&ghost);
-            rect
-        });
-        let Some(row) = imp.send_flight_row.borrow().clone() else {
-            return;
-        };
-        row.set_opacity(1.0);
-        let Some(from) = from else {
-            return;
-        };
-        // The bubble's offset inside its row: the transform is applied to the whole row,
-        // so anchoring the scale needs the bubble's local origin.
-        let bubble_local = utils::descendant::<_, ui::MessageBubble>(&row)
-            .and_then(|bubble| bubble.compute_bounds(&row))
-            .map(|rect| (rect.x(), rect.y()))
-            .unwrap_or((0.0, 0.0));
-
-        let apply = clone!(
-            #[weak]
-            row,
-            move |value: f64| {
-                let progress = value as f32;
-                if (progress - 1.0).abs() < 0.001 {
-                    row.set_flight_transform(None);
-                    return;
-                }
-                let lerp = |a: f32, b: f32| a + (b - a) * progress;
-                // The rect the bubble should cover this frame, interpolating the ghost's
-                // rect to the bubble's rest rect with right edges aligned.
-                let width = lerp(from.width(), bounds.width());
-                let height = lerp(from.height(), bounds.height());
-                let right = lerp(from.x() + from.width(), bounds.x() + bounds.width());
-                let x = right - width;
-                let y = lerp(from.y(), bounds.y());
-                let sx = width / bounds.width().max(1.0);
-                let sy = height / bounds.height().max(1.0);
-                // Solve translate ∘ scale so the bubble's local origin lands on (x, y).
-                let tx = x - bounds.x() + (1.0 - sx) * bubble_local.0;
-                let ty = y - bounds.y() + (1.0 - sy) * bubble_local.1;
-                row.set_flight_transform(Some((tx, ty, sx, sy)));
+        let row = self.find_sent_row(message_id, text);
+        let stored = imp.send_flight_row.borrow().clone();
+        if stored != row {
+            if let Some(stored) = stored {
+                stored.set_opacity(1.0);
             }
-        );
-        apply(0.0);
-        let target = adw::CallbackAnimationTarget::new(apply);
-        let animation = adw::SpringAnimation::new(&row, 0.0, 1.0, Self::send_spring(), target);
+            imp.send_flight_row.replace(row.clone());
+        }
+        if let Some(row) = &row {
+            row.set_opacity(0.0);
+        }
+        row
+    }
+
+    /// Phase 2: the ghost — which lives in the overlay, so it is never clipped by the
+    /// composer edge the way rows are — springs from wherever the morph currently has it
+    /// onto the real bubble, re-reading the bubble's bounds every frame so a settling
+    /// auto-scroll can't stale the target. When it lands the real row takes over.
+    fn fly_send_ghost(&self, message_id: i64, text: String) {
+        let imp = self.imp();
+        // Freeze the morph; the flight continues from the ghost's current rectangle.
+        if let Some(animation) = imp.send_animation.take() {
+            animation.pause();
+        }
+        let from = imp
+            .send_ghost
+            .borrow()
+            .as_ref()
+            .and_then(|ghost| ghost.compute_bounds(&*imp.send_overlay));
+        let (Some(ghost), Some(from)) = (imp.send_ghost.borrow().clone(), from) else {
+            self.abort_send_ghost();
+            return;
+        };
+
+        let last_end = Rc::new(Cell::new((from.x(), from.y(), from.width(), from.height())));
+        let target = adw::CallbackAnimationTarget::new(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[weak]
+            ghost,
+            move |value| {
+                // Track the live bubble: the sticky scroll may still be moving it.
+                let imp = obj.imp();
+                if let Some(bounds) = obj
+                    .acquire_sent_row(message_id, &text)
+                    .as_ref()
+                    .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
+                    .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
+                    .filter(|bounds| bounds.width() > 1.0)
+                {
+                    last_end.set((bounds.x(), bounds.y(), bounds.width(), bounds.height()));
+                }
+                let end = last_end.get();
+                let progress = value as f32;
+                let lerp = |a: f32, b: f32| a + (b - a) * progress;
+                let width = lerp(from.width(), end.2);
+                let height = lerp(from.height(), end.3);
+                // Right edges aligned: outgoing bubbles are anchored right.
+                let right = lerp(from.x() + from.width(), end.0 + end.2);
+                ghost.set_margin_start((right - width) as i32);
+                ghost.set_margin_top(lerp(from.y(), end.1) as i32);
+                ghost.set_size_request(width as i32, height as i32);
+            }
+        ));
+        let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, Self::send_spring(), target);
         animation.set_initial_velocity(0.5);
         animation.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
             move |_| {
                 let imp = obj.imp();
+                if let Some(ghost) = imp.send_ghost.take() {
+                    imp.send_overlay.remove_overlay(&ghost);
+                }
                 if let Some(row) = imp.send_flight_row.take() {
-                    row.set_flight_transform(None);
+                    row.set_opacity(1.0);
                 }
                 imp.send_animation.replace(None);
             }
@@ -1467,7 +1453,6 @@ impl ChatHistory {
         }
         if let Some(row) = imp.send_flight_row.take() {
             row.set_opacity(1.0);
-            row.set_flight_transform(None);
         }
     }
 
@@ -1478,7 +1463,13 @@ impl ChatHistory {
         if let Some(row) = imp.send_flight_row.take() {
             row.set_opacity(1.0);
         }
-        let Some(ghost) = imp.send_ghost.take() else {
+        if let Some(animation) = imp.send_animation.take() {
+            animation.pause();
+        }
+        // The ghost stays registered in `send_ghost` until the fade actually removes it,
+        // so that a new send cancelling mid-fade still finds and removes it (taking it
+        // out up-front leaked it parked on screen when the paused fade never finished).
+        let Some(ghost) = imp.send_ghost.borrow().clone() else {
             return;
         };
         let target = adw::PropertyAnimationTarget::new(&ghost, "opacity");
@@ -1486,11 +1477,12 @@ impl ChatHistory {
         fade.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
-            #[weak]
-            ghost,
             move |_| {
-                obj.imp().send_overlay.remove_overlay(&ghost);
-                obj.imp().send_animation.replace(None);
+                let imp = obj.imp();
+                if let Some(ghost) = imp.send_ghost.take() {
+                    imp.send_overlay.remove_overlay(&ghost);
+                }
+                imp.send_animation.replace(None);
             }
         ));
         fade.play();
