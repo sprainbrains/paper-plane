@@ -55,6 +55,12 @@ mod imp {
         /// mode): the drag is left to the label for text selection, not message sweeping.
         pub(super) drag_skip_for_text: Cell<bool>,
         pub(super) selection_anchor: Cell<Option<i64>>,
+        /// The selection as it was when the current drag anchored, and whether this drag
+        /// removes (started on a selected message) or adds (started on an unselected
+        /// one). Each sweep applies the anchor..pointer range on top of the base, so
+        /// earlier selections survive subsequent drags.
+        pub(super) selection_drag_base: RefCell<HashSet<i64>>,
+        pub(super) selection_drag_removes: Cell<bool>,
         pub(super) selection_drag_point: Cell<(f64, f64)>,
         pub(super) selection_autoscroll: RefCell<Option<glib::SourceId>>,
         pub(super) selection_resweep_source: RefCell<Option<glib::SourceId>>,
@@ -918,13 +924,19 @@ impl ChatHistory {
         cx: f64,
         cy: f64,
     ) {
-        // Anchor to the message the drag started on (once per drag).
+        // Anchor to the message the drag started on (once per drag), snapshotting the
+        // selection it works on top of: starting on a selected message makes this a
+        // removing drag, otherwise an adding one.
         if self.imp().selection_anchor.get().is_none()
             && let Some(point) =
                 source.compute_point(self, &graphene::Point::new(ax as f32, ay as f32))
             && let Some(id) = self.message_id_at_point(point.x() as f64, point.y() as f64)
         {
-            self.imp().selection_anchor.set(Some(id));
+            let imp = self.imp();
+            imp.selection_anchor.set(Some(id));
+            let base = imp.selected_message_ids.borrow().clone();
+            imp.selection_drag_removes.set(base.contains(&id));
+            imp.selection_drag_base.replace(base);
         }
 
         if let Some(point) = source.compute_point(self, &graphene::Point::new(cx as f32, cy as f32))
@@ -947,7 +959,7 @@ impl ChatHistory {
         // up in the header still extends the range to the message at the nearest edge.
         let (px, py) = self.clamp_point_to_list(hx, hy);
         if let Some(current) = self.message_id_at_point(px, py) {
-            self.select_message_range(anchor, current);
+            self.apply_drag_range(anchor, current);
         }
         self.update_selection_autoscroll(hy);
     }
@@ -995,15 +1007,14 @@ impl ChatHistory {
             .map(|message| message.id())
     }
 
-    /// Sets the selection to exactly the loaded messages between the ids `a` and `b`
-    /// (inclusive). Messages are ordered by id, so the range is every loaded message
-    /// whose id falls between them.
-    fn select_message_range(&self, a: i64, b: i64) {
+    /// Every loaded message id between `a` and `b` (inclusive). Messages are ordered by
+    /// id, so the range is every loaded message whose id falls between them.
+    fn message_ids_between(&self, a: i64, b: i64) -> HashSet<i64> {
         let (lo, hi) = (a.min(b), a.max(b));
-        let Some(model) = self.history_model() else {
-            return;
-        };
         let mut ids = HashSet::new();
+        let Some(model) = self.history_model() else {
+            return ids;
+        };
         for position in 0..model.n_items() {
             if let Some(item) = model
                 .item(position)
@@ -1014,6 +1025,34 @@ impl ChatHistory {
                 ids.insert(message.id());
             }
         }
+        ids
+    }
+
+    /// Sets the selection to exactly the messages between the ids `a` and `b`
+    /// (inclusive). Used by shift-click range extension.
+    fn select_message_range(&self, a: i64, b: i64) {
+        let ids = self.message_ids_between(a, b);
+        self.set_selection(ids);
+    }
+
+    /// Applies the drag's anchor..pointer range on top of the selection snapshotted at
+    /// the anchor: an adding drag unions the range in, a removing drag subtracts it —
+    /// so re-sweeping (including backing the pointer off) live-previews the result
+    /// without ever resetting what was selected before the drag.
+    fn apply_drag_range(&self, anchor: i64, current: i64) {
+        let range = self.message_ids_between(anchor, current);
+        let imp = self.imp();
+        let base = imp.selection_drag_base.borrow();
+        let ids: HashSet<i64> = if imp.selection_drag_removes.get() {
+            base.difference(&range).copied().collect()
+        } else {
+            base.union(&range).copied().collect()
+        };
+        drop(base);
+        self.set_selection(ids);
+    }
+
+    fn set_selection(&self, ids: HashSet<i64>) {
         let imp = self.imp();
         // Guard the first sweep that enters selection mode (checkboxes first appear), but
         // not during an active drag — the drag legitimately scrolls, and the guard would
