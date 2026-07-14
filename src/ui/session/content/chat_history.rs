@@ -22,6 +22,25 @@ use crate::strings;
 use crate::ui;
 use crate::utils;
 
+/// Cover-crops `texture` into a `size`×`size` paintable (centred, aspect-filling),
+/// so a fixed-size preview can't inherit the texture's natural dimensions.
+fn cover_paintable(texture: &gdk::Texture, size: f32) -> Option<gdk::Paintable> {
+    let (tw, th) = (texture.width() as f32, texture.height() as f32);
+    if tw <= 0.0 || th <= 0.0 {
+        return None;
+    }
+    let snapshot = gtk::Snapshot::new();
+    let scale = (size / tw).max(size / th);
+    let (w, h) = (tw * scale, th * scale);
+    snapshot.push_clip(&graphene::Rect::new(0.0, 0.0, size, size));
+    snapshot.translate(&graphene::Point::new((size - w) / 2.0, (size - h) / 2.0));
+    texture
+        .upcast_ref::<gdk::Paintable>()
+        .snapshot(&snapshot, w as f64, h as f64);
+    snapshot.pop();
+    snapshot.to_paintable(Some(&graphene::Size::new(size, size)))
+}
+
 /// The inline mini preview of a message's media, when its content carries one.
 fn content_minithumbnail(
     content: &tdlib::enums::MessageContent,
@@ -132,6 +151,12 @@ mod imp {
         pub(super) pinned_messages: RefCell<Vec<model::Message>>,
         pub(super) pinned_index: Cell<usize>,
         #[template_child]
+        pub(super) pinned_view: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) pinned_view_title: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) pinned_list_box: TemplateChild<gtk::ListBox>,
+        #[template_child]
         pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
         /// Chats whose pinned-message panel the user hid (session-local, per chat).
         pub(super) hidden_pinned_chats: RefCell<HashSet<i64>>,
@@ -181,6 +206,9 @@ mod imp {
             });
             klass.install_action("chat-history.pinned-list", None, |widget, _, _| {
                 widget.show_pinned_list();
+            });
+            klass.install_action("chat-history.pinned-list-close", None, |widget, _, _| {
+                widget.imp().pinned_view.set_visible(false);
             });
             klass.install_action("chat-history.show-pinned", None, |widget, _, _| {
                 widget.show_pinned_bar();
@@ -647,6 +675,7 @@ impl ChatHistory {
         imp.pinned_message_bar.set_visible(false);
         imp.pinned_messages.borrow_mut().clear();
         imp.pinned_index.set(0);
+        imp.pinned_view.set_visible(false);
 
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
@@ -1334,7 +1363,7 @@ impl ChatHistory {
             let index = imp.pinned_index.get().min(messages.len() - 1);
             (messages[index].id(), messages.len())
         };
-        self.focus_message(message_id);
+        self.reveal_message(message_id);
         imp.pinned_index.set((imp.pinned_index.get() + 1) % count);
         self.update_pinned_bar();
     }
@@ -1945,33 +1974,41 @@ impl ChatHistory {
             gettext("Pinned Message")
         });
 
-        let texture = content_minithumbnail(&message.content().0).and_then(|minithumbnail| {
-            gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
-                &minithumbnail.data,
-            )))
-            .ok()
-        });
-        imp.pinned_thumbnail.set_paintable(texture.as_ref());
-        imp.pinned_thumbnail.set_visible(texture.is_some());
+        // Cover-crop the minithumbnail into a fixed square paintable: a raw texture in
+        // the GtkPicture would report its own (possibly tall) natural size and grow the
+        // whole bar.
+        let paintable = content_minithumbnail(&message.content().0)
+            .and_then(|minithumbnail| {
+                gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
+                    &minithumbnail.data,
+                )))
+                .ok()
+            })
+            .and_then(|texture| cover_paintable(&texture, 34.0));
+        imp.pinned_thumbnail.set_paintable(paintable.as_ref());
+        imp.pinned_thumbnail.set_visible(paintable.is_some());
 
-        // Rebuild the segment stack: up to 5 lines; with more pinned messages than
-        // that, the active line's position is scaled into the stack.
+        // Rebuild the segment stack: a window of up to 5 lines around the active one.
+        // When more pinned messages continue beyond an edge, that edge's line fades to
+        // transparent.
         while let Some(child) = imp.pinned_dots.first_child() {
             child.unparent();
         }
-        let segments = count.min(5);
-        let active = if count > segments {
-            index * (segments - 1) / (count - 1)
-        } else {
-            index
-        };
-        let height = (26 / segments as i32).clamp(4, 12);
-        for i in 0..segments {
+        let window = count.min(5);
+        let start = index.saturating_sub(2).min(count - window);
+        let height = (26 / window as i32).clamp(4, 12);
+        for i in 0..window {
             let dot = gtk::Box::new(gtk::Orientation::Vertical, 0);
             dot.set_size_request(3, height);
             dot.add_css_class("pinned-dot");
-            if i == active {
+            if start + i == index {
                 dot.add_css_class("active");
+            }
+            if i == 0 && start > 0 {
+                dot.add_css_class("fade-top");
+            }
+            if i == window - 1 && start + window < count {
+                dot.add_css_class("fade-bottom");
             }
             imp.pinned_dots.append(&dot);
         }
@@ -1979,70 +2016,79 @@ impl ChatHistory {
         imp.pinned_message_bar.set_visible(true);
     }
 
-    /// Opens a dialog listing every pinned message of the chat; activating one closes
-    /// the dialog and jumps to that message.
+    /// Shows the in-chat pinned-messages page: the chat area is covered by a list of
+    /// only the pinned messages (real bubbles), with a back button on top. Clicking a
+    /// message jumps to it in the history.
     fn show_pinned_list(&self) {
-        let messages = self.imp().pinned_messages.borrow().clone();
+        let imp = self.imp();
+        let messages = imp.pinned_messages.borrow().clone();
         if messages.is_empty() {
             return;
         }
 
-        let list = gtk::ListBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .css_classes(["boxed-list"])
-            .margin_top(12)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .valign(gtk::Align::Start)
-            .build();
+        imp.pinned_view_title
+            .set_label(&gettext("{n} Pinned Messages").replace("{n}", &messages.len().to_string()));
 
-        let dialog = adw::Dialog::builder()
-            .title(gettext("Pinned Messages"))
-            .content_width(420)
-            .content_height(480)
-            .build();
-
-        for message in &messages {
-            let row = adw::ActionRow::builder()
-                .title(strings::message_sender(&message.sender(), true))
-                .subtitle(strings::message_content(message))
-                .use_markup(false)
-                .activatable(true)
+        imp.pinned_list_box.remove_all();
+        // Oldest at the top, like the history itself.
+        for message in messages.iter().rev() {
+            let row = gtk::ListBoxRow::builder()
+                .activatable(false)
+                .selectable(false)
                 .build();
-            let when = glib::DateTime::from_unix_local(message.date() as i64)
-                .ok()
-                .and_then(|datetime| datetime.format("%d/%m/%y %H:%M").ok())
-                .unwrap_or_default();
-            row.add_suffix(
-                &gtk::Label::builder()
-                    .label(when)
-                    .css_classes(["caption", "dim-label"])
-                    .build(),
-            );
+            row.set_child(Some(&ui::MessageRow::new(message.clone().upcast_ref())));
+
+            // A capture-phase click anywhere on the row jumps to the message in the
+            // history (the bubbles' own gestures would otherwise swallow the click).
+            let click = gtk::GestureClick::new();
+            click.set_button(1);
+            click.set_propagation_phase(gtk::PropagationPhase::Capture);
             let message_id = message.id();
-            row.connect_activated(clone!(
+            click.connect_released(clone!(
                 #[weak(rename_to = obj)]
                 self,
-                #[weak]
-                dialog,
-                move |_| {
-                    dialog.close();
-                    obj.focus_message(message_id);
+                move |gesture, _, _, _| {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    obj.imp().pinned_view.set_visible(false);
+                    obj.reveal_message(message_id);
                 }
             ));
-            list.append(&row);
+            row.add_controller(click);
+            imp.pinned_list_box.append(&row);
         }
+        imp.pinned_view.set_visible(true);
+    }
 
-        let scrolled = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .child(&list)
-            .build();
-        let toolbar = adw::ToolbarView::new();
-        toolbar.add_top_bar(&adw::HeaderBar::new());
-        toolbar.set_content(Some(&scrolled));
-        dialog.set_child(Some(&toolbar));
-        dialog.present(Some(self));
+    /// Jumps to `message_id`, loading older history as needed (bounded) until the
+    /// message is available, then centres and flashes it.
+    pub(crate) fn reveal_message(&self, message_id: i64) {
+        if self.message_position(message_id).is_some() {
+            self.focus_message(message_id);
+            return;
+        }
+        let Some(model) = self.history_model() else {
+            return;
+        };
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                for _ in 0..60 {
+                    if obj.message_position(message_id).is_some() {
+                        break;
+                    }
+                    match model.load_older_messages(100).await {
+                        Ok(true) => {}
+                        Ok(false) => break,
+                        // Most likely already loading (e.g. the scroll edge); retry.
+                        Err(_) => {
+                            glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                        }
+                    }
+                }
+                obj.focus_message(message_id);
+            }
+        ));
     }
 
     pub(crate) fn sticky(&self) -> bool {

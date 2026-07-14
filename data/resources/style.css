@@ -265,6 +265,25 @@ messagebubble {
   background-color: @accent_bg_color;
 }
 
+/* More pinned messages continue beyond this edge of the segment window. */
+.pinned-dot.fade-top {
+  background-color: transparent;
+  background-image: linear-gradient(
+    to bottom,
+    alpha(@accent_bg_color, 0),
+    alpha(@accent_bg_color, 0.35)
+  );
+}
+
+.pinned-dot.fade-bottom {
+  background-color: transparent;
+  background-image: linear-gradient(
+    to top,
+    alpha(@accent_bg_color, 0),
+    alpha(@accent_bg_color, 0.35)
+  );
+}
+
 /* The pinned bar's media preview, like the chat list's minithumbnails but bigger. */
 .pinned-thumbnail {
   border-radius: 6px;
