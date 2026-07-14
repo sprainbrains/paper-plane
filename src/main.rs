@@ -64,7 +64,7 @@ fn main() -> glib::ExitCode {
             // Print version ...
             println!("paper-plane {}", config::VERSION);
             // ... and exit application.
-            std::ops::ControlFlow::Break(glib::ExitCode::from(1))
+            std::ops::ControlFlow::Break(glib::ExitCode::SUCCESS)
         } else {
             adw::init().expect("Failed to init GTK/libadwaita");
             ui::init();
