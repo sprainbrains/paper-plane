@@ -339,13 +339,13 @@ impl MessageDocument {
                     imp.file_thumbnail_picture
                         .set_filename(Some(&thumbnail.file.local.path));
                 } else {
-                    if let Some(minithumbnail) = data.document.minithumbnail {
-                        if let Ok(minithumbnail) = gdk::Texture::from_bytes(
+                    if let Some(minithumbnail) = data.document.minithumbnail
+                        && let Ok(minithumbnail) = gdk::Texture::from_bytes(
                             &glib::Bytes::from_owned(glib::base64_decode(&minithumbnail.data)),
-                        ) {
-                            imp.file_thumbnail_picture
-                                .set_paintable(Some(&minithumbnail));
-                        }
+                        )
+                    {
+                        imp.file_thumbnail_picture
+                            .set_paintable(Some(&minithumbnail));
                     }
 
                     if imp.thumbnail_request_id.replace(Some(file_id)) == Some(file_id) {

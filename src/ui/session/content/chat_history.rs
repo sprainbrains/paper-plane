@@ -1609,7 +1609,8 @@ impl ChatHistory {
         // if the row never shows up (send failed, chat switched, …).
         let text = text.to_owned();
         let first_frame_time = Rc::new(Cell::new(0i64));
-        let prev_bounds: Rc<Cell<Option<(f32, f32, f32, f32)>>> = Rc::new(Cell::new(None));
+        type Bounds = (f32, f32, f32, f32);
+        let prev_bounds: Rc<Cell<Option<Bounds>>> = Rc::new(Cell::new(None));
         let id = self.add_tick_callback(move |obj, clock| {
             let imp = obj.imp();
             let now = clock.frame_time();
@@ -1627,7 +1628,7 @@ impl ChatHistory {
                 animation.value() >= 0.8 || animation.state() != adw::AnimationState::Playing;
             let bounds = row
                 .as_ref()
-                .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
+                .and_then(utils::descendant::<_, ui::MessageBubble>)
                 .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
                 .filter(|bounds| bounds.width() > 1.0)
                 .filter(|bounds| {
