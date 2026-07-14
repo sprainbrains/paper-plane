@@ -175,7 +175,12 @@ impl Map {
     }
 
     pub(crate) fn set_interactive(&self, interactive: bool) {
+        if self.interactive() == interactive {
+            return;
+        }
+
         self.imp().map.set_sensitive(interactive);
+        self.notify("interactive");
     }
 
     pub(crate) fn license_position(&self) -> LicensePosition {
@@ -187,7 +192,7 @@ impl Map {
             } else {
                 LicensePosition::TopRight
             }
-        } else if license_label.valign() == gtk::Align::Start {
+        } else if license_label.halign() == gtk::Align::Start {
             LicensePosition::BottomLeft
         } else {
             LicensePosition::BottomRight
@@ -195,6 +200,10 @@ impl Map {
     }
 
     pub(crate) fn set_license_position(&self, license_position: LicensePosition) {
+        if self.license_position() == license_position {
+            return;
+        }
+
         let (valign, halign) = match license_position {
             LicensePosition::TopLeft => (gtk::Align::Start, gtk::Align::Start),
             LicensePosition::TopRight => (gtk::Align::Start, gtk::Align::End),
@@ -204,14 +213,13 @@ impl Map {
 
         let license_label = self.imp().license_label.get();
 
+        let _freeze_notify = self.freeze_notify();
         let _freeze_notify = license_label.freeze_notify();
 
         license_label.set_valign(valign);
         license_label.set_halign(halign);
 
-        if self.license_position() != license_position {
-            self.notify("license-position");
-        }
+        self.notify("license-position");
     }
 
     pub(crate) fn viewport(&self) -> shumate::Viewport {
