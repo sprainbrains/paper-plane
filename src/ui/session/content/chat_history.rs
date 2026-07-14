@@ -329,13 +329,48 @@ mod imp {
                         return;
                     }
 
+                    obj.update_pinned_for_scroll();
+
+                    let newest_loaded = imp
+                        .model
+                        .borrow()
+                        .as_ref()
+                        .is_none_or(|model| model.newest_loaded());
+
                     if imp.is_auto_scrolling.get() {
                         if adj.value() + adj.page_size() >= adj.upper() {
                             imp.is_auto_scrolling.set(false);
-                            obj.set_sticky(true);
+                            obj.set_sticky(newest_loaded);
                         }
                     } else {
-                        obj.set_sticky(adj.value() + adj.page_size() >= adj.upper());
+                        // The bottom of a jumped-to window isn't the bottom of the chat.
+                        obj.set_sticky(
+                            newest_loaded && adj.value() + adj.page_size() >= adj.upper(),
+                        );
+
+                        // Near the bottom of a jumped-to window: pull newer messages in
+                        // to close the gap towards the present.
+                        if !newest_loaded
+                            && adj.value() + adj.page_size() * 2.0 >= adj.upper()
+                            && let Some(model) = imp.model.borrow().as_ref()
+                        {
+                            imp.is_loading_messages.set(true);
+                            utils::spawn(clone!(
+                                #[weak]
+                                obj,
+                                #[weak]
+                                model,
+                                async move {
+                                    obj.imp().is_loading_messages.set(false);
+                                    if let Err(model::ChatHistoryError::Tdlib(e)) =
+                                        model.load_newer_messages(30).await
+                                    {
+                                        log::warn!("Couldn't load newer chat messages: {e:?}");
+                                    }
+                                }
+                            ));
+                            return;
+                        }
 
                         if adj.value() >= adj.page_size() * 2.0
                             && adj.upper() > adj.page_size() * 2.0
@@ -1355,17 +1390,50 @@ impl ChatHistory {
     /// next older pinned message (wrapping), so repeated clicks walk through all of them.
     fn scroll_to_pinned(&self) {
         let imp = self.imp();
-        let (message_id, count) = {
+        let message_id = {
             let messages = imp.pinned_messages.borrow();
             if messages.is_empty() {
                 return;
             }
             let index = imp.pinned_index.get().min(messages.len() - 1);
-            (messages[index].id(), messages.len())
+            messages[index].id()
         };
         self.reveal_message(message_id);
-        imp.pinned_index.set((imp.pinned_index.get() + 1) % count);
-        self.update_pinned_bar();
+        // No manual index advance: the scroll-follow (update_pinned_for_scroll) lands
+        // on the revealed message and switches the bar to the next older pinned one.
+    }
+
+    /// Keeps the pinned bar in sync with the scroll position: it always shows the
+    /// newest pinned message *above* the viewport centre — scrolling up past a pinned
+    /// message advances the bar to the previous (older) one and vice versa, even when
+    /// several pinned messages sit close together.
+    fn update_pinned_for_scroll(&self) {
+        let imp = self.imp();
+        let count = imp.pinned_messages.borrow().len();
+        if count < 2 {
+            return;
+        }
+        let Some(bounds) = imp.scrolled_window.compute_bounds(self) else {
+            return;
+        };
+        let centre_id = self.message_id_at_point(
+            (bounds.x() + bounds.width() / 2.0) as f64,
+            (bounds.y() + bounds.height() / 2.0) as f64,
+        );
+        let Some(centre_id) = centre_id else {
+            return;
+        };
+        let index = {
+            let messages = imp.pinned_messages.borrow();
+            messages
+                .iter()
+                .position(|message| message.id() < centre_id)
+                .unwrap_or(count - 1)
+        };
+        if index != imp.pinned_index.get() {
+            imp.pinned_index.set(index);
+            self.update_pinned_bar();
+        }
     }
 
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
@@ -2059,8 +2127,9 @@ impl ChatHistory {
         imp.pinned_view.set_visible(true);
     }
 
-    /// Jumps to `message_id`, loading older history as needed (bounded) until the
-    /// message is available, then centres and flashes it.
+    /// Jumps to `message_id`: if it isn't loaded, the history window is re-anchored
+    /// *around* it in a single request (no walking through the whole history), then the
+    /// message is centred and flashed. Scrolling back down closes the gap batch-wise.
     pub(crate) fn reveal_message(&self, message_id: i64) {
         if self.message_position(message_id).is_some() {
             self.focus_message(message_id);
@@ -2073,20 +2142,26 @@ impl ChatHistory {
             #[weak(rename_to = obj)]
             self,
             async move {
-                for _ in 0..60 {
-                    if obj.message_position(message_id).is_some() {
-                        break;
-                    }
-                    match model.load_older_messages(100).await {
-                        Ok(true) => {}
-                        Ok(false) => break,
-                        // Most likely already loading (e.g. the scroll edge); retry.
-                        Err(_) => {
+                for _ in 0..10 {
+                    match model.load_around_message(message_id).await {
+                        Ok(()) => break,
+                        // Most likely a scroll-edge load in flight; retry shortly.
+                        Err(model::ChatHistoryError::AlreadyLoading) => {
                             glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                        }
+                        Err(e) => {
+                            log::warn!("Couldn't jump to message {message_id}: {e}");
+                            return;
                         }
                     }
                 }
-                obj.focus_message(message_id);
+                obj.set_sticky(false);
+                // Let the list realise the fresh window before scrolling to the target.
+                glib::idle_add_local_once(clone!(
+                    #[weak]
+                    obj,
+                    move || obj.focus_message(message_id)
+                ));
             }
         ));
     }
@@ -2106,6 +2181,27 @@ impl ChatHistory {
 
     fn scroll_down(&self) {
         let imp = self.imp();
+
+        // In a jumped-to window the bottom of the list isn't the bottom of the chat:
+        // re-anchor the history at the newest message first.
+        if let Some(model) = imp.model.borrow().as_ref().filter(|m| !m.newest_loaded()) {
+            let model = model.clone();
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    if model.reload_to_newest().await.is_ok() {
+                        obj.set_sticky(true);
+                        glib::idle_add_local_once(clone!(
+                            #[weak]
+                            obj,
+                            move || obj.scroll_down()
+                        ));
+                    }
+                }
+            ));
+            return;
+        }
 
         imp.is_auto_scrolling.set(true);
 

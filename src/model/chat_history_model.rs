@@ -33,6 +33,9 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) is_loading: Cell<bool>,
         pub(super) list: RefCell<VecDeque<model::ChatHistoryItem>>,
+        /// Whether the loaded window includes the chat's newest message. `false` after
+        /// jumping to an old message, until the gap is closed by loading newer ones.
+        pub(super) newest_loaded: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -81,12 +84,18 @@ impl ChatHistoryModel {
         let obj: ChatHistoryModel = glib::Object::new();
 
         obj.imp().chat.set(Some(chat));
+        obj.imp().newest_loaded.set(true);
 
         chat.connect_new_message(clone!(
             #[weak]
             obj,
             move |_, message| {
-                obj.push_front(message);
+                // While showing a jumped-to window that doesn't reach the newest
+                // message, appending a new message at the front would fake a
+                // contiguous history; it arrives once the gap is closed instead.
+                if obj.imp().newest_loaded.get() {
+                    obj.push_front(message);
+                }
             }
         ));
         chat.connect_deleted_message(clone!(
@@ -133,6 +142,101 @@ impl ChatHistoryModel {
 
         self.append(messages);
         Ok(true)
+    }
+
+    /// Whether the loaded window includes the chat's newest message (i.e. no gap below).
+    pub(crate) fn newest_loaded(&self) -> bool {
+        self.imp().newest_loaded.get()
+    }
+
+    /// Jumps the window: clears the list and loads messages *around* `message_id` in a
+    /// single request, so revealing an arbitrarily old message is instant.
+    pub(crate) async fn load_around_message(
+        &self,
+        message_id: i64,
+    ) -> Result<(), ChatHistoryError> {
+        let imp = self.imp();
+        if imp.is_loading.get() {
+            return Err(ChatHistoryError::AlreadyLoading);
+        }
+        let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
+
+        imp.is_loading.set(true);
+        let result = chat.get_chat_history_around(message_id, -25, 51).await;
+        imp.is_loading.set(false);
+        let messages = result.map_err(ChatHistoryError::Tdlib)?;
+
+        let removed = imp.list.borrow().len();
+        imp.list.borrow_mut().clear();
+        self.upcast_ref::<gio::ListModel>()
+            .items_changed(0, removed as u32, 0);
+
+        let newest_loaded = chat.last_message().is_none_or(|last| {
+            messages
+                .first()
+                .is_some_and(|message| message.id() >= last.id())
+        });
+        imp.newest_loaded.set(newest_loaded);
+        if !messages.is_empty() {
+            self.append(messages);
+        }
+        Ok(())
+    }
+
+    /// Loads messages newer than the window's front (after a jump), closing the gap
+    /// towards the bottom. Returns `true` while more newer messages remain.
+    pub(crate) async fn load_newer_messages(&self, limit: i32) -> Result<bool, ChatHistoryError> {
+        let imp = self.imp();
+        if imp.newest_loaded.get() {
+            return Ok(false);
+        }
+        if imp.is_loading.get() {
+            return Err(ChatHistoryError::AlreadyLoading);
+        }
+        let Some(newest_id) = imp
+            .list
+            .borrow()
+            .iter()
+            .find_map(|item| item.message().map(|message| message.id()))
+        else {
+            return Ok(false);
+        };
+        let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
+
+        imp.is_loading.set(true);
+        let result = chat
+            .get_chat_history_around(newest_id, -limit, limit + 1)
+            .await;
+        imp.is_loading.set(false);
+        let mut messages = result.map_err(ChatHistoryError::Tdlib)?;
+        messages.retain(|message| message.id() > newest_id);
+
+        if messages.is_empty() {
+            imp.newest_loaded.set(true);
+            return Ok(false);
+        }
+        let reached_newest = chat.last_message().is_none_or(|last| {
+            messages
+                .first()
+                .is_some_and(|message| message.id() >= last.id())
+        });
+        imp.newest_loaded.set(reached_newest);
+        self.prepend(messages);
+        Ok(!reached_newest)
+    }
+
+    /// Clears a jumped-to window and reloads the history from the newest message.
+    pub(crate) async fn reload_to_newest(&self) -> Result<(), ChatHistoryError> {
+        let imp = self.imp();
+        if imp.is_loading.get() {
+            return Err(ChatHistoryError::AlreadyLoading);
+        }
+        let removed = imp.list.borrow().len();
+        imp.list.borrow_mut().clear();
+        self.upcast_ref::<gio::ListModel>()
+            .items_changed(0, removed as u32, 0);
+        imp.newest_loaded.set(true);
+        self.load_older_messages(30).await.map(|_| ())
     }
 
     fn emit_items_changed_with_dividers(&self, position: u32, removed: u32, added: u32) {
@@ -286,6 +390,19 @@ impl ChatHistoryModel {
 
         let index = imp.list.borrow().len() - added;
         self.emit_items_changed_with_dividers(index as u32, 0, added as u32);
+    }
+
+    /// Inserts newer messages (given newest → oldest) at the front of the window.
+    fn prepend(&self, messages: Vec<model::Message>) {
+        let imp = self.imp();
+        let added = messages.len();
+        {
+            let mut list = imp.list.borrow_mut();
+            for message in messages.into_iter().rev() {
+                list.push_front(model::ChatHistoryItem::for_message(message));
+            }
+        }
+        self.emit_items_changed_with_dividers(0, 0, added as u32);
     }
 
     fn remove(&self, message: model::Message) {

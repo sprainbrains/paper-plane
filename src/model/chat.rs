@@ -496,9 +496,21 @@ impl Chat {
         from_id: MessageId,
         limit: i32,
     ) -> Result<Vec<model::Message>, tdlib::types::Error> {
+        self.get_chat_history_around(from_id, 0, limit).await
+    }
+
+    /// Like [`Self::get_chat_history`], but with a TDLib offset: a negative offset
+    /// shifts the returned window towards newer messages, so a window *around*
+    /// `from_id` (or strictly newer than it) can be fetched in one request.
+    pub(crate) async fn get_chat_history_around(
+        &self,
+        from_id: MessageId,
+        offset: i32,
+        limit: i32,
+    ) -> Result<Vec<model::Message>, tdlib::types::Error> {
         let client_id = self.session_().client_().id();
         let result =
-            tdlib::functions::get_chat_history(self.id(), from_id, 0, limit, false, client_id)
+            tdlib::functions::get_chat_history(self.id(), from_id, offset, limit, false, client_id)
                 .await;
 
         let tdlib::enums::Messages::Messages(data) = result?;
