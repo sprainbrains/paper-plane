@@ -16,6 +16,21 @@ use crate::model;
 use crate::types::ClientId;
 use crate::utils;
 
+#[derive(Debug, Default)]
+struct AuthorizationUpdateTracker(Cell<u64>);
+
+impl AuthorizationUpdateTracker {
+    fn next(&self) -> u64 {
+        let id = self.0.get().wrapping_add(1);
+        self.0.set(id);
+        id
+    }
+
+    fn is_current(&self, id: u64) -> bool {
+        self.0.get() == id
+    }
+}
+
 /// A struct for storing information about a session's database.
 #[derive(Clone, Debug)]
 pub(crate) struct DatabaseInfo {
@@ -32,6 +47,7 @@ mod imp {
     #[properties(wrapper_type = super::Client)]
     pub(crate) struct Client {
         pub(crate) queued_updates: RefCell<VecDeque<tdlib::enums::Update>>,
+        pub(super) authorization_updates: AuthorizationUpdateTracker,
         #[property(get, set, construct_only)]
         pub(super) client_manager: glib::WeakRef<model::ClientManager>,
         #[property(get, set, construct_only)]
@@ -197,10 +213,7 @@ impl Client {
 
     pub(crate) async fn log_out(&self) -> Result<(), tdlib::types::Error> {
         match tdlib::functions::log_out(self.id()).await {
-            Ok(_) => {
-                self.remove();
-                Ok(())
-            }
+            Ok(_) => Ok(()),
             Err(e) => {
                 log::error!(
                     "Failed to log out client with id={}: {}",
@@ -228,59 +241,106 @@ impl Client {
         use tdlib::enums::Update;
 
         match update {
-            Update::AuthorizationState(state) => match state.authorization_state {
-                AuthorizationState::WaitTdlibParameters => {
-                    utils::spawn(clone!(
-                        #[weak(rename_to = obj)]
-                        self,
-                        async move {
-                            if let Err(e) = obj.send_tdlib_parameters().await {
-                                log::error!("Failed sensing tdlib parameters: {e:?}");
+            Update::AuthorizationState(state) => {
+                let authorization_update_id = self.imp().authorization_updates.next();
+
+                match state.authorization_state {
+                    AuthorizationState::WaitTdlibParameters => {
+                        utils::spawn(clone!(
+                            #[weak(rename_to = obj)]
+                            self,
+                            async move {
+                                if let Err(e) = obj.send_tdlib_parameters().await {
+                                    log::error!("Failed sensing tdlib parameters: {e:?}");
+                                }
                             }
-                        }
-                    ));
-                }
-                AuthorizationState::Ready => {
-                    utils::spawn(clone!(
-                        #[weak(rename_to = obj)]
-                        self,
-                        async move {
-                            let tdlib::enums::User::User(me) =
-                                tdlib::functions::get_me(obj.id()).await.unwrap();
+                        ));
+                    }
+                    AuthorizationState::Ready => {
+                        utils::spawn(clone!(
+                            #[weak(rename_to = obj)]
+                            self,
+                            async move {
+                                let me = match tdlib::functions::get_me(obj.id()).await {
+                                    Ok(tdlib::enums::User::User(me)) => me,
+                                    Err(e) => {
+                                        log::error!("Failed to get current user: {e:?}");
+                                        return;
+                                    }
+                                };
 
-                            let state = model::ClientStateSession::new(&obj, me);
-                            while let Some(update) =
-                                obj.imp().queued_updates.borrow_mut().pop_front()
-                            {
-                                state.handle_update(update);
+                                if !obj
+                                    .imp()
+                                    .authorization_updates
+                                    .is_current(authorization_update_id)
+                                    || obj
+                                        .state()
+                                        .and_downcast::<model::ClientStateAuth>()
+                                        .is_none()
+                                {
+                                    return;
+                                }
+
+                                let state = model::ClientStateSession::new(&obj, me);
+                                obj.set_state(state.clone().upcast());
+                                loop {
+                                    let update = obj.imp().queued_updates.borrow_mut().pop_front();
+                                    let Some(update) = update else {
+                                        break;
+                                    };
+                                    obj.handle_session_update(&state, update);
+                                }
+
+                                obj.client_manager_().on_client_logged_in(&obj);
                             }
-
-                            obj.set_state(state.upcast());
-
-                            obj.client_manager_().on_client_logged_in(&obj);
+                        ));
+                    }
+                    AuthorizationState::Closing => {
+                        self.set_state(model::ClientStateLoggingOut::default().upcast());
+                    }
+                    AuthorizationState::LoggingOut => {
+                        log::info!("Logging out client {}", self.id());
+                    }
+                    AuthorizationState::Closed => self.remove(),
+                    _ => {
+                        if let Some(auth) = self.state().and_downcast::<model::ClientStateAuth>() {
+                            auth.handle_update(state);
                         }
-                    ));
-                }
-                AuthorizationState::Closing => {
-                    self.set_state(model::ClientStateLoggingOut::default().upcast());
-                }
-                AuthorizationState::LoggingOut => {
-                    log::info!("Logging out client {}", self.id());
-                }
-                _ => self
-                    .state()
-                    .and_downcast::<model::ClientStateAuth>()
-                    .unwrap()
-                    .handle_update(state),
-            },
-            _ => {
-                let state = self.state().unwrap();
-
-                match state.downcast_ref::<model::ClientStateSession>() {
-                    Some(state) => state.handle_update(update),
-                    None => self.imp().queued_updates.borrow_mut().push_back(update),
+                    }
                 }
             }
+            _ => match self.state().and_downcast::<model::ClientStateSession>() {
+                Some(state) => self.handle_session_update(&state, update),
+                None => self.imp().queued_updates.borrow_mut().push_back(update),
+            },
         }
+    }
+
+    fn handle_session_update(
+        &self,
+        session: &model::ClientStateSession,
+        update: tdlib::enums::Update,
+    ) {
+        if let tdlib::enums::Update::NotificationGroup(group) = update {
+            self.client_manager_()
+                .on_update_notification_group(group, session);
+        } else {
+            session.handle_update(update);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn newer_authorization_update_invalidates_ready_completion() {
+        let updates = AuthorizationUpdateTracker::default();
+        let first_ready = updates.next();
+        let second_ready = updates.next();
+
+        assert!(!updates.is_current(first_ready));
+        assert!(updates.is_current(second_ready));
     }
 }

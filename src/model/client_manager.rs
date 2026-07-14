@@ -1,4 +1,6 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fs;
 use std::sync::OnceLock;
 use std::thread;
@@ -26,7 +28,10 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default)]
-    pub(crate) struct ClientManager(pub(super) RefCell<IndexMap<i32, model::Client>>);
+    pub(crate) struct ClientManager {
+        pub(super) clients: RefCell<IndexMap<ClientId, model::Client>>,
+        pub(super) pending_updates: RefCell<PendingUpdates<tdlib::enums::Update>>,
+    }
 
     #[glib::object_subclass]
     impl ObjectSubclass for ClientManager {
@@ -91,11 +96,11 @@ mod imp {
         }
 
         fn n_items(&self) -> u32 {
-            self.0.borrow().len() as u32
+            self.clients.borrow().len() as u32
         }
 
         fn item(&self, position: u32) -> Option<glib::Object> {
-            self.0
+            self.clients
                 .borrow()
                 .get_index(position as usize)
                 .map(|(_, client)| client.to_owned().upcast())
@@ -117,7 +122,7 @@ impl ClientManager {
     /// Function that returns all currently logged in users.
     pub(crate) fn sessions(&self) -> Vec<model::ClientStateSession> {
         self.imp()
-            .0
+            .clients
             .borrow()
             .values()
             .cloned()
@@ -135,7 +140,7 @@ impl ClientManager {
     }
 
     pub(crate) fn first_client(&self) -> Option<model::Client> {
-        self.imp().0.borrow().values().next().cloned()
+        self.imp().clients.borrow().values().next().cloned()
     }
 
     pub(crate) fn client_by_directory_base_name(
@@ -143,7 +148,7 @@ impl ClientManager {
         directory_base_name: &str,
     ) -> Option<model::Client> {
         self.imp()
-            .0
+            .clients
             .borrow()
             .values()
             .find(|client| directory_base_name == client.database_info().0.directory_base_name)
@@ -170,19 +175,35 @@ impl ClientManager {
         remove_if_auth: bool,
     ) -> model::Client {
         let client = model::Client::new(self, remove_if_auth, id, database_info);
-        let (position, _) = self.imp().0.borrow_mut().insert_full(
+        let (position, replaced) = self.imp().clients.borrow_mut().insert_full(
             id,
             // Important: Here, we basically say that we just want to wait for
             // `AuthorizationState::Ready` and skip the login process.
             client.clone(),
         );
-        self.items_changed(position as u32, 0, 1);
+        self.items_changed(position as u32, u32::from(replaced.is_some()), 1);
+
+        let pending_updates = self.imp().pending_updates.borrow_mut().take(id);
+        for update in pending_updates {
+            self.handle_update(update, id);
+        }
 
         client
     }
 
     pub(super) fn on_client_logged_in(&self, client: &model::Client) {
         self.emit_by_name::<()>("client-logged-in", &[&client]);
+    }
+
+    pub(super) fn on_update_notification_group(
+        &self,
+        group: tdlib::types::UpdateNotificationGroup,
+        session: &model::ClientStateSession,
+    ) {
+        self.emit_by_name::<()>(
+            "update-notification-group",
+            &[&model::BoxedUpdateNotificationGroup(group), session],
+        );
     }
 
     pub(crate) fn connect_client_removed<F: Fn(&Self, &model::Client) + 'static>(
@@ -229,8 +250,8 @@ impl ClientManager {
     }
 
     pub(crate) fn remove_client(&self, client: &model::Client) {
-        let mut list = self.imp().0.borrow_mut();
-        if let Some((position, _, _)) = list.swap_remove_full(&client.id()) {
+        let mut list = self.imp().clients.borrow_mut();
+        if let Some((position, _, _)) = list.shift_remove_full(&client.id()) {
             drop(list);
             self.items_changed(position as u32, 1, 0);
             self.emit_by_name::<()>("client-removed", &[&client]);
@@ -238,29 +259,11 @@ impl ClientManager {
     }
 
     pub(crate) fn handle_update(&self, update: tdlib::enums::Update, id: ClientId) {
-        let client = self.imp().0.borrow().get(&id).cloned();
+        let client = self.imp().clients.borrow().get(&id).cloned();
         if let Some(client) = client {
-            if let tdlib::enums::Update::NotificationGroup(group) = update {
-                let session = client
-                    .state()
-                    .and_downcast::<model::ClientStateSession>()
-                    .unwrap();
-
-                self.emit_by_name::<()>(
-                    "update-notification-group",
-                    &[&model::BoxedUpdateNotificationGroup(group), &session],
-                );
-            } else {
-                if matches!(
-                    &update,
-                    tdlib::enums::Update::AuthorizationState(state)
-                        if state.authorization_state == tdlib::enums::AuthorizationState::Closed)
-                {
-                    client.remove();
-                } else {
-                    client.handle_update(update);
-                }
-            }
+            client.handle_update(update);
+        } else {
+            self.imp().pending_updates.borrow_mut().push(id, update);
         }
     }
 
@@ -301,6 +304,25 @@ impl ClientManager {
                 }
             }
         });
+    }
+}
+
+#[derive(Debug)]
+struct PendingUpdates<T>(HashMap<ClientId, VecDeque<T>>);
+
+impl<T> Default for PendingUpdates<T> {
+    fn default() -> Self {
+        Self(HashMap::new())
+    }
+}
+
+impl<T> PendingUpdates<T> {
+    fn push(&mut self, client_id: ClientId, update: T) {
+        self.0.entry(client_id).or_default().push_back(update);
+    }
+
+    fn take(&mut self, client_id: ClientId) -> VecDeque<T> {
+        self.0.remove(&client_id).unwrap_or_default()
     }
 }
 
@@ -368,5 +390,22 @@ fn generate_database_dir_base_name() -> String {
             .unwrap()
     } else {
         database_dir_base_name
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_updates_are_scoped_to_client_and_keep_order() {
+        let mut updates = PendingUpdates::default();
+        updates.push(1, "first");
+        updates.push(2, "other client");
+        updates.push(1, "second");
+
+        assert_eq!(updates.take(1), ["first", "second"]);
+        assert!(updates.take(1).is_empty());
+        assert_eq!(updates.take(2), ["other client"]);
     }
 }
