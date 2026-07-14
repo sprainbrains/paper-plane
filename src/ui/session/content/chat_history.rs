@@ -591,6 +591,9 @@ impl ChatHistory {
 
         let imp = self.imp();
 
+        // A ghost from the previous chat must not float over the new one.
+        self.cancel_send_animation();
+
         // Reset the pinned-message bar; it's re-populated below if the new chat
         // has a pinned message.
         imp.pinned_message_bar.set_visible(false);
@@ -1237,6 +1240,10 @@ impl ChatHistory {
         let Some(start) = start.filter(|_| !text.is_empty()) else {
             return;
         };
+        // Respect the system-wide "disable animations" preference.
+        if !gtk::Settings::default().is_some_and(|settings| settings.is_gtk_enable_animations()) {
+            return;
+        }
         self.cancel_send_animation();
         let imp = self.imp();
 
@@ -1423,6 +1430,39 @@ impl ChatHistory {
         animation.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
+            move |_| obj.crossfade_send_handoff()
+        ));
+        animation.play();
+        imp.send_animation.replace(Some(animation.upcast()));
+    }
+
+    /// The last stretch of the hand-off: the ghost has landed on the bubble's rectangle,
+    /// but it lacks the timestamp/checkmark and, for multi-line messages, is only a
+    /// one-line stand-in — a short crossfade (real row in, ghost out) hides the
+    /// difference instead of swapping with a pop.
+    fn crossfade_send_handoff(&self) {
+        let imp = self.imp();
+        let row = imp.send_flight_row.borrow().clone();
+        let Some(ghost) = imp.send_ghost.borrow().clone() else {
+            if let Some(row) = imp.send_flight_row.take() {
+                row.set_opacity(1.0);
+            }
+            return;
+        };
+        let target = adw::CallbackAnimationTarget::new(clone!(
+            #[weak]
+            ghost,
+            move |value| {
+                ghost.set_opacity(1.0 - value);
+                if let Some(row) = &row {
+                    row.set_opacity(value);
+                }
+            }
+        ));
+        let fade = adw::TimedAnimation::new(&ghost, 0.0, 1.0, 120, target);
+        fade.connect_done(clone!(
+            #[weak(rename_to = obj)]
+            self,
             move |_| {
                 let imp = obj.imp();
                 if let Some(ghost) = imp.send_ghost.take() {
@@ -1434,8 +1474,8 @@ impl ChatHistory {
                 imp.send_animation.replace(None);
             }
         ));
-        animation.play();
-        imp.send_animation.replace(Some(animation.upcast()));
+        fade.play();
+        imp.send_animation.replace(Some(fade.upcast()));
     }
 
     /// A springy, macOS-like motion: slightly underdamped, settling quickly with at most
