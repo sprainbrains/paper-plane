@@ -73,6 +73,7 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) chat_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) model: RefCell<Option<model::ChatHistoryModel>>,
+        pub(super) generation: Cell<u64>,
         pub(super) message_menu: OnceCell<ui::MessageMenu>,
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
@@ -360,6 +361,10 @@ mod imp {
                             && adj.value() + adj.page_size() * 1.5 >= adj.upper()
                             && let Some(model) = imp.model.borrow().as_ref()
                         {
+                            let generation = imp.generation.get();
+                            let Some(chat_id) = obj.chat().map(|chat| chat.id()) else {
+                                return;
+                            };
                             imp.is_loading_messages.set(true);
                             utils::spawn(clone!(
                                 #[weak]
@@ -367,9 +372,11 @@ mod imp {
                                 #[weak]
                                 model,
                                 async move {
-                                    if let Err(model::ChatHistoryError::Tdlib(e)) =
-                                        model.load_newer_messages(30).await
-                                    {
+                                    let result = model.load_newer_messages(30).await;
+                                    if !obj.is_current_history(generation, chat_id, &model) {
+                                        return;
+                                    }
+                                    if let Err(model::ChatHistoryError::Tdlib(e)) = result {
                                         log::warn!("Couldn't load newer chat messages: {e:?}");
                                     }
                                     obj.imp().is_loading_messages.set(false);
@@ -385,6 +392,10 @@ mod imp {
                         }
 
                         if let Some(model) = imp.model.borrow().as_ref() {
+                            let generation = imp.generation.get();
+                            let Some(chat_id) = obj.chat().map(|chat| chat.id()) else {
+                                return;
+                            };
                             imp.is_loading_messages.set(true);
 
                             utils::spawn(clone!(
@@ -393,9 +404,11 @@ mod imp {
                                 #[weak]
                                 model,
                                 async move {
-                                    if let Err(model::ChatHistoryError::Tdlib(e)) =
-                                        model.load_older_messages(2).await
-                                    {
+                                    let result = model.load_older_messages(2).await;
+                                    if !obj.is_current_history(generation, chat_id, &model) {
+                                        return;
+                                    }
+                                    if let Err(model::ChatHistoryError::Tdlib(e)) = result {
                                         log::warn!("Couldn't load more chat messages: {e:?}");
                                     }
                                     obj.imp().is_loading_messages.set(false);
@@ -603,6 +616,8 @@ impl ChatHistory {
 
     async fn show_leave_chat_dialog(&self) {
         if let Some(chat) = self.chat() {
+            let generation = self.imp().generation.get();
+            let chat_id = chat.id();
             let dialog = ui::destructive_confirmation_dialog(
                 &gettext("Leave chat?"),
                 &gettext("Do you want to leave this chat?"),
@@ -611,10 +626,17 @@ impl ChatHistory {
             );
             dialog.set_close_response("no");
 
-            if dialog.choose_future(Some(self)).await == "yes" {
+            let response = dialog.choose_future(Some(self)).await;
+            if !self.is_current_chat(generation, chat_id) {
+                return;
+            }
+            if response == "yes" {
                 match tdlib::functions::leave_chat(chat.id(), chat.session_().client_().id()).await
                 {
                     Ok(_) => {
+                        if !self.is_current_chat(generation, chat_id) {
+                            return;
+                        }
                         // Unselect recently left chat
                         if let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(self) {
                             sidebar.set_selected_chat(Option::<model::Chat>::None);
@@ -706,6 +728,9 @@ impl ChatHistory {
         }
 
         let imp = self.imp();
+        imp.generation.set(imp.generation.get().wrapping_add(1));
+        imp.is_loading_messages.set(false);
+        imp.scrolled_window.vscrollbar().set_visible(true);
 
         // A ghost from the previous chat must not float over the new one.
         self.cancel_send_animation();
@@ -780,12 +805,17 @@ impl ChatHistory {
 
             let last_read_inbox_message_id = chat.last_read_inbox_message_id();
             let unread_count = chat.unread_count();
+            let generation = imp.generation.get();
+            let chat_id = chat.id();
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
                 #[weak]
                 model,
                 async move {
+                    if !obj.is_current_history(generation, chat_id, &model) {
+                        return;
+                    }
                     let imp = obj.imp();
 
                     imp.is_loading_messages.set(true);
@@ -797,7 +827,11 @@ impl ChatHistory {
                     adj.set_value(0.0);
 
                     while adj.value() == 0.0 {
-                        match model.load_older_messages(2).await {
+                        let result = model.load_older_messages(2).await;
+                        if !obj.is_current_history(generation, chat_id, &model) {
+                            return;
+                        }
+                        match result {
                             Ok(can_load_more) => {
                                 if !can_load_more {
                                     break;
@@ -822,7 +856,11 @@ impl ChatHistory {
                         let mut guard = 0;
                         while !model.insert_unread_divider(last_read_inbox_message_id) && guard < 40
                         {
-                            match model.load_older_messages(10).await {
+                            let result = model.load_older_messages(10).await;
+                            if !obj.is_current_history(generation, chat_id, &model) {
+                                return;
+                            }
+                            match result {
                                 Ok(true) => guard += 1,
                                 _ => break,
                             }
@@ -875,6 +913,26 @@ impl ChatHistory {
     /// The chat history data model backing the list, if a chat is loaded.
     pub(crate) fn history_model(&self) -> Option<model::ChatHistoryModel> {
         self.imp().model.borrow().clone()
+    }
+
+    fn is_current_history(
+        &self,
+        generation: u64,
+        chat_id: i64,
+        model: &model::ChatHistoryModel,
+    ) -> bool {
+        self.is_current_chat(generation, chat_id)
+            && self
+                .imp()
+                .model
+                .borrow()
+                .as_ref()
+                .is_some_and(|current| current == model)
+    }
+
+    fn is_current_chat(&self, generation: u64, chat_id: i64) -> bool {
+        self.imp().generation.get() == generation
+            && self.chat().is_some_and(|chat| chat.id() == chat_id)
     }
 
     // --- Multi-message selection (long-press / drag to select) ---
@@ -1352,18 +1410,27 @@ impl ChatHistory {
         let Some(chat) = self.chat() else {
             return;
         };
+        let generation = self.imp().generation.get();
+        let chat_id = chat.id();
         let dialog = ui::destructive_confirmation_dialog(
             &gettext("Delete Messages"),
             &gettext("Delete the selected messages?"),
             ("no", &gettext("_Cancel")),
             ("yes", &gettext("_Delete")),
         );
-        if dialog.choose_future(Some(self)).await == "yes" {
+        let response = dialog.choose_future(Some(self)).await;
+        if !self.is_current_chat(generation, chat_id) {
+            return;
+        }
+        if response == "yes" {
             let client_id = chat.session_().client_().id();
             if let Err(e) =
                 tdlib::functions::delete_messages(chat.id(), ids, false, client_id).await
             {
                 log::warn!("Failed to delete selected messages: {e:?}");
+            }
+            if !self.is_current_chat(generation, chat_id) {
+                return;
             }
             self.clear_selection();
         }
@@ -2029,6 +2096,7 @@ impl ChatHistory {
         let chat = chat.clone();
         let client_id = chat.session_().client_().id();
         let chat_id = chat.id();
+        let generation = self.imp().generation.get();
 
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
@@ -2049,13 +2117,13 @@ impl ChatHistory {
                     .await
                 {
                     // Ignore the result if the user has since switched chats.
-                    if obj.chat().as_ref() != Some(&chat) {
+                    if !obj.is_current_chat(generation, chat_id) {
                         return;
                     }
                     let messages: Vec<model::Message> = found
                         .messages
                         .into_iter()
-                        .map(|td_message| model::Message::new(&chat, td_message))
+                        .map(|td_message| chat.upsert_message(td_message))
                         .collect();
                     let imp = obj.imp();
                     imp.pinned_messages.replace(messages);
@@ -2192,16 +2260,27 @@ impl ChatHistory {
         let Some(model) = self.history_model() else {
             return;
         };
+        let generation = self.imp().generation.get();
+        let Some(chat_id) = self.chat().map(|chat| chat.id()) else {
+            return;
+        };
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
             async move {
                 // A scroll-edge load may be in flight; wait it out rather than give up.
                 for attempt in 0.. {
-                    match model.load_around_message(message_id).await {
+                    let result = model.load_around_message(message_id).await;
+                    if !obj.is_current_history(generation, chat_id, &model) {
+                        return;
+                    }
+                    match result {
                         Ok(()) => break,
                         Err(model::ChatHistoryError::AlreadyLoading) if attempt < 30 => {
                             glib::timeout_future(std::time::Duration::from_millis(100)).await;
+                            if !obj.is_current_history(generation, chat_id, &model) {
+                                return;
+                            }
                         }
                         Err(e) => {
                             log::warn!("Couldn't jump to message {message_id}: {e}");
@@ -2214,7 +2293,11 @@ impl ChatHistory {
                 glib::idle_add_local_once(clone!(
                     #[weak]
                     obj,
-                    move || obj.focus_message(message_id)
+                    move || {
+                        if obj.is_current_history(generation, chat_id, &model) {
+                            obj.focus_message(message_id);
+                        }
+                    }
                 ));
             }
         ));
@@ -2240,16 +2323,28 @@ impl ChatHistory {
         // re-anchor the history at the newest message first.
         if let Some(model) = imp.model.borrow().as_ref().filter(|m| !m.newest_loaded()) {
             let model = model.clone();
+            let generation = imp.generation.get();
+            let Some(chat_id) = self.chat().map(|chat| chat.id()) else {
+                return;
+            };
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
                 async move {
-                    if model.reload_to_newest().await.is_ok() {
+                    let result = model.reload_to_newest().await;
+                    if !obj.is_current_history(generation, chat_id, &model) {
+                        return;
+                    }
+                    if result.is_ok() {
                         obj.set_sticky(true);
                         glib::idle_add_local_once(clone!(
                             #[weak]
                             obj,
-                            move || obj.scroll_down()
+                            move || {
+                                if obj.is_current_history(generation, chat_id, &model) {
+                                    obj.scroll_down();
+                                }
+                            }
                         ));
                     }
                 }
