@@ -33,40 +33,48 @@ impl super::ClientStateSession {
 
         glib::spawn_future_local(async move {
             while let Ok(file) = receiver.recv().await {
-                if !file.local.is_downloading_active {
+                let is_terminal = !file.local.is_downloading_active;
+                f(file);
+
+                if is_terminal {
                     break;
                 }
-                f(file);
             }
         });
 
-        let mut downloading_files = self.imp().downloading_files.borrow_mut();
-        match downloading_files.entry(file_id) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().push(sender);
+        let should_request = {
+            let mut downloading_files = self.imp().downloading_files.borrow_mut();
+            match downloading_files.entry(file_id) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().push(sender);
+                    false
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(vec![sender]);
+                    true
+                }
             }
-            Entry::Vacant(entry) => {
-                entry.insert(vec![sender]);
+        };
 
-                let client_id = self.client_().id();
-                utils::spawn(clone!(
-                    #[weak(rename_to = obj)]
-                    self,
-                    async move {
-                        let result =
-                            tdlib::functions::download_file(file_id, 5, 0, 0, false, client_id)
-                                .await;
-                        match result {
-                            Ok(tdlib::enums::File::File(file)) => {
-                                obj.handle_file_update(file);
-                            }
-                            Err(e) => {
-                                log::warn!("Error downloading a file: {e:?}");
-                            }
+        if should_request {
+            let client_id = self.client_().id();
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                async move {
+                    let result =
+                        tdlib::functions::download_file(file_id, 5, 0, 0, false, client_id).await;
+                    match result {
+                        Ok(tdlib::enums::File::File(file)) => {
+                            obj.handle_file_update(file);
+                        }
+                        Err(e) => {
+                            obj.imp().downloading_files.borrow_mut().remove(&file_id);
+                            log::warn!("Error downloading a file: {e:?}");
                         }
                     }
-                ));
-            }
+                }
+            ));
         }
     }
 
@@ -81,23 +89,17 @@ impl super::ClientStateSession {
     }
 
     pub(super) fn handle_file_update(&self, file: tdlib::types::File) {
-        let mut downloading_files = self.imp().downloading_files.borrow_mut();
-        if let Entry::Occupied(mut entry) = downloading_files.entry(file.id) {
-            // Keep only the senders with which it was possible to send successfully.
-            // It is indeed possible that the object that created the sender and receiver and
-            // attached it to the default main context has been disposed in the meantime.
-            // This is problematic if it is now tried to upgrade a weak reference of this object in
-            // the receiver closure.
-            // It will either panic directly if `@default-panic` is used or the sender will return
-            // an error in the `SyncSender::send()` function if
-            // `default-return glib::Continue(false)` is used. In the latter case, the Receiver
-            // will be detached from the main context, which will cause the sending to fail.
-            entry.get_mut();
-            // .retain(|sender| sender.send(file.clone()).is_ok());
+        let Some(mut senders) = self.imp().downloading_files.borrow_mut().remove(&file.id) else {
+            return;
+        };
 
-            if !file.local.is_downloading_active || entry.get().is_empty() {
-                entry.remove();
-            }
+        senders.retain(|sender| sender.try_send(file.clone()).is_ok());
+
+        if file.local.is_downloading_active && !senders.is_empty() {
+            self.imp()
+                .downloading_files
+                .borrow_mut()
+                .insert(file.id, senders);
         }
     }
 }
