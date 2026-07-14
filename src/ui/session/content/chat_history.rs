@@ -303,6 +303,8 @@ mod imp {
                 }
             ));
             self.pinned_message_bar.add_controller(pinned_gesture);
+            self.pinned_message_bar
+                .set_cursor_from_name(Some("pointer"));
 
             let adj = self.list_view.vadjustment().unwrap();
             adj.connect_value_changed(clone!(

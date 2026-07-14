@@ -254,6 +254,19 @@ messagebubble {
   box-shadow: 0 2px 6px alpha(black, 0.25);
 }
 
+/* The pinned bar is clickable (jumps to the pinned message): hint it on hover. */
+.pinned-message {
+  transition: background-color 150ms ease-out;
+}
+
+.pinned-message:hover {
+  background-color: alpha(@accent_bg_color, 0.08);
+}
+
+.pinned-message:active {
+  background-color: alpha(@accent_bg_color, 0.14);
+}
+
 /* The pinned bar's segment stack: one small vertical line per pinned message; the one
    currently shown in the bar is full accent, the others a dimmed accent. */
 .pinned-dot {
