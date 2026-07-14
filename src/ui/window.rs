@@ -195,8 +195,11 @@ impl Window {
                 if let Some(avatar) = chat.avatar() {
                     let avatar_file = &avatar.0;
                     if avatar_file.local.is_downloading_completed {
-                        if let Ok(texture) = gdk::Texture::from_filename(&avatar_file.local.path) {
-                            notification.set_icon(&texture);
+                        match gdk::Texture::from_filename(&avatar_file.local.path) {
+                            Ok(texture) => notification.set_icon(&texture),
+                            Err(error) => {
+                                log::warn!("Failed to load a notification avatar: {error:?}")
+                            }
                         }
                         app.send_notification(Some(&notification_id.to_string()), &notification);
                     } else {
@@ -211,14 +214,18 @@ impl Window {
                             async move {
                                 match session.download_file(file_id).await {
                                     Ok(file) => {
-                                        let texture =
-                                            gdk::Texture::from_filename(file.local.path).unwrap();
-                                        notification.set_icon(&texture);
-
-                                        app.send_notification(
-                                            Some(&notification_id.to_string()),
-                                            &notification,
-                                        );
+                                        match gdk::Texture::from_filename(file.local.path) {
+                                            Ok(texture) => {
+                                                notification.set_icon(&texture);
+                                                app.send_notification(
+                                                    Some(&notification_id.to_string()),
+                                                    &notification,
+                                                );
+                                            }
+                                            Err(error) => log::warn!(
+                                                "Failed to load a notification avatar: {error:?}"
+                                            ),
+                                        }
                                     }
                                     Err(e) => {
                                         log::warn!("Failed to download an avatar: {e:?}");
