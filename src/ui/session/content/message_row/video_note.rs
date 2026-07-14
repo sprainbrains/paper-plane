@@ -1,3 +1,6 @@
+use std::cell::Cell;
+use std::cell::RefCell;
+
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
@@ -20,6 +23,9 @@ mod imp {
         pub(super) handler: MessageHandler,
         #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
+        pub(super) generation: Cell<u64>,
+        pub(super) demand: Cell<bool>,
+        pub(super) media: RefCell<Option<gtk::MediaFile>>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
@@ -63,7 +69,25 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for MessageVideoNote {}
+    impl WidgetImpl for MessageVideoNote {
+        fn map(&self) {
+            self.parent_map();
+            self.demand.set(true);
+            if let Some(message) = self.message.upgrade() {
+                self.obj()
+                    .update_content(message.content().0, &message.chat_().session_());
+            }
+        }
+
+        fn unmap(&self) {
+            self.demand.set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
+            if let Some(media) = self.media.borrow().as_ref() {
+                media.pause();
+            }
+            self.parent_unmap();
+        }
+    }
     impl ui::MessageBaseImpl for MessageVideoNote {}
 }
 
@@ -97,9 +121,9 @@ impl ui::MessageBaseExt for MessageVideoNote {
         ));
         imp.handler.set(handler_id);
 
+        imp.message.set(Some(message));
         self.update_content(message.content().0, &message.chat_().session_());
 
-        imp.message.set(Some(message));
         self.notify("message");
     }
 }
@@ -111,6 +135,11 @@ impl MessageVideoNote {
         session: &model::ClientStateSession,
     ) {
         let imp = self.imp();
+        imp.generation.set(imp.generation.get().wrapping_add(1));
+        let generation = imp.generation.get();
+        if let Some(media) = imp.media.take() {
+            media.pause();
+        }
 
         let tdlib::enums::MessageContent::MessageVideoNote(data) = content else {
             return;
@@ -123,21 +152,32 @@ impl MessageVideoNote {
             .set_label(&format_duration(video_note.duration));
 
         if video_note.video.local.is_downloading_completed {
-            self.load_video(&video_note.video.local.path);
+            if imp.demand.get() {
+                self.load_video(
+                    &video_note.video.local.path,
+                    video_note.video.id,
+                    generation,
+                );
+            }
         } else {
-            imp.picture.set_paintable(
-                video_note
-                    .minithumbnail
-                    .and_then(|m| {
-                        gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
-                            &m.data,
-                        )))
-                        .ok()
-                    })
-                    .as_ref(),
-            );
+            if imp.demand.get() {
+                imp.picture.set_paintable(
+                    video_note
+                        .minithumbnail
+                        .and_then(|m| {
+                            gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
+                                &m.data,
+                            )))
+                            .ok()
+                        })
+                        .as_ref(),
+                );
+            }
 
             // Video notes are small; download and auto-play them muted on loop.
+            if !imp.demand.get() {
+                return;
+            }
             let file_id = video_note.video.id;
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
@@ -146,7 +186,7 @@ impl MessageVideoNote {
                 session,
                 async move {
                     match session.download_file(file_id).await {
-                        Ok(file) => obj.load_video(&file.local.path),
+                        Ok(file) => obj.load_video(&file.local.path, file_id, generation),
                         Err(e) => log::warn!("Failed to download a video note: {e:?}"),
                     }
                 }
@@ -154,12 +194,23 @@ impl MessageVideoNote {
         }
     }
 
-    fn load_video(&self, path: &str) {
+    fn load_video(&self, path: &str, file_id: i32, generation: u64) {
+        let imp = self.imp();
+        if !imp.demand.get()
+            || !self.is_mapped()
+            || imp.generation.get() != generation
+            || !imp.message.upgrade().is_some_and(|message| {
+                matches!(message.content().0, tdlib::enums::MessageContent::MessageVideoNote(data) if data.video_note.video.id == file_id)
+            })
+        {
+            return;
+        }
         let media = gtk::MediaFile::for_filename(path);
         media.set_muted(true);
         media.set_loop(true);
         media.play();
-        self.imp().picture.set_paintable(Some(&media));
+        imp.picture.set_paintable(Some(&media));
+        imp.media.replace(Some(media));
     }
 }
 

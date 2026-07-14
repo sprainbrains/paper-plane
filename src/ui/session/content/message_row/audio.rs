@@ -23,6 +23,8 @@ mod imp {
         pub(super) message: glib::WeakRef<model::Message>,
         pub(super) media: RefCell<Option<gtk::MediaFile>>,
         pub(super) pending_file_id: Cell<i32>,
+        pub(super) generation: Cell<u64>,
+        pub(super) demand: Cell<bool>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
@@ -80,7 +82,21 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for MessageAudio {}
+    impl WidgetImpl for MessageAudio {
+        fn map(&self) {
+            self.parent_map();
+            self.demand.set(true);
+        }
+
+        fn unmap(&self) {
+            self.demand.set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
+            if let Some(media) = self.media.borrow().as_ref() {
+                media.pause();
+            }
+            self.parent_unmap();
+        }
+    }
     impl ui::MessageBaseImpl for MessageAudio {}
 }
 
@@ -99,6 +115,7 @@ impl ui::MessageBaseExt for MessageAudio {
         if imp.message.upgrade().as_ref() == Some(message) {
             return;
         }
+        imp.generation.set(imp.generation.get().wrapping_add(1));
 
         if let Some(media) = imp.media.take() {
             media.pause();
@@ -140,6 +157,9 @@ impl ui::MessageBaseExt for MessageAudio {
 impl MessageAudio {
     fn toggle_playback(&self) {
         let imp = self.imp();
+        if !imp.demand.get() || !self.is_mapped() {
+            return;
+        }
 
         if let Some(media) = imp.media.borrow().clone() {
             if media.is_playing() {
@@ -154,6 +174,8 @@ impl MessageAudio {
             return;
         };
         let file_id = imp.pending_file_id.get();
+        let generation = imp.generation.get();
+        let message_id = message.id();
         let session = message.chat_().session_();
 
         utils::spawn(clone!(
@@ -179,7 +201,9 @@ impl MessageAudio {
                     }
                 };
 
-                obj.start_playback(&path);
+                if obj.is_current(message_id, file_id, generation) {
+                    obj.start_playback(&path);
+                }
             }
         ));
     }
@@ -205,5 +229,21 @@ impl MessageAudio {
 
         imp.pending_file_id.set(0);
         imp.media.replace(Some(media));
+    }
+
+    fn is_current(
+        &self,
+        message_id: crate::types::MessageId,
+        file_id: i32,
+        generation: u64,
+    ) -> bool {
+        let imp = self.imp();
+        imp.demand.get()
+            && self.is_mapped()
+            && imp.generation.get() == generation
+            && imp.message.upgrade().is_some_and(|message| {
+                message.id() == message_id
+                    && matches!(message.content().0, tdlib::enums::MessageContent::MessageAudio(data) if file_id == 0 || data.audio.audio.id == file_id)
+            })
     }
 }

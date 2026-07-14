@@ -60,6 +60,7 @@ mod imp {
     pub struct Snow {
         pub(super) snow_shader: RefCell<Option<gsk::GLShader>>,
         pub(super) time_start: Cell<i64>,
+        pub(super) ticking: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -71,18 +72,23 @@ mod imp {
 
     impl ObjectImpl for Snow {
         fn constructed(&self) {
-            if super::Snow::correct_date() {
-                self.obj().add_tick_callback(|widget, _clock| {
-                    widget.queue_draw();
-                    glib::ControlFlow::Continue
-                });
-            } else {
+            self.parent_constructed();
+            if !super::Snow::correct_date() {
                 self.obj().set_visible(false);
             }
         }
     }
 
     impl WidgetImpl for Snow {
+        fn map(&self) {
+            self.parent_map();
+            self.obj().start_ticking();
+        }
+
+        fn unmap(&self) {
+            self.parent_unmap();
+        }
+
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let widget = self.obj();
             widget.ensure_shader();
@@ -117,6 +123,20 @@ glib::wrapper! {
 }
 
 impl Snow {
+    fn start_ticking(&self) {
+        if self.imp().ticking.replace(true) {
+            return;
+        }
+        self.add_tick_callback(|widget, _clock| {
+            if !widget.is_mapped() {
+                widget.imp().ticking.set(false);
+                return glib::ControlFlow::Break;
+            }
+            widget.queue_draw();
+            glib::ControlFlow::Continue
+        });
+    }
+
     fn correct_date() -> bool {
         match glib::DateTime::now_local() {
             Ok(date_time) => {

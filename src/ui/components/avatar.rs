@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -23,6 +24,8 @@ mod imp {
         pub(super) item: RefCell<Option<glib::Object>>,
         pub(super) user_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
+        pub(super) generation: Cell<u64>,
+        pub(super) demand: Cell<bool>,
         #[template_child]
         pub(super) avatar: TemplateChild<adw::Avatar>,
     }
@@ -89,7 +92,19 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for Avatar {}
+    impl WidgetImpl for Avatar {
+        fn map(&self) {
+            self.parent_map();
+            self.demand.set(true);
+            self.obj().update_avatar();
+        }
+
+        fn unmap(&self) {
+            self.demand.set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
+            self.parent_unmap();
+        }
+    }
     impl BinImpl for Avatar {}
 }
 
@@ -180,12 +195,21 @@ impl Avatar {
         imp.chat_signal_group.set(chat_signal_group).unwrap();
     }
 
-    fn load_image(&self, avatar: Option<model::Avatar>, session: model::ClientStateSession) {
+    fn load_image(
+        &self,
+        avatar: Option<model::Avatar>,
+        session: model::ClientStateSession,
+        generation: u64,
+    ) {
         if let Some(avatar) = avatar {
             let file = avatar.0;
             if file.local.is_downloading_completed {
-                let texture = gdk::Texture::from_filename(&file.local.path).unwrap();
-                self.imp().avatar.set_custom_image(Some(&texture));
+                if self.is_current(file.id, generation) {
+                    match gdk::Texture::from_filename(&file.local.path) {
+                        Ok(texture) => self.imp().avatar.set_custom_image(Some(&texture)),
+                        Err(error) => log::warn!("Failed to load an avatar: {error:?}"),
+                    }
+                }
             } else {
                 let file_id = file.id;
 
@@ -195,7 +219,7 @@ impl Avatar {
                     #[weak]
                     session,
                     async move {
-                        obj.download_avatar(file_id, &session).await;
+                        obj.download_avatar(file_id, generation, &session).await;
                     }
                 ));
             }
@@ -206,6 +230,8 @@ impl Avatar {
 
     fn update_avatar(&self) {
         let imp = self.imp();
+        imp.generation.set(imp.generation.get().wrapping_add(1));
+        let generation = imp.generation.get();
 
         imp.avatar.set_custom_image(gdk::Paintable::NONE);
         imp.avatar.set_icon_name(None);
@@ -217,14 +243,18 @@ impl Avatar {
                     imp.avatar.set_icon_name(Some("ghost-symbolic"));
                     imp.avatar.set_show_initials(false);
                 } else {
-                    self.load_image(user.avatar(), user.session_());
+                    if imp.demand.get() {
+                        self.load_image(user.avatar(), user.session_(), generation);
+                    }
                 }
             } else if let Some(chat) = item.downcast_ref::<model::Chat>() {
                 if chat.is_own_chat() {
                     imp.avatar.set_icon_name(Some("user-bookmarks-symbolic"));
                     imp.avatar.set_show_initials(false);
                 } else {
-                    self.load_image(chat.avatar(), chat.session_());
+                    if imp.demand.get() {
+                        self.load_image(chat.avatar(), chat.session_(), generation);
+                    }
                 }
             }
         }
@@ -252,16 +282,41 @@ impl Avatar {
         }
     }
 
-    async fn download_avatar(&self, file_id: i32, session: &model::ClientStateSession) {
+    async fn download_avatar(
+        &self,
+        file_id: i32,
+        generation: u64,
+        session: &model::ClientStateSession,
+    ) {
         match session.download_file(file_id).await {
             Ok(file) => {
-                let texture = gdk::Texture::from_filename(file.local.path).unwrap();
-                self.imp().avatar.set_custom_image(Some(&texture));
+                if self.is_current(file_id, generation) {
+                    match gdk::Texture::from_filename(file.local.path) {
+                        Ok(texture) => self.imp().avatar.set_custom_image(Some(&texture)),
+                        Err(error) => log::warn!("Failed to load an avatar: {error:?}"),
+                    }
+                }
             }
             Err(e) => {
                 log::warn!("Failed to download an avatar: {e:?}");
             }
         }
+    }
+
+    fn is_current(&self, file_id: i32, generation: u64) -> bool {
+        let imp = self.imp();
+        imp.demand.get()
+            && self.is_mapped()
+            && imp.generation.get() == generation
+            && self.item().is_some_and(|item| {
+                let avatar = if let Some(user) = item.downcast_ref::<model::User>() {
+                    user.avatar()
+                } else {
+                    item.downcast_ref::<model::Chat>()
+                        .and_then(|chat| chat.avatar())
+                };
+                avatar.is_some_and(|avatar| avatar.0.id == file_id)
+            })
     }
 
     pub(crate) fn item(&self) -> Option<glib::Object> {

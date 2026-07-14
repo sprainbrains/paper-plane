@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cell::RefCell;
 
 use glib::clone;
@@ -26,6 +27,8 @@ mod imp {
         pub(super) handler: MessageHandler,
         #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
+        pub(super) generation: Cell<u64>,
+        pub(super) demand: Cell<bool>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
@@ -75,7 +78,21 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for MessagePhoto {}
+    impl WidgetImpl for MessagePhoto {
+        fn map(&self) {
+            self.parent_map();
+            self.demand.set(true);
+            if let Some(message) = self.message.upgrade() {
+                self.obj().update_photo(&message);
+            }
+        }
+
+        fn unmap(&self) {
+            self.demand.set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
+            self.parent_unmap();
+        }
+    }
     impl ui::MessageBaseImpl for MessagePhoto {}
 }
 
@@ -143,6 +160,8 @@ impl MessagePhoto {
     fn update_photo(&self, message: &model::Message) {
         if let tdlib::enums::MessageContent::MessagePhoto(mut data) = message.content().0 {
             let imp = self.imp();
+            imp.generation.set(imp.generation.get().wrapping_add(1));
+            let generation = imp.generation.get();
             // Choose the right photo size based on the screen scale factor.
             // See https://core.telegram.org/api/files#image-thumbnail-types for more
             // information about photo sizes.
@@ -161,20 +180,27 @@ impl MessagePhoto {
                 .set_aspect_ratio(photo_size.width as f64 / photo_size.height as f64);
 
             if photo_size.photo.local.is_downloading_completed {
-                self.load_photo(photo_size.photo.local.path);
+                if imp.demand.get() {
+                    self.load_photo(photo_size.photo.local.path, photo_size.photo.id, generation);
+                }
             } else {
-                imp.picture.set_paintable(
-                    data.photo
-                        .minithumbnail
-                        .and_then(|m| {
-                            gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
-                                &m.data,
-                            )))
-                            .ok()
-                        })
-                        .as_ref(),
-                );
+                if imp.demand.get() {
+                    imp.picture.set_paintable(
+                        data.photo
+                            .minithumbnail
+                            .and_then(|m| {
+                                gdk::Texture::from_bytes(&glib::Bytes::from_owned(
+                                    glib::base64_decode(&m.data),
+                                ))
+                                .ok()
+                            })
+                            .as_ref(),
+                    );
+                }
 
+                if !imp.demand.get() {
+                    return;
+                }
                 let file_id = photo_size.photo.id;
                 let session = message.chat_().session_();
                 utils::spawn(clone!(
@@ -183,17 +209,22 @@ impl MessagePhoto {
                     #[weak]
                     session,
                     async move {
-                        obj.download_photo(file_id, &session).await;
+                        obj.download_photo(file_id, generation, &session).await;
                     }
                 ));
             }
         }
     }
 
-    async fn download_photo(&self, file_id: i32, session: &model::ClientStateSession) {
+    async fn download_photo(
+        &self,
+        file_id: i32,
+        generation: u64,
+        session: &model::ClientStateSession,
+    ) {
         match session.download_file(file_id).await {
             Ok(file) => {
-                self.load_photo(file.local.path);
+                self.load_photo(file.local.path, file_id, generation);
             }
             Err(e) => {
                 log::warn!("Failed to download a photo: {e:?}");
@@ -201,7 +232,7 @@ impl MessagePhoto {
         }
     }
 
-    fn load_photo(&self, path: String) {
+    fn load_photo(&self, path: String, file_id: i32, generation: u64) {
         if let Some(message_id) = self.message_id() {
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
@@ -216,7 +247,13 @@ impl MessagePhoto {
                     // ListView recycling while decoding the image. It may also
                     // that the message has been already removed from the history
                     // and the WeakRef is None (after successful sent)
-                    if obj.message_id().filter(|id| *id == message_id).is_some() {
+                    let imp = obj.imp();
+                    if imp.demand.get()
+                        && obj.is_mapped()
+                        && imp.generation.get() == generation
+                        && obj.message_id().filter(|id| *id == message_id).is_some()
+                        && obj.has_photo_file_id(file_id)
+                    {
                         match result {
                             Ok(texture) => {
                                 obj.imp().picture.set_paintable(Some(&texture));
@@ -229,5 +266,18 @@ impl MessagePhoto {
                 }
             ));
         }
+    }
+
+    fn has_photo_file_id(&self, file_id: i32) -> bool {
+        let Some(message) = self.imp().message.upgrade() else {
+            return false;
+        };
+        let tdlib::enums::MessageContent::MessagePhoto(data) = message.content().0 else {
+            return false;
+        };
+        data.photo
+            .sizes
+            .into_iter()
+            .any(|size| size.photo.id == file_id)
     }
 }

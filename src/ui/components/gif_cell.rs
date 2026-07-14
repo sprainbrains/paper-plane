@@ -82,6 +82,7 @@ mod imp {
         /// preview loader; cleared on unbind so stale decodes are dropped.
         pub(super) demand: RefCell<Rc<Cell<bool>>>,
         pub(super) generation: Cell<u64>,
+        pub(super) scrolling: RefCell<Option<Rc<Cell<bool>>>>,
     }
 
     #[glib::object_subclass]
@@ -133,7 +134,19 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for GifCell {}
+    impl WidgetImpl for GifCell {
+        fn map(&self) {
+            self.parent_map();
+            self.obj().start_preview();
+        }
+
+        fn unmap(&self) {
+            self.demand.borrow().set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
+            self.obj().stop_playback();
+            self.parent_unmap();
+        }
+    }
 }
 
 glib::wrapper! {
@@ -169,14 +182,12 @@ impl GifCell {
         let imp = self.imp();
         imp.session.set(Some(session));
         imp.generation.set(imp.generation.get().wrapping_add(1));
-        let generation = imp.generation.get();
         imp.wants_play.set(false);
         self.stop_media();
         imp.preview.replace(None);
         // Retire the previous bind's preview request, then start a fresh one.
         imp.demand.borrow().set(false);
-        let demand = Rc::new(Cell::new(true));
-        imp.demand.replace(demand.clone());
+        imp.scrolling.replace(Some(scrolling));
 
         let Some(picture) = imp.picture.borrow().clone() else {
             return;
@@ -191,6 +202,31 @@ impl GifCell {
         }
 
         imp.animation.replace(Some(animation.clone()));
+
+        if self.is_mapped() {
+            self.start_preview();
+        }
+    }
+
+    fn start_preview(&self) {
+        let imp = self.imp();
+        if imp.preview.borrow().is_some() {
+            return;
+        }
+        let Some(animation) = imp.animation.borrow().clone() else {
+            return;
+        };
+        let Some(session) = imp.session.upgrade() else {
+            return;
+        };
+        let Some(scrolling) = imp.scrolling.borrow().clone() else {
+            return;
+        };
+        imp.demand.borrow().set(false);
+        let demand = Rc::new(Cell::new(true));
+        imp.demand.replace(demand.clone());
+        imp.generation.set(imp.generation.get().wrapping_add(1));
+        let generation = imp.generation.get();
 
         // Load a crisp static preview from the animation's thumbnail (a cheap, cached,
         // rate-limited image decode — the same path the sticker previews use), rather
@@ -217,7 +253,7 @@ impl GifCell {
                 // Defer the preview while the grid is scrolling; bail if recycled.
                 while scrolling.get() {
                     glib::timeout_future(std::time::Duration::from_millis(50)).await;
-                    if obj.imp().generation.get() != generation {
+                    if obj.imp().generation.get() != generation || !obj.is_mapped() {
                         return;
                     }
                 }
@@ -226,7 +262,7 @@ impl GifCell {
                 else {
                     return;
                 };
-                if obj.imp().generation.get() != generation {
+                if obj.imp().generation.get() != generation || !obj.is_mapped() {
                     return;
                 }
                 obj.imp().preview.replace(Some(texture.clone()));
@@ -243,6 +279,9 @@ impl GifCell {
     /// Begin muted looped playback of the hovered cell's full animation.
     fn start_playback(&self) {
         let imp = self.imp();
+        if !self.is_mapped() {
+            return;
+        }
         imp.wants_play.set(true);
         if imp.media.borrow().is_some() {
             return;
@@ -263,13 +302,19 @@ impl GifCell {
             async move {
                 // Bound concurrent pipelines even under rapid hovering.
                 let permit = GifPermit::acquire().await;
-                if obj.imp().generation.get() != generation || !obj.imp().wants_play.get() {
+                if obj.imp().generation.get() != generation
+                    || !obj.imp().wants_play.get()
+                    || !obj.is_mapped()
+                {
                     return;
                 }
                 let Some(path) = gif_path(file, &session).await else {
                     return;
                 };
-                if obj.imp().generation.get() != generation || !obj.imp().wants_play.get() {
+                if obj.imp().generation.get() != generation
+                    || !obj.imp().wants_play.get()
+                    || !obj.is_mapped()
+                {
                     return;
                 }
                 let media = gtk::MediaFile::for_file(&gio::File::for_path(path));
@@ -293,10 +338,10 @@ impl GifCell {
         let imp = self.imp();
         imp.wants_play.set(false);
         self.stop_media();
-        if let Some(picture) = imp.picture.borrow().as_ref() {
-            if let Some(preview) = imp.preview.borrow().as_ref() {
-                picture.set_paintable(Some(preview));
-            }
+        if let Some(picture) = imp.picture.borrow().as_ref()
+            && let Some(preview) = imp.preview.borrow().as_ref()
+        {
+            picture.set_paintable(Some(preview));
         }
     }
 
@@ -310,6 +355,7 @@ impl GifCell {
         self.stop_media();
         imp.animation.replace(None);
         imp.preview.replace(None);
+        imp.scrolling.replace(None);
         if let Some(picture) = imp.picture.borrow().as_ref() {
             picture.set_paintable(gdk::Paintable::NONE);
         }

@@ -20,8 +20,12 @@ mod imp {
     pub(crate) struct Sticker {
         pub(super) file_id: Cell<i32>,
         pub(super) generation: Cell<u64>,
+        pub(super) demand: Cell<bool>,
         pub(super) aspect_ratio: Cell<f64>,
         pub(super) child: RefCell<Option<gtk::Widget>>,
+        pub(super) sticker: RefCell<Option<tdlib::types::Sticker>>,
+        pub(super) session: glib::WeakRef<model::ClientStateSession>,
+        pub(super) looped: Cell<bool>,
 
         #[property(get, set = Self::set_longer_side_size)]
         pub(super) longer_side_size: Cell<i32>,
@@ -85,12 +89,16 @@ mod imp {
 
         fn map(&self) {
             self.parent_map();
+            self.demand.set(true);
+            self.obj().start_loading();
             self.obj().resume_animation();
         }
 
         fn unmap(&self) {
-            self.parent_unmap();
+            self.demand.set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
             self.obj().pause_animation();
+            self.parent_unmap();
         }
     }
 
@@ -116,10 +124,32 @@ impl Sticker {
         session: model::ClientStateSession,
     ) {
         self.begin_update(&sticker);
+        self.imp().sticker.replace(Some(sticker));
+        self.imp().session.set(Some(&session));
+        self.imp().looped.set(looped);
+        if self.is_mapped() {
+            self.imp().demand.set(true);
+            self.start_loading();
+        }
+    }
+
+    fn start_loading(&self) {
+        let imp = self.imp();
+        if imp.child.borrow().is_some() || !imp.demand.get() {
+            return;
+        }
+        let Some(sticker) = imp.sticker.borrow().clone() else {
+            return;
+        };
+        let Some(session) = imp.session.upgrade() else {
+            return;
+        };
+        imp.generation.set(imp.generation.get().wrapping_add(1));
         let file = sticker.sticker;
         let file_id = file.id;
         let format = sticker.format;
-        let generation = self.imp().generation.get();
+        let generation = imp.generation.get();
+        let looped = imp.looped.get();
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -178,6 +208,9 @@ impl Sticker {
                     texture
                 } else {
                     let permit = sticker_cache::acquire_decode().await;
+                    if !self.is_current(file_id, generation) {
+                        return;
+                    }
                     let result = gio::spawn_blocking(move || {
                         utils::decode_image_from_path_at_size(&path, Some(target_size as u32))
                     })
@@ -222,10 +255,17 @@ impl Sticker {
     }
 
     fn is_current(&self, file_id: i32, generation: u64) -> bool {
-        self.imp().file_id.get() == file_id && self.imp().generation.get() == generation
+        let imp = self.imp();
+        imp.demand.get()
+            && self.is_mapped()
+            && imp.file_id.get() == file_id
+            && imp.generation.get() == generation
     }
 
     pub(crate) fn play_animation(&self) {
+        if !self.is_mapped() {
+            return;
+        }
         if let Some(animation) = &*self.imp().child.borrow()
             && let Some(animation) = animation.downcast_ref::<rlt::Animation>()
             && !animation.is_playing()

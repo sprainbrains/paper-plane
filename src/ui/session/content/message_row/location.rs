@@ -77,7 +77,21 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for MessageLocation {}
+    impl WidgetImpl for MessageLocation {
+        fn map(&self) {
+            self.parent_map();
+            if let Some(message) = self.message.upgrade() {
+                self.obj().update_row(&message);
+            }
+        }
+
+        fn unmap(&self) {
+            if let Some(source_id) = self.expire_source_id.take() {
+                source_id.remove();
+            }
+            self.parent_unmap();
+        }
+    }
     impl ui::MessageBaseImpl for MessageLocation {}
 
     #[gtk::template_callbacks]
@@ -171,6 +185,9 @@ impl MessageLocation {
                     imp.last_updated_label
                         .set_label(&gettext("updated just now"));
 
+                    if !self.is_mapped() {
+                        return;
+                    }
                     let source_id = glib::timeout_add_seconds_local(
                         1,
                         clone!(

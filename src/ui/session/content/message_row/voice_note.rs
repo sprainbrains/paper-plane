@@ -24,6 +24,8 @@ mod imp {
         // File id of a not-yet-downloaded voice note, fetched on first play; 0
         // once downloaded.
         pub(super) pending_file_id: Cell<i32>,
+        pub(super) generation: Cell<u64>,
+        pub(super) demand: Cell<bool>,
         pub(super) duration: Cell<i32>,
         pub(super) samples: RefCell<Vec<u8>>,
         #[template_child]
@@ -91,7 +93,21 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for MessageVoiceNote {}
+    impl WidgetImpl for MessageVoiceNote {
+        fn map(&self) {
+            self.parent_map();
+            self.demand.set(true);
+        }
+
+        fn unmap(&self) {
+            self.demand.set(false);
+            self.generation.set(self.generation.get().wrapping_add(1));
+            if let Some(media) = self.media.borrow().as_ref() {
+                media.pause();
+            }
+            self.parent_unmap();
+        }
+    }
     impl ui::MessageBaseImpl for MessageVoiceNote {}
 }
 
@@ -110,6 +126,7 @@ impl ui::MessageBaseExt for MessageVoiceNote {
         if imp.message.upgrade().as_ref() == Some(message) {
             return;
         }
+        imp.generation.set(imp.generation.get().wrapping_add(1));
 
         // Reset any previous playback state.
         if let Some(media) = imp.media.take() {
@@ -144,6 +161,9 @@ impl ui::MessageBaseExt for MessageVoiceNote {
 impl MessageVoiceNote {
     fn toggle_playback(&self) {
         let imp = self.imp();
+        if !imp.demand.get() || !self.is_mapped() {
+            return;
+        }
 
         // Already have a player: just toggle play/pause.
         if let Some(media) = imp.media.borrow().clone() {
@@ -160,6 +180,8 @@ impl MessageVoiceNote {
             return;
         };
         let file_id = imp.pending_file_id.get();
+        let generation = imp.generation.get();
+        let message_id = message.id();
         let session = message.chat_().session_();
 
         utils::spawn(clone!(
@@ -186,7 +208,9 @@ impl MessageVoiceNote {
                     }
                 };
 
-                obj.start_playback(&path);
+                if obj.is_current(message_id, file_id, generation) {
+                    obj.start_playback(&path);
+                }
             }
         ));
     }
@@ -229,6 +253,22 @@ impl MessageVoiceNote {
 
         imp.pending_file_id.set(0);
         imp.media.replace(Some(media));
+    }
+
+    fn is_current(
+        &self,
+        message_id: crate::types::MessageId,
+        file_id: i32,
+        generation: u64,
+    ) -> bool {
+        let imp = self.imp();
+        imp.demand.get()
+            && self.is_mapped()
+            && imp.generation.get() == generation
+            && imp.message.upgrade().is_some_and(|message| {
+                message.id() == message_id
+                    && matches!(message.content().0, tdlib::enums::MessageContent::MessageVoiceNote(data) if file_id == 0 || data.voice_note.voice.id == file_id)
+            })
     }
 }
 
