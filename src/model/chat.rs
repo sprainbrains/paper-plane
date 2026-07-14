@@ -281,6 +281,11 @@ impl Chat {
                     message.handle_update(update);
                 }
             }
+            MessageIsPinned(ref data) => {
+                if let Some(message) = self.message(data.message_id) {
+                    message.handle_update(update);
+                }
+            }
             MessageInteractionInfo(ref data) => {
                 if let Some(message) = self.message(data.message_id) {
                     message.handle_update(update);

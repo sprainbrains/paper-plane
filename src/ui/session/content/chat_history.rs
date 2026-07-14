@@ -22,6 +22,21 @@ use crate::strings;
 use crate::ui;
 use crate::utils;
 
+/// The inline mini preview of a message's media, when its content carries one.
+fn content_minithumbnail(
+    content: &tdlib::enums::MessageContent,
+) -> Option<&tdlib::types::Minithumbnail> {
+    use tdlib::enums::MessageContent::*;
+    match content {
+        MessagePhoto(data) => data.photo.minithumbnail.as_ref(),
+        MessageVideo(data) => data.video.minithumbnail.as_ref(),
+        MessageAnimation(data) => data.animation.minithumbnail.as_ref(),
+        MessageDocument(data) => data.document.minithumbnail.as_ref(),
+        MessageVideoNote(data) => data.video_note.minithumbnail.as_ref(),
+        _ => None,
+    }
+}
+
 /// Whether the gesture's current event came from a touchscreen. Selection dragging is
 /// mouse-only so touch input keeps kinetic-scrolling the list.
 fn is_touch(gesture: &gtk::GestureDrag) -> bool {
@@ -104,8 +119,18 @@ mod imp {
         #[template_child]
         pub(super) pinned_message_label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub(super) pinned_title_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) pinned_dots: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) pinned_thumbnail: TemplateChild<gtk::Picture>,
+        #[template_child]
         pub(super) unpin_button: TemplateChild<gtk::Button>,
-        pub(super) pinned_message_id: Cell<i64>,
+        /// Every pinned message of the current chat, newest first, and which one the
+        /// pinned bar currently shows. Clicking the bar reveals the shown message and
+        /// advances to the next older one, cycling through all of them.
+        pub(super) pinned_messages: RefCell<Vec<model::Message>>,
+        pub(super) pinned_index: Cell<usize>,
         #[template_child]
         pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
         /// Chats whose pinned-message panel the user hid (session-local, per chat).
@@ -153,6 +178,9 @@ mod imp {
 
             klass.install_action("chat-history.hide-pinned", None, |widget, _, _| {
                 widget.hide_pinned_bar();
+            });
+            klass.install_action("chat-history.pinned-list", None, |widget, _, _| {
+                widget.show_pinned_list();
             });
             klass.install_action("chat-history.show-pinned", None, |widget, _, _| {
                 widget.show_pinned_bar();
@@ -617,7 +645,8 @@ impl ChatHistory {
         // Reset the pinned-message bar; it's re-populated below if the new chat
         // has a pinned message.
         imp.pinned_message_bar.set_visible(false);
-        imp.pinned_message_id.set(0);
+        imp.pinned_messages.borrow_mut().clear();
+        imp.pinned_index.set(0);
 
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
@@ -1293,17 +1322,21 @@ impl ChatHistory {
         })
     }
 
-    /// Scrolls the history to the pinned message, if it is currently loaded.
+    /// Reveals the pinned message the bar currently shows, then advances the bar to the
+    /// next older pinned message (wrapping), so repeated clicks walk through all of them.
     fn scroll_to_pinned(&self) {
-        let message_id = self.imp().pinned_message_id.get();
-        match self.message_position(message_id) {
-            Some(position) => {
-                self.imp()
-                    .list_view
-                    .scroll_to(position, gtk::ListScrollFlags::FOCUS, None)
+        let imp = self.imp();
+        let (message_id, count) = {
+            let messages = imp.pinned_messages.borrow();
+            if messages.is_empty() {
+                return;
             }
-            None => log::debug!("Pinned message {message_id} is not in the loaded history"),
-        }
+            let index = imp.pinned_index.get().min(messages.len() - 1);
+            (messages[index].id(), messages.len())
+        };
+        self.focus_message(message_id);
+        imp.pinned_index.set((imp.pinned_index.get() + 1) % count);
+        self.update_pinned_bar();
     }
 
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
@@ -1798,25 +1831,32 @@ impl ChatHistory {
         let Some(chat) = self.chat() else {
             return;
         };
-        let imp = self.imp();
-        imp.hidden_pinned_chats.borrow_mut().remove(&chat.id());
-        if imp.pinned_message_id.get() != 0 {
-            imp.pinned_message_bar.set_visible(true);
-        }
+        self.imp()
+            .hidden_pinned_chats
+            .borrow_mut()
+            .remove(&chat.id());
         self.action_set_enabled("chat-history.show-pinned", false);
+        self.update_pinned_bar();
     }
 
+    /// Unpins (for everyone) the pinned message the bar currently shows.
     fn unpin_message(&self) {
         let imp = self.imp();
         let Some(chat) = self.chat() else {
             return;
         };
-        let message_id = imp.pinned_message_id.get();
+        let message_id = {
+            let mut messages = imp.pinned_messages.borrow_mut();
+            if messages.is_empty() {
+                return;
+            }
+            let index = imp.pinned_index.get().min(messages.len() - 1);
+            messages.remove(index).id()
+        };
+        self.update_pinned_bar();
+
         let client_id = chat.session_().client_().id();
         let chat_id = chat.id();
-
-        imp.pinned_message_bar.set_visible(false);
-
         utils::spawn(async move {
             if let Err(e) =
                 tdlib::functions::unpin_chat_message(chat_id, message_id, client_id).await
@@ -1826,9 +1866,16 @@ impl ChatHistory {
         });
     }
 
-    /// Fetches the chat's pinned message (if any) and shows a preview of it in
-    /// the bar below the header. TDLib returns an error when nothing is pinned,
-    /// in which case the bar stays hidden.
+    /// Re-fetches the pinned messages after a pin/unpin elsewhere (e.g. the message
+    /// context menu) so the bar reflects the change immediately.
+    pub(crate) fn refresh_pinned_messages(&self) {
+        if let Some(chat) = self.chat() {
+            self.fetch_pinned_message(&chat);
+        }
+    }
+
+    /// Fetches all of the chat's pinned messages (newest first) and shows the newest in
+    /// the bar below the header; the bar stays hidden when nothing is pinned.
     fn fetch_pinned_message(&self, chat: &model::Chat) {
         let chat = chat.clone();
         let client_id = chat.session_().client_().id();
@@ -1838,26 +1885,164 @@ impl ChatHistory {
             #[weak(rename_to = obj)]
             self,
             async move {
-                if let Ok(tdlib::enums::Message::Message(td_message)) =
-                    tdlib::functions::get_chat_pinned_message(chat_id, client_id).await
+                if let Ok(tdlib::enums::FoundChatMessages::FoundChatMessages(found)) =
+                    tdlib::functions::search_chat_messages(
+                        chat_id,
+                        None,
+                        String::new(),
+                        None,
+                        0,
+                        0,
+                        100,
+                        Some(tdlib::enums::SearchMessagesFilter::Pinned),
+                        client_id,
+                    )
+                    .await
                 {
                     // Ignore the result if the user has since switched chats.
                     if obj.chat().as_ref() != Some(&chat) {
                         return;
                     }
-
-                    let message = model::Message::new(&chat, td_message);
+                    let messages: Vec<model::Message> = found
+                        .messages
+                        .into_iter()
+                        .map(|td_message| model::Message::new(&chat, td_message))
+                        .collect();
                     let imp = obj.imp();
-                    imp.pinned_message_id.set(message.id());
-                    imp.pinned_message_label
-                        .set_label(&strings::message_content(&message));
-                    // Stay hidden if the user dismissed this chat's panel earlier; the
-                    // header menu's "Show Pinned Panel" brings it back.
-                    let hidden = imp.hidden_pinned_chats.borrow().contains(&chat_id);
-                    imp.pinned_message_bar.set_visible(!hidden);
+                    imp.pinned_messages.replace(messages);
+                    imp.pinned_index.set(0);
+                    obj.update_pinned_bar();
                 }
             }
         ));
+    }
+
+    /// Refreshes the pinned bar from `pinned_messages`/`pinned_index`: preview text,
+    /// numbered title, media minithumbnail, and the segment stack on the left (one line
+    /// per pinned message — the shown one in full accent, the rest dimmed). Hides the
+    /// bar when nothing is pinned or the user hid the panel for this chat.
+    fn update_pinned_bar(&self) {
+        let imp = self.imp();
+        let messages = imp.pinned_messages.borrow();
+        let count = messages.len();
+        let hidden = self
+            .chat()
+            .is_some_and(|chat| imp.hidden_pinned_chats.borrow().contains(&chat.id()));
+        if count == 0 || hidden {
+            imp.pinned_message_bar.set_visible(false);
+            return;
+        }
+        let index = imp.pinned_index.get().min(count - 1);
+        imp.pinned_index.set(index);
+        let message = &messages[index];
+
+        imp.pinned_message_label
+            .set_label(&strings::message_content(message));
+        imp.pinned_title_label.set_label(&if count > 1 {
+            // Pinned messages are numbered oldest = 1, like tdesktop.
+            gettext("Pinned Message #{n}").replace("{n}", &(count - index).to_string())
+        } else {
+            gettext("Pinned Message")
+        });
+
+        let texture = content_minithumbnail(&message.content().0).and_then(|minithumbnail| {
+            gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
+                &minithumbnail.data,
+            )))
+            .ok()
+        });
+        imp.pinned_thumbnail.set_paintable(texture.as_ref());
+        imp.pinned_thumbnail.set_visible(texture.is_some());
+
+        // Rebuild the segment stack: up to 5 lines; with more pinned messages than
+        // that, the active line's position is scaled into the stack.
+        while let Some(child) = imp.pinned_dots.first_child() {
+            child.unparent();
+        }
+        let segments = count.min(5);
+        let active = if count > segments {
+            index * (segments - 1) / (count - 1)
+        } else {
+            index
+        };
+        let height = (26 / segments as i32).clamp(4, 12);
+        for i in 0..segments {
+            let dot = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            dot.set_size_request(3, height);
+            dot.add_css_class("pinned-dot");
+            if i == active {
+                dot.add_css_class("active");
+            }
+            imp.pinned_dots.append(&dot);
+        }
+
+        imp.pinned_message_bar.set_visible(true);
+    }
+
+    /// Opens a dialog listing every pinned message of the chat; activating one closes
+    /// the dialog and jumps to that message.
+    fn show_pinned_list(&self) {
+        let messages = self.imp().pinned_messages.borrow().clone();
+        if messages.is_empty() {
+            return;
+        }
+
+        let list = gtk::ListBox::builder()
+            .selection_mode(gtk::SelectionMode::None)
+            .css_classes(["boxed-list"])
+            .margin_top(12)
+            .margin_bottom(12)
+            .margin_start(12)
+            .margin_end(12)
+            .valign(gtk::Align::Start)
+            .build();
+
+        let dialog = adw::Dialog::builder()
+            .title(gettext("Pinned Messages"))
+            .content_width(420)
+            .content_height(480)
+            .build();
+
+        for message in &messages {
+            let row = adw::ActionRow::builder()
+                .title(strings::message_sender(&message.sender(), true))
+                .subtitle(strings::message_content(message))
+                .use_markup(false)
+                .activatable(true)
+                .build();
+            let when = glib::DateTime::from_unix_local(message.date() as i64)
+                .ok()
+                .and_then(|datetime| datetime.format("%d/%m/%y %H:%M").ok())
+                .unwrap_or_default();
+            row.add_suffix(
+                &gtk::Label::builder()
+                    .label(when)
+                    .css_classes(["caption", "dim-label"])
+                    .build(),
+            );
+            let message_id = message.id();
+            row.connect_activated(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[weak]
+                dialog,
+                move |_| {
+                    dialog.close();
+                    obj.focus_message(message_id);
+                }
+            ));
+            list.append(&row);
+        }
+
+        let scrolled = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .child(&list)
+            .build();
+        let toolbar = adw::ToolbarView::new();
+        toolbar.add_top_bar(&adw::HeaderBar::new());
+        toolbar.set_content(Some(&scrolled));
+        dialog.set_child(Some(&toolbar));
+        dialog.present(Some(self));
     }
 
     pub(crate) fn sticky(&self) -> bool {

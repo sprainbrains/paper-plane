@@ -56,6 +56,12 @@ const PRIMARY: &[MenuEntry] = &[
         destructive: false,
     },
     MenuEntry {
+        action: "message-row.unpin",
+        icon: "pin-crossed-symbolic",
+        label: "Unpin",
+        destructive: false,
+    },
+    MenuEntry {
         action: "message-row.edit",
         icon: "edit-symbolic",
         label: "Edit",

@@ -254,6 +254,22 @@ messagebubble {
   box-shadow: 0 2px 6px alpha(black, 0.25);
 }
 
+/* The pinned bar's segment stack: one small vertical line per pinned message; the one
+   currently shown in the bar is full accent, the others a dimmed accent. */
+.pinned-dot {
+  background-color: alpha(@accent_bg_color, 0.35);
+  border-radius: 2px;
+}
+
+.pinned-dot.active {
+  background-color: @accent_bg_color;
+}
+
+/* The pinned bar's media preview, like the chat list's minithumbnails but bigger. */
+.pinned-thumbnail {
+  border-radius: 6px;
+}
+
 /* A subtle accent tint over message rows picked in multi-select mode. The classes sit
    on the list-item wrapper so consecutive selected rows form one seamless block; only
    the outer corners of a selected run are rounded. */

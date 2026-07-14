@@ -32,6 +32,8 @@ mod imp {
         pub(super) message_info_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) sending_state_icon: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub(super) pinned_icon: TemplateChild<gtk::Image>,
     }
 
     #[glib::object_subclass]
@@ -119,6 +121,16 @@ impl MessageIndicators {
                 }
             ),
         );
+        message_signal_group.connect_notify_local(
+            Some("is-pinned"),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_pinned_icon();
+                }
+            ),
+        );
         imp.message_signal_group.set(message_signal_group).unwrap();
 
         let interaction_info_signal_group =
@@ -190,8 +202,18 @@ impl MessageIndicators {
         self.update_view_count();
         self.update_sending_state();
         self.update_message_info();
+        self.update_pinned_icon();
 
         self.notify("message");
+    }
+
+    /// A small pin next to the time while the message is pinned.
+    fn update_pinned_icon(&self) {
+        let pinned = self
+            .message()
+            .and_downcast::<model::Message>()
+            .is_some_and(|message| message.is_pinned());
+        self.imp().pinned_icon.set_visible(pinned);
     }
 
     /// Shows the view count on channel posts (where views are tracked), hidden

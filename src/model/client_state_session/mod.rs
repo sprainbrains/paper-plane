@@ -401,6 +401,7 @@ impl ClientStateSession {
             ChatAction(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageContent(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageEdited(ref data) => self.chat(data.chat_id).handle_update(update),
+            MessageIsPinned(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageInteractionInfo(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageMentionRead(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageSendSucceeded(ref data) => self.chat(data.message.chat_id).handle_update(update),

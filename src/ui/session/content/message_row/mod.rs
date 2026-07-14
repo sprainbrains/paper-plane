@@ -106,6 +106,9 @@ mod imp {
             klass.install_action("message-row.pin", None, move |widget, _, _| {
                 widget.pin_message()
             });
+            klass.install_action("message-row.unpin", None, move |widget, _, _| {
+                widget.unpin_message()
+            });
             klass.install_action("message-row.edit", None, move |widget, _, _| widget.edit());
             klass.install_action(
                 "message-row.show-sticker-pack",
@@ -218,12 +221,37 @@ impl Row {
         let chat_id = chat.id();
         let message_id = message.id();
 
+        let chat_history = utils::ancestor::<_, ui::ChatHistory>(self);
         utils::spawn(async move {
             if let Err(e) =
                 tdlib::functions::pin_chat_message(chat_id, message_id, false, false, client_id)
                     .await
             {
                 log::warn!("Failed to pin a message: {e:?}");
+            } else if let Some(chat_history) = chat_history {
+                chat_history.refresh_pinned_messages();
+            }
+        });
+    }
+
+    /// Unpins this message in its chat (for everyone).
+    fn unpin_message(&self) {
+        let Ok(message) = self.message().downcast::<model::Message>() else {
+            return;
+        };
+        let chat = message.chat_();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+
+        let chat_history = utils::ancestor::<_, ui::ChatHistory>(self);
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::unpin_chat_message(chat_id, message_id, client_id).await
+            {
+                log::warn!("Failed to unpin a message: {e:?}");
+            } else if let Some(chat_history) = chat_history {
+                chat_history.refresh_pinned_messages();
             }
         });
     }
@@ -718,9 +746,14 @@ impl Row {
                 "message-row.revoke-delete",
                 message.can_be_deleted_for_all_users(),
             );
+            // Pin and Unpin are mutually exclusive, following the message's live state.
+            self.action_set_enabled("message-row.pin", !message.is_pinned());
+            self.action_set_enabled("message-row.unpin", message.is_pinned());
         } else {
             self.action_set_enabled("message-row.delete", false);
             self.action_set_enabled("message-row.revoke-delete", false);
+            self.action_set_enabled("message-row.pin", false);
+            self.action_set_enabled("message-row.unpin", false);
         }
     }
 

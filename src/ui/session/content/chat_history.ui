@@ -90,16 +90,37 @@
               <class name="pinned-message"/>
             </style>
             <child>
+              <object class="GtkBox" id="pinned_dots">
+                <property name="orientation">vertical</property>
+                <property name="valign">center</property>
+                <property name="spacing">2</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkPicture" id="pinned_thumbnail">
+                <property name="visible">False</property>
+                <property name="content-fit">cover</property>
+                <property name="overflow">hidden</property>
+                <property name="width-request">34</property>
+                <property name="height-request">34</property>
+                <property name="valign">center</property>
+                <style>
+                  <class name="pinned-thumbnail"/>
+                </style>
+              </object>
+            </child>
+            <child>
               <object class="GtkBox">
                 <property name="orientation">vertical</property>
                 <property name="hexpand">True</property>
                 <property name="valign">center</property>
                 <child>
-                  <object class="GtkLabel">
+                  <object class="GtkLabel" id="pinned_title_label">
                     <property name="label" translatable="yes">Pinned Message</property>
                     <property name="xalign">0</property>
                     <style>
                       <class name="caption-heading"/>
+                      <class name="accent"/>
                     </style>
                   </object>
                 </child>
@@ -114,6 +135,18 @@
                     </style>
                   </object>
                 </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="icon-name">view-list-symbolic</property>
+                <property name="action-name">chat-history.pinned-list</property>
+                <property name="valign">center</property>
+                <property name="tooltip-text" translatable="yes">All Pinned Messages</property>
+                <style>
+                  <class name="flat"/>
+                  <class name="circular"/>
+                </style>
               </object>
             </child>
             <child>

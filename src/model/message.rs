@@ -80,6 +80,8 @@ mod imp {
         pub(super) content: RefCell<model::BoxedMessageContent>,
         #[property(get)]
         pub(super) is_edited: Cell<bool>,
+        #[property(get)]
+        pub(super) is_pinned: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -152,6 +154,7 @@ impl Message {
         imp.content
             .replace(model::BoxedMessageContent(td_message.content));
         imp.is_edited.set(td_message.edit_date > 0);
+        imp.is_pinned.set(td_message.is_pinned);
 
         obj
     }
@@ -167,6 +170,7 @@ impl Message {
                 self.set_content(new_content);
             }
             MessageEdited(data) => self.set_is_edited(data.edit_date > 0),
+            MessageIsPinned(data) => self.set_is_pinned(data.is_pinned),
             MessageInteractionInfo(data) => self.interaction_info().update(data.interaction_info),
             _ => {}
         }
@@ -197,6 +201,14 @@ impl Message {
         }
         self.imp().is_edited.set(is_edited);
         self.notify_is_edited();
+    }
+
+    fn set_is_pinned(&self, is_pinned: bool) {
+        if self.is_pinned() == is_pinned {
+            return;
+        }
+        self.imp().is_pinned.set(is_pinned);
+        self.notify_is_pinned();
     }
 
     pub(crate) fn sender_name_expression(&self) -> gtk::Expression {
