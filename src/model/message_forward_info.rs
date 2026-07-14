@@ -86,13 +86,21 @@ impl MessageForwardInfo {
             User(data) => {
                 MessageForwardOrigin::User(chat.session_().user_or_fetch(data.sender_user_id))
             }
-            Chat(data) => MessageForwardOrigin::Chat {
-                chat: chat.session_().chat(data.sender_chat_id),
+            // The origin chat may be unknown to this session (TDLib only guarantees
+            // it for ids it just sent, not for arbitrary history): fall back to the
+            // author signature instead of panicking.
+            Chat(data) => match chat.session_().try_chat(data.sender_chat_id) {
+                Some(chat) => MessageForwardOrigin::Chat { chat },
+                None => MessageForwardOrigin::HiddenUser {
+                    sender_name: data.author_signature,
+                },
             },
-            Channel(data) => {
-                let chat = chat.session_().chat(data.chat_id);
-                MessageForwardOrigin::Channel { chat }
-            }
+            Channel(data) => match chat.session_().try_chat(data.chat_id) {
+                Some(chat) => MessageForwardOrigin::Channel { chat },
+                None => MessageForwardOrigin::HiddenUser {
+                    sender_name: data.author_signature,
+                },
+            },
             HiddenUser(data) => MessageForwardOrigin::HiddenUser {
                 sender_name: data.sender_name,
             },
