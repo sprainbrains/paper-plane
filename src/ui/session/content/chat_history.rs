@@ -1831,6 +1831,11 @@ impl ChatHistory {
         id_match.or_else(|| bottom.and_then(|(row, _, looks_sent)| looks_sent.then_some(row)))
     }
 
+    /// Scrolls `message_id` (if loaded) to the viewport centre and flashes it. Centring
+    /// is a per-frame settling loop, not a one-shot: right after a jump the ListView's
+    /// row heights are still estimates, so a single correction computed from that
+    /// transient layout can land far off — the loop keeps re-centring until the row's
+    /// position is stable for a few frames (or a deadline passes), then flashes.
     pub(crate) fn focus_message(&self, message_id: i64) {
         let Some(position) = self.message_position(message_id) else {
             return;
@@ -1839,27 +1844,56 @@ impl ChatHistory {
         self.imp()
             .list_view
             .scroll_to(position, gtk::ListScrollFlags::empty(), None);
-        // Centre + flash once the row has been realised at its new position.
-        glib::idle_add_local_once(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move || obj.centre_and_flash_message(message_id)
-        ));
+
+        let stable_frames = Rc::new(Cell::new(0u32));
+        let first_frame_time = Rc::new(Cell::new(0i64));
+        self.add_tick_callback(move |obj, clock| {
+            let imp = obj.imp();
+            let now = clock.frame_time();
+            if first_frame_time.get() == 0 {
+                first_frame_time.set(now);
+            }
+            let deadline = now - first_frame_time.get() > 700_000;
+
+            match obj.find_message_row(message_id) {
+                Some(row) => {
+                    if let Some(bounds) = row.compute_bounds(&*imp.scrolled_window) {
+                        let adj = imp.list_view.vadjustment().unwrap();
+                        let viewport = imp.scrolled_window.height() as f64;
+                        let target = adj.value() + bounds.y() as f64
+                            - (viewport - bounds.height() as f64) / 2.0;
+                        let max = (adj.upper() - adj.page_size()).max(adj.lower());
+                        let target = target.clamp(adj.lower(), max);
+                        if (target - adj.value()).abs() > 1.0 {
+                            adj.set_value(target);
+                            stable_frames.set(0);
+                        } else {
+                            stable_frames.set(stable_frames.get() + 1);
+                        }
+                    }
+                }
+                None => {
+                    // Not realised yet — re-request the scroll and keep waiting.
+                    if let Some(position) = obj.message_position(message_id) {
+                        imp.list_view
+                            .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+                    }
+                    stable_frames.set(0);
+                }
+            }
+
+            if stable_frames.get() >= 3 || deadline {
+                obj.flash_message(message_id);
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
     }
 
-    fn centre_and_flash_message(&self, message_id: i64) {
+    fn flash_message(&self, message_id: i64) {
         let Some(row) = self.find_message_row(message_id) else {
             return;
         };
-        let imp = self.imp();
-        if let Some(bounds) = row.compute_bounds(&*imp.scrolled_window) {
-            let adj = imp.list_view.vadjustment().unwrap();
-            let viewport = imp.scrolled_window.height() as f64;
-            let target =
-                adj.value() + bounds.y() as f64 - (viewport - bounds.height() as f64) / 2.0;
-            let max = (adj.upper() - adj.page_size()).max(adj.lower());
-            adj.set_value(target.clamp(adj.lower(), max));
-        }
         // Flash the inner message row, not the outer ChatHistoryRow: the group-start top
         // margin lives inside the outer row's box, so flashing it would paint empty space
         // above the bubble with none below. The inner row's box hugs the content evenly.
