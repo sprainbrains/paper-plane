@@ -195,22 +195,42 @@ impl ChatHistoryRow {
     }
 
     /// Reflects multi-select state on this row: a subtle accent tint when selected, plus
-    /// the trailing checkbox (shown for every message while in selection mode).
+    /// the trailing checkbox (shown for every message while in selection mode). The tint
+    /// classes go on the list-item wrapper (this widget's parent) so consecutive
+    /// selected rows paint one seamless block, rounded only at the run's outer corners.
     pub(crate) fn update_selection_visual(&self) {
         let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) else {
             return;
         };
         let in_selection_mode = chat_history.is_selection_mode();
-        let selected = self
-            .item()
-            .and_downcast::<model::ChatHistoryItem>()
+        let item = self.item().and_downcast::<model::ChatHistoryItem>();
+        let selected = item
+            .as_ref()
             .and_then(|item| item.message().map(|message| message.id()))
             .is_some_and(|id| chat_history.is_message_selected(id));
 
+        let target = self.parent().unwrap_or_else(|| self.clone().upcast());
+        for class in [
+            "message-selected",
+            "selection-run-start",
+            "selection-run-end",
+        ] {
+            target.remove_css_class(class);
+        }
         if selected {
-            self.add_css_class("message-selected");
-        } else {
-            self.remove_css_class("message-selected");
+            target.add_css_class("message-selected");
+            let (is_start, is_end) = item
+                .zip(chat_history.history_model())
+                .map(|(item, model)| {
+                    model.selection_run_flags(&item, &|id| chat_history.is_message_selected(id))
+                })
+                .unwrap_or((true, true));
+            if is_start {
+                target.add_css_class("selection-run-start");
+            }
+            if is_end {
+                target.add_css_class("selection-run-end");
+            }
         }
 
         if let Some(row) = self.child().and_downcast::<ui::MessageRow>() {

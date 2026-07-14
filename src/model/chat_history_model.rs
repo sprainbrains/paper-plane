@@ -190,6 +190,31 @@ impl ChatHistoryModel {
         (is_start, is_end)
     }
 
+    /// For a selected message `item`, reports whether it is the first (topmost) and/or
+    /// last (bottommost) row of a run of consecutively selected messages, so the
+    /// selection tint can round only the run's outer corners and stay seamless inside.
+    /// Dividers break a run. Unknown items are treated as standalone `(true, true)`.
+    pub(crate) fn selection_run_flags(
+        &self,
+        item: &model::ChatHistoryItem,
+        is_selected: &dyn Fn(i64) -> bool,
+    ) -> (bool, bool) {
+        let list = self.imp().list.borrow();
+        let Some(index) = list.iter().position(|candidate| candidate == item) else {
+            return (true, true);
+        };
+        let selected_neighbour = |other: Option<&model::ChatHistoryItem>| {
+            other
+                .and_then(model::ChatHistoryItem::message)
+                .is_some_and(|message| is_selected(message.id()))
+        };
+        // The list runs newest (index 0) to oldest, so the visually-above (older)
+        // neighbour is at index + 1 and the visually-below (newer) one at index - 1.
+        let is_start = !selected_neighbour(list.get(index + 1));
+        let is_end = !selected_neighbour(index.checked_sub(1).and_then(|i| list.get(i)));
+        (is_start, is_end)
+    }
+
     /// Inserts an "Unread messages" divider just before the first unread message (the
     /// oldest message with id greater than `last_read_id`), if the read/unread boundary
     /// is present in the currently loaded range and no divider exists yet.
