@@ -19,10 +19,10 @@ mod imp {
     pub(crate) struct ChatHistoryRow {
         /// An `ChatHistoryItem` or `SponsoredMessage`
         pub(super) item: RefCell<Option<glib::Object>>,
-        /// Transient translation applied while the row flies in from the send-animation
-        /// staging point (see `ChatHistory::play_send_animation`). Relative to the row's
-        /// rest position, so concurrent scrolling can't misplace the landing.
-        pub(super) flight_offset: Cell<(f32, f32)>,
+        /// Transient translation + scale applied while the row flies in from the send
+        /// animation's ghost (see `ChatHistory::play_send_animation`). Relative to the
+        /// row's rest position, so concurrent scrolling can't misplace the landing.
+        pub(super) flight_transform: Cell<Option<(f32, f32, f32, f32)>>,
     }
 
     #[glib::object_subclass]
@@ -77,13 +77,11 @@ mod imp {
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
-            let (dx, dy) = self.flight_offset.get();
-            if dx == 0.0 && dy == 0.0 {
-                self.parent_snapshot(snapshot);
-            } else {
+            if let Some((dx, dy, sx, sy)) = self.flight_transform.get() {
                 snapshot.translate(&gtk::graphene::Point::new(dx, dy));
-                self.parent_snapshot(snapshot);
+                snapshot.scale(sx, sy);
             }
+            self.parent_snapshot(snapshot);
         }
     }
     impl BinImpl for ChatHistoryRow {}
@@ -128,10 +126,10 @@ impl ChatHistoryRow {
         self.imp().item.borrow().to_owned()
     }
 
-    /// Translates the row's rendering by (`dx`, `dy`) relative to its rest position;
-    /// driven each frame by the send animation's flight phase.
-    pub(crate) fn set_flight_offset(&self, dx: f32, dy: f32) {
-        if self.imp().flight_offset.replace((dx, dy)) != (dx, dy) {
+    /// Translates and scales the row's rendering relative to its rest position; driven
+    /// each frame by the send animation's flight phase. `None` restores identity.
+    pub(crate) fn set_flight_transform(&self, transform: Option<(f32, f32, f32, f32)>) {
+        if self.imp().flight_transform.replace(transform) != transform {
             self.queue_draw();
         }
     }
@@ -206,8 +204,10 @@ impl ChatHistoryRow {
             }
         }
 
-        // Recycled rows must not inherit a leftover send-flight translation.
-        self.set_flight_offset(0.0, 0.0);
+        // Recycled rows must not inherit a leftover send-flight transform, nor stay
+        // invisible because the send animation hid them for a different message.
+        self.set_flight_transform(None);
+        self.set_opacity(1.0);
 
         self.imp().item.replace(item);
         self.notify("item");

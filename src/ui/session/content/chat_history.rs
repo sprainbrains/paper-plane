@@ -1217,13 +1217,14 @@ impl ChatHistory {
     /// Scrolls to `message_id` (if loaded), centres it in the view, and briefly flashes
     /// it — used when following a reply, jump, or link so the user can spot the target.
     /// Animates a just-sent message in two phases. Phase 1 is fully deterministic: a ghost
-    /// that starts as the grey composer field springs up to a fixed *staging point* (bottom
+    /// that starts as the grey composer field springs up towards a *staging point* (bottom
     /// of the message column, slightly left of where outgoing bubbles sit), cross-fading
     /// grey → accent and narrowing to the text's bubble size. Meanwhile a per-frame poll
-    /// finds the real message row and hides it. Phase 2 converts the ghost into the real
-    /// bubble: the ghost is dropped and the row itself flies from the staging point to its
-    /// rest position via a *relative* snapshot translation, so concurrent auto-scrolling
-    /// can't misplace the landing — at the end the bubble simply is where it belongs.
+    /// keeps the real message row hidden. Phase 2 begins the moment the real bubble is laid
+    /// out (mid-morph is fine): the ghost is dropped and the real bubble *grows out of it* —
+    /// the row is drawn translated + scaled so its bubble covers the ghost's last rectangle,
+    /// then springs to identity. Ending at identity makes the landing exact no matter how
+    /// the list scrolls underneath, and the bubble that lands is the real one, for good.
     /// `start` is the composer's rectangle in this widget's coordinates.
     pub(crate) fn play_send_animation(
         &self,
@@ -1273,9 +1274,8 @@ impl ChatHistory {
         imp.send_overlay.add_overlay(&ghost);
         imp.send_ghost.replace(Some(ghost.clone()));
 
-        // Phase 1: morph the ghost onto the staging rect. The done flag is what the poll
-        // below waits for before converting the ghost into the real bubble.
-        let morph_done = Rc::new(Cell::new(false));
+        // Phase 1: morph the ghost onto the staging rect. The colour cross-fade completes
+        // by half-way so an early conversion doesn't pop from grey to accent.
         let target = adw::CallbackAnimationTarget::new(clone!(
             #[weak]
             ghost,
@@ -1290,23 +1290,21 @@ impl ChatHistory {
                     lerp(start.width(), staging.width()) as i32,
                     lerp(start.height(), staging.height()) as i32,
                 );
-                accent.set_opacity(value.clamp(0.0, 1.0));
+                accent.set_opacity((value * 2.0).clamp(0.0, 1.0));
             }
         ));
         let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, Self::send_spring(), target);
         animation.set_initial_velocity(0.5);
-        animation.connect_done(clone!(
-            #[strong]
-            morph_done,
-            move |_| morph_done.set(true)
-        ));
         animation.play();
-        imp.send_animation.replace(Some(animation.upcast()));
+        imp.send_animation.replace(Some(animation.clone().upcast()));
 
-        // Poll every frame: hide the real row the moment it is realised (so it never
-        // flashes at its rest position behind the ghost), then, once the morph is done and
-        // the bubble has a real allocation, launch phase 2. Bail out with a fade if the
-        // row never shows up (send failed, chat switched, …).
+        // Poll every frame: keep the real row hidden from the moment it is realised (it can
+        // be re-created under us when TDLib swaps the optimistic id, so re-verify each
+        // frame), then convert the ghost into the real bubble as soon as the bubble has an
+        // allocation and the colour cross-fade is done — the flight continues from wherever
+        // the ghost currently is, no waiting for the morph to settle. Bail out with a fade
+        // if the row never shows up (send failed, chat switched, …).
+        let text = text.to_owned();
         let first_frame_time = Rc::new(Cell::new(0i64));
         let id = self.add_tick_callback(move |obj, clock| {
             let imp = obj.imp();
@@ -1315,24 +1313,32 @@ impl ChatHistory {
                 first_frame_time.set(now);
             }
 
-            if imp.send_flight_row.borrow().is_none()
-                && let Some(row) = obj.find_sent_row(message_id)
-            {
+            // (Re-)acquire the sent row: the widget we hid may have been recycled for a
+            // different item (its opacity is restored by `set_item` in that case).
+            let stored = imp.send_flight_row.borrow().clone();
+            let row = match stored.filter(|row| Self::row_shows_sent(row, message_id, &text)) {
+                Some(row) => Some(row),
+                None => {
+                    let row = obj.find_sent_row(message_id, &text);
+                    imp.send_flight_row.replace(row.clone());
+                    row
+                }
+            };
+            if let Some(row) = &row {
                 row.set_opacity(0.0);
-                imp.send_flight_row.replace(Some(row));
             }
 
-            if morph_done.get() {
-                let bounds = imp
-                    .send_flight_row
-                    .borrow()
+            let colour_settled =
+                animation.value() >= 0.5 || animation.state() != adw::AnimationState::Playing;
+            if colour_settled {
+                let bounds = row
                     .as_ref()
                     .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
                     .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
                     .filter(|bounds| bounds.width() > 1.0);
                 if let Some(bounds) = bounds {
                     imp.send_poll.take();
-                    obj.launch_send_flight(staging, bounds);
+                    obj.launch_send_flight(bounds);
                     return glib::ControlFlow::Break;
                 }
             }
@@ -1347,33 +1353,58 @@ impl ChatHistory {
         imp.send_poll.replace(Some(id));
     }
 
-    /// Phase 2: drop the ghost and let the real row fly from the staging point to its rest
-    /// position. The flight is a relative snapshot translation on the row (springing back
-    /// to zero), so the landing is exact no matter how the list scrolls underneath.
-    fn launch_send_flight(&self, staging: graphene::Rect, bounds: graphene::Rect) {
+    /// Phase 2: the real bubble grows out of the ghost. The flight starts from the ghost's
+    /// *current* rectangle (mid-morph) and the row is drawn translated and scaled so its
+    /// bubble exactly covers that rectangle, springing to identity. Because the transform
+    /// ends at identity, the landing is exact no matter how the list scrolls underneath.
+    fn launch_send_flight(&self, bounds: graphene::Rect) {
         let imp = self.imp();
-        if let Some(ghost) = imp.send_ghost.take() {
+        let from = imp.send_ghost.take().and_then(|ghost| {
+            let rect = ghost.compute_bounds(&*imp.send_overlay);
             imp.send_overlay.remove_overlay(&ghost);
-        }
+            rect
+        });
         let Some(row) = imp.send_flight_row.borrow().clone() else {
             return;
         };
         row.set_opacity(1.0);
+        let Some(from) = from else {
+            return;
+        };
+        // The bubble's offset inside its row: the transform is applied to the whole row,
+        // so anchoring the scale needs the bubble's local origin.
+        let bubble_local = utils::descendant::<_, ui::MessageBubble>(&row)
+            .and_then(|bubble| bubble.compute_bounds(&row))
+            .map(|rect| (rect.x(), rect.y()))
+            .unwrap_or((0.0, 0.0));
 
-        // Align the staging rect's right edge and top with the bubble's: outgoing bubbles
-        // are anchored right, so this reads as the bubble sliding into its lane.
-        let dx = (staging.x() + staging.width()) - (bounds.x() + bounds.width());
-        let dy = staging.y() - bounds.y();
-        row.set_flight_offset(dx, dy);
-
-        let target = adw::CallbackAnimationTarget::new(clone!(
+        let apply = clone!(
             #[weak]
             row,
-            move |value| {
-                let remaining = 1.0 - value as f32;
-                row.set_flight_offset(dx * remaining, dy * remaining);
+            move |value: f64| {
+                let progress = value as f32;
+                if (progress - 1.0).abs() < 0.001 {
+                    row.set_flight_transform(None);
+                    return;
+                }
+                let lerp = |a: f32, b: f32| a + (b - a) * progress;
+                // The rect the bubble should cover this frame, interpolating the ghost's
+                // rect to the bubble's rest rect with right edges aligned.
+                let width = lerp(from.width(), bounds.width());
+                let height = lerp(from.height(), bounds.height());
+                let right = lerp(from.x() + from.width(), bounds.x() + bounds.width());
+                let x = right - width;
+                let y = lerp(from.y(), bounds.y());
+                let sx = width / bounds.width().max(1.0);
+                let sy = height / bounds.height().max(1.0);
+                // Solve translate ∘ scale so the bubble's local origin lands on (x, y).
+                let tx = x - bounds.x() + (1.0 - sx) * bubble_local.0;
+                let ty = y - bounds.y() + (1.0 - sy) * bubble_local.1;
+                row.set_flight_transform(Some((tx, ty, sx, sy)));
             }
-        ));
+        );
+        apply(0.0);
+        let target = adw::CallbackAnimationTarget::new(apply);
         let animation = adw::SpringAnimation::new(&row, 0.0, 1.0, Self::send_spring(), target);
         animation.set_initial_velocity(0.5);
         animation.connect_done(clone!(
@@ -1382,7 +1413,7 @@ impl ChatHistory {
             move |_| {
                 let imp = obj.imp();
                 if let Some(row) = imp.send_flight_row.take() {
-                    row.set_flight_offset(0.0, 0.0);
+                    row.set_flight_transform(None);
                 }
                 imp.send_animation.replace(None);
             }
@@ -1411,7 +1442,7 @@ impl ChatHistory {
         }
         if let Some(row) = imp.send_flight_row.take() {
             row.set_opacity(1.0);
-            row.set_flight_offset(0.0, 0.0);
+            row.set_flight_transform(None);
         }
     }
 
@@ -1478,37 +1509,49 @@ impl ChatHistory {
         graphene::Rect::new(x, y, width, height)
     }
 
-    /// The realised row of the just-sent message. Matched by id first; if TDLib has
-    /// already swapped the optimistic id for the final one (`updateMessageSendSucceeded`),
-    /// fall back to the bottom-most outgoing message row.
-    fn find_sent_row(&self, message_id: i64) -> Option<ui::ChatHistoryRow> {
-        self.find_message_row(message_id).or_else(|| {
-            let imp = self.imp();
-            let mut best: Option<(ui::ChatHistoryRow, f32)> = None;
-            let mut stack = vec![imp.list_view.clone().upcast::<gtk::Widget>()];
-            while let Some(widget) = stack.pop() {
-                let mut child = widget.first_child();
-                while let Some(widget) = child {
-                    child = widget.next_sibling();
-                    if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
-                        let outgoing = row
-                            .item()
-                            .and_downcast::<model::ChatHistoryItem>()
-                            .is_some_and(|item| {
-                                item.message().is_some_and(|message| message.is_outgoing())
-                            });
-                        if outgoing && let Some(bounds) = row.compute_bounds(&*imp.list_view) {
-                            if best.as_ref().is_none_or(|(_, y)| bounds.y() > *y) {
-                                best = Some((row.clone(), bounds.y()));
-                            }
-                        }
-                    } else {
-                        stack.push(widget);
+    /// Whether `row` currently displays the just-sent message: same id, or — since TDLib
+    /// swaps the optimistic id for the final one (`updateMessageSendSucceeded`) — an
+    /// outgoing message with exactly the sent text.
+    fn row_shows_sent(row: &ui::ChatHistoryRow, message_id: i64, text: &str) -> bool {
+        row.item()
+            .and_downcast::<model::ChatHistoryItem>()
+            .is_some_and(|item| {
+                item.message().is_some_and(|message| {
+                    message.id() == message_id
+                        || (message.is_outgoing()
+                            && matches!(
+                                &message.content().0,
+                                tdlib::enums::MessageContent::MessageText(content)
+                                    if content.text.text.trim() == text
+                            ))
+                })
+            })
+    }
+
+    /// The realised row of the just-sent message: the bottom-most row matching
+    /// [`Self::row_shows_sent`]. Bottom-most matters because the same text may appear in
+    /// older messages; the fresh one is at the end of the history.
+    fn find_sent_row(&self, message_id: i64, text: &str) -> Option<ui::ChatHistoryRow> {
+        let imp = self.imp();
+        let mut best: Option<(ui::ChatHistoryRow, f32)> = None;
+        let mut stack = vec![imp.list_view.clone().upcast::<gtk::Widget>()];
+        while let Some(widget) = stack.pop() {
+            let mut child = widget.first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
+                    if Self::row_shows_sent(row, message_id, text)
+                        && let Some(bounds) = row.compute_bounds(&*imp.list_view)
+                        && best.as_ref().is_none_or(|(_, y)| bounds.y() > *y)
+                    {
+                        best = Some((row.clone(), bounds.y()));
                     }
+                } else {
+                    stack.push(widget);
                 }
             }
-            best.map(|(row, _)| row)
-        })
+        }
+        best.map(|(row, _)| row)
     }
 
     pub(crate) fn focus_message(&self, message_id: i64) {
