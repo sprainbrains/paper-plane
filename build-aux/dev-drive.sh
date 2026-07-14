@@ -29,28 +29,50 @@ set -euo pipefail
 APP_ID="${APP_ID:-app.drey.PaperPlane.Devel}"
 OBJ_PATH="/$(echo "$APP_ID" | tr '.' '/')"
 CACHE_DIR="$HOME/.var/app/$APP_ID/cache/automation"
+GDBUS="${GDBUS:-gdbus}"
+
+variant_string() {
+    local value="${1-}" backslash=$'\\'
+    value=${value//"$backslash"/"$backslash$backslash"}
+    value=${value//\'/\\\'}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf "'%s'" "$value"
+}
+
+variant_int64() {
+    if [[ ! ${1-} =~ ^-?[0-9]+$ ]]; then
+        echo "invalid int64: ${1-}" >&2
+        return 1
+    fi
+    printf 'int64 %s' "$1"
+}
 
 activate() {
     # $1 = action name, $2 = GVariant parameter array text (e.g. "[<int64 5>]"), default "[]"
-    gdbus call --session \
+    "$GDBUS" call --session \
         --dest "$APP_ID" \
         --object-path "$OBJ_PATH" \
         --method org.gtk.Actions.Activate \
         "$1" "${2:-[]}" "{}" >/dev/null
 }
 
-# Wait for an artifact file to be (re)written, then cat/copy it.
+# Remove an old artifact before activating its producer. Actions may complete
+# synchronously, so freshness must be established before the D-Bus call.
+request_artifact() {
+    # $1 = file, $2 = timeout, $3 = action, $4 = optional parameters
+    rm -f -- "$CACHE_DIR/$1"
+    activate "$3" "${4:-[]}" || return
+    wait_for "$1" "$2"
+}
+
+# Wait for an artifact file to be written, then return its path.
 wait_for() {
     # $1 = file under CACHE_DIR, $2 = timeout seconds
     local f="$CACHE_DIR/$1" deadline=$(( SECONDS + ${2:-5} ))
-    local before=0
-    [ -f "$f" ] && before=$(stat -c %Y "$f" 2>/dev/null || echo 0)
     while [ "$SECONDS" -lt "$deadline" ]; do
-        if [ -f "$f" ]; then
-            local now
-            now=$(stat -c %Y "$f" 2>/dev/null || echo 0)
-            [ "$now" -gt "$before" ] && { echo "$f"; return 0; }
-        fi
+        [ -f "$f" ] && { echo "$f"; return 0; }
         sleep 0.2
     done
     echo "timed out waiting for $f" >&2
@@ -73,35 +95,37 @@ case "$cmd" in
         ;;
     screenshot)
         out="${1:-/tmp/pp-shot.png}"
-        activate auto-screenshot
-        f=$(wait_for screenshot.png 8)
+        f=$(request_artifact screenshot.png 8 auto-screenshot)
         cp "$f" "$out"
         echo "$out"
         ;;
     list-chats)
-        activate auto-list-chats
-        f=$(wait_for chats.txt 5)
+        f=$(request_artifact chats.txt 5 auto-list-chats)
         cat "$f"
         ;;
     list-messages)
-        chat="$1"
-        activate auto-list-messages "[<int64 $chat>]"
-        f=$(wait_for messages.txt 8)
+        chat=$(variant_int64 "$1")
+        f=$(request_artifact messages.txt 8 auto-list-messages "[<$chat>]")
         cat "$f"
         ;;
     describe)
-        msg="$1"; chat="$2"
-        activate auto-describe-message "[<(int64 $chat, int64 $msg)>]"
-        f=$(wait_for message.txt 8)
+        msg=$(variant_int64 "$1"); chat=$(variant_int64 "$2")
+        f=$(request_artifact message.txt 8 auto-describe-message "[<($chat, $msg)>]")
         cat "$f"
         ;;
     new-test-client) activate auto-new-test-client ;;
-    phone)    activate auto-submit-phone    "[<'$1'>]" ;;
-    code)     activate auto-submit-code     "[<'$1'>]" ;;
-    password) activate auto-submit-password "[<'$1'>]" ;;
-    open)     activate auto-open-chat       "[<int64 $1>]" ;;
-    send)     activate auto-send-text       "[<(int64 $1, '$2')>]" ;;
-    react)    activate auto-react           "[<(int64 $1, int64 $2, '$3')>]" ;;
+    phone)    value=$(variant_string "$1"); activate auto-submit-phone "[<$value>]" ;;
+    code)     value=$(variant_string "$1"); activate auto-submit-code "[<$value>]" ;;
+    password) value=$(variant_string "$1"); activate auto-submit-password "[<$value>]" ;;
+    open)     chat=$(variant_int64 "$1"); activate auto-open-chat "[<$chat>]" ;;
+    send)
+        chat=$(variant_int64 "$1"); text=$(variant_string "$2")
+        activate auto-send-text "[<($chat, $text)>]"
+        ;;
+    react)
+        chat=$(variant_int64 "$1"); msg=$(variant_int64 "$2"); emoji=$(variant_string "$3")
+        activate auto-react "[<($chat, $msg, $emoji)>]"
+        ;;
     *)
         grep '^#' "$0" | sed 's/^# \{0,1\}//'
         exit 1
