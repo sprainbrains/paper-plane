@@ -1895,6 +1895,9 @@ impl ChatHistory {
             if stable_frames.get() >= 3 || deadline {
                 imp.focus_tick.take();
                 obj.flash_message(message_id);
+                // Landed: retarget the pinned bar right away (e.g. onto the next older
+                // pinned message) instead of waiting for the user to scroll.
+                obj.update_pinned_for_scroll();
                 return glib::ControlFlow::Break;
             }
             glib::ControlFlow::Continue
