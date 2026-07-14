@@ -141,20 +141,44 @@
             </style>
             <child>
               <object class="GtkButton">
-                <property name="icon-name">window-close-symbolic</property>
-                <property name="action-name">chat-history.selection-clear</property>
+                <property name="action-name">chat-history.selection-forward</property>
                 <property name="valign">center</property>
-                <property name="tooltip-text" translatable="yes">Clear Selection</property>
+                <property name="tooltip-text" translatable="yes">Forward</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">mail-forward-symbolic</property>
+                    <property name="label" translatable="yes">Forward</property>
+                    <property name="can-shrink">True</property>
+                  </object>
+                </property>
                 <style>
                   <class name="flat"/>
-                  <class name="circular"/>
+                </style>
+              </object>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="action-name">chat-history.selection-delete</property>
+                <property name="valign">center</property>
+                <property name="tooltip-text" translatable="yes">Delete</property>
+                <property name="child">
+                  <object class="AdwButtonContent">
+                    <property name="icon-name">user-trash-symbolic</property>
+                    <property name="label" translatable="yes">Delete</property>
+                    <property name="can-shrink">True</property>
+                  </object>
+                </property>
+                <style>
+                  <class name="flat"/>
+                  <class name="destructive-action"/>
                 </style>
               </object>
             </child>
             <child>
               <object class="GtkLabel" id="selection_count_label">
                 <property name="hexpand">True</property>
-                <property name="xalign">0</property>
+                <property name="xalign">0.5</property>
+                <property name="ellipsize">end</property>
                 <style>
                   <class name="heading"/>
                 </style>
@@ -162,26 +186,13 @@
             </child>
             <child>
               <object class="GtkButton">
-                <property name="icon-name">mail-forward-symbolic</property>
-                <property name="action-name">chat-history.selection-forward</property>
+                <property name="icon-name">window-close-symbolic</property>
+                <property name="action-name">chat-history.selection-clear</property>
                 <property name="valign">center</property>
-                <property name="tooltip-text" translatable="yes">Forward</property>
+                <property name="tooltip-text" translatable="yes">Clear Selection</property>
                 <style>
                   <class name="flat"/>
                   <class name="circular"/>
-                </style>
-              </object>
-            </child>
-            <child>
-              <object class="GtkButton">
-                <property name="icon-name">user-trash-symbolic</property>
-                <property name="action-name">chat-history.selection-delete</property>
-                <property name="valign">center</property>
-                <property name="tooltip-text" translatable="yes">Delete</property>
-                <style>
-                  <class name="flat"/>
-                  <class name="circular"/>
-                  <class name="destructive-action"/>
                 </style>
               </object>
             </child>
