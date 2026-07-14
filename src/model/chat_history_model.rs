@@ -487,7 +487,7 @@ fn insert_day_dividers(
     }
 
     let previous_day = list
-        .get(position.saturating_add(1))
+        .get(end)
         .and_then(model::ChatHistoryItem::message_timestamp)
         .map(|timestamp| timestamp.ymd());
     let days = list
@@ -512,7 +512,7 @@ fn insert_day_dividers(
 fn remove_trailing_day_divider(
     list: &mut VecDeque<model::ChatHistoryItem>,
     position: usize,
-    mut removed: usize,
+    removed: usize,
 ) -> usize {
     if removed == 0
         || !matches!(
@@ -530,14 +530,8 @@ fn remove_trailing_day_divider(
         return removed;
     }
 
-    let divider_position = position.saturating_add(removed);
-    if divider_position < list.len() {
-        list.remove(divider_position);
-        removed += 1;
-    } else {
-        log::warn!("Missing trailing chat history day divider");
-    }
-    removed
+    list.remove(position);
+    removed + 1
 }
 
 fn remove_duplicate_day_divider(
@@ -582,7 +576,13 @@ fn day_divider_offsets(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::VecDeque;
+
+    use gtk::glib;
+
     use super::day_divider_offsets;
+    use super::remove_trailing_day_divider;
+    use crate::model;
 
     #[test]
     fn divider_offsets_mark_each_day_boundary_from_oldest_to_newest() {
@@ -599,5 +599,18 @@ mod tests {
         let day = (2026, 7, 13);
 
         assert_eq!(day_divider_offsets(&[Some(day), None], None), [0]);
+    }
+
+    #[test]
+    fn trailing_day_divider_is_removed_at_deleted_message_position() {
+        let divider = model::ChatHistoryItem::for_day_divider(
+            glib::DateTime::from_utc(2026, 7, 13, 0, 0, 0.0).unwrap(),
+        );
+        let following_item = model::ChatHistoryItem::for_unread_divider(42);
+        let mut list = VecDeque::from([divider, following_item.clone()]);
+
+        assert_eq!(remove_trailing_day_divider(&mut list, 0, 1), 2);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list.front(), Some(&following_item));
     }
 }
