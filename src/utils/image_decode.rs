@@ -39,8 +39,13 @@ pub(crate) fn decode_image_from_path_at_size(
 
     let mut decoder = reader.into_decoder().map_err(DecodeError::ImageError)?;
     let (width, height) = decoder.dimensions();
-    let remaining_limits = validate_image_resources(width, height, decoder.total_bytes())
-        .map_err(DecodeError::ImageError)?;
+    let remaining_limits = validate_image_resources(
+        width,
+        height,
+        decoder.total_bytes(),
+        maximum_size,
+    )
+    .map_err(DecodeError::ImageError)?;
     decoder
         .set_limits(remaining_limits)
         .map_err(DecodeError::ImageError)?;
@@ -101,7 +106,12 @@ fn decode_limits() -> Limits {
     limits
 }
 
-fn validate_image_resources(width: u32, height: u32, decoded_bytes: u64) -> ImageResult<Limits> {
+fn validate_image_resources(
+    width: u32,
+    height: u32,
+    decoded_bytes: u64,
+    maximum_size: Option<u32>,
+) -> ImageResult<Limits> {
     let mut limits = decode_limits();
     limits.check_dimensions(width, height)?;
 
@@ -111,7 +121,17 @@ fn validate_image_resources(width: u32, height: u32, decoded_bytes: u64) -> Imag
         )));
     }
 
-    // Keep the output allocation and decoder working memory within one budget.
+    // Resizing and color conversion can temporarily coexist with the decoded source.
+    // Reserve four bytes per output pixel so peak memory remains within the budget.
+    let output_width = maximum_size.map_or(width, |size| width.min(size));
+    let output_height = maximum_size.map_or(height, |size| height.min(size));
+    let output_bytes = u64::from(output_width) * u64::from(output_height) * 4;
+    if decoded_bytes.saturating_add(output_bytes) > MAX_DECODE_ALLOC {
+        return Err(ImageError::Limits(LimitError::from_kind(
+            LimitErrorKind::InsufficientMemory,
+        )));
+    }
+
     limits.reserve(decoded_bytes)?;
     Ok(limits)
 }
@@ -133,7 +153,8 @@ mod tests {
             validate_image_resources(
                 MAX_IMAGE_DIMENSION,
                 MAX_IMAGE_PIXELS as u32 / MAX_IMAGE_DIMENSION,
-                MAX_DECODE_ALLOC,
+                MAX_DECODE_ALLOC / 2,
+                Some(1),
             )
             .is_ok()
         );
@@ -142,7 +163,12 @@ mod tests {
     #[test]
     fn rejects_oversized_dimensions_before_decode() {
         assert_eq!(
-            limit_error_kind(validate_image_resources(MAX_IMAGE_DIMENSION + 1, 1, 4,)),
+            limit_error_kind(validate_image_resources(
+                MAX_IMAGE_DIMENSION + 1,
+                1,
+                4,
+                None,
+            )),
             LimitErrorKind::DimensionError
         );
     }
@@ -154,6 +180,7 @@ mod tests {
                 MAX_IMAGE_DIMENSION,
                 MAX_IMAGE_PIXELS as u32 / MAX_IMAGE_DIMENSION + 1,
                 4,
+                None,
             )),
             LimitErrorKind::InsufficientMemory
         );
@@ -162,7 +189,25 @@ mod tests {
     #[test]
     fn rejects_excessive_decoded_allocation_before_decode() {
         assert_eq!(
-            limit_error_kind(validate_image_resources(1, 1, MAX_DECODE_ALLOC + 1)),
+            limit_error_kind(validate_image_resources(
+                1,
+                1,
+                MAX_DECODE_ALLOC + 1,
+                None,
+            )),
+            LimitErrorKind::InsufficientMemory
+        );
+    }
+
+    #[test]
+    fn accounts_for_conversion_peak_memory() {
+        assert_eq!(
+            limit_error_kind(validate_image_resources(
+                MAX_IMAGE_DIMENSION,
+                MAX_IMAGE_PIXELS as u32 / MAX_IMAGE_DIMENSION,
+                MAX_DECODE_ALLOC / 2,
+                None,
+            )),
             LimitErrorKind::InsufficientMemory
         );
     }
