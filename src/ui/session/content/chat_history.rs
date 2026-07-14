@@ -1244,12 +1244,13 @@ impl ChatHistory {
 
         // Two stacked layers with the same text: a grey "field" underneath and an accent
         // "bubble" on top whose opacity is animated in, cross-fading grey → accent.
+        // Single line, ellipsized: a wrapping label reports a tiny natural width and
+        // reflows into a tall multi-line block at the ghost's animated widths.
         let make_label = |class: &str| {
             let label = gtk::Label::builder()
                 .label(text)
                 .xalign(0.0)
-                .wrap(true)
-                .wrap_mode(gtk::pango::WrapMode::WordChar)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
             let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
             layer.set_hexpand(true);
@@ -1307,6 +1308,7 @@ impl ChatHistory {
         // if the row never shows up (send failed, chat switched, …).
         let text = text.to_owned();
         let first_frame_time = Rc::new(Cell::new(0i64));
+        let prev_bounds: Rc<Cell<Option<(f32, f32, f32, f32)>>> = Rc::new(Cell::new(None));
         let id = self.add_tick_callback(move |obj, clock| {
             let imp = obj.imp();
             let now = clock.frame_time();
@@ -1314,22 +1316,41 @@ impl ChatHistory {
                 first_frame_time.set(now);
             }
 
-            // Keep the sent row hidden while the ghost stands in for it, then start the
-            // flight as soon as the bubble is laid out and the colour cross-fade is done.
+            // Keep the sent row hidden while the ghost stands in for it. The hand-off
+            // waits until the bubble's bounds are *stable across two frames and inside
+            // the viewport*: right after a send, the ListView's height estimation and
+            // the sticky scroll move the row over several frames, and gliding towards
+            // those transient positions sent the ghost chasing below the screen.
             let row = obj.acquire_sent_row(message_id, &text);
-            let colour_settled =
-                animation.value() >= 0.5 || animation.state() != adw::AnimationState::Playing;
-            if colour_settled {
-                let bounds = row
-                    .as_ref()
-                    .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
-                    .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
-                    .filter(|bounds| bounds.width() > 1.0);
-                if bounds.is_some() {
-                    imp.send_poll.take();
-                    obj.fly_send_ghost(message_id, text.clone());
-                    return glib::ControlFlow::Break;
-                }
+            let near_staging =
+                animation.value() >= 0.8 || animation.state() != adw::AnimationState::Playing;
+            let bounds = row
+                .as_ref()
+                .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
+                .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
+                .filter(|bounds| bounds.width() > 1.0)
+                .filter(|bounds| {
+                    imp.scrolled_window
+                        .compute_bounds(&*imp.send_overlay)
+                        .is_some_and(|viewport| {
+                            bounds.y() >= viewport.y() - 2.0
+                                && bounds.y() + bounds.height()
+                                    <= viewport.y() + viewport.height() + 2.0
+                        })
+                });
+            let key = bounds
+                .as_ref()
+                .map(|rect| (rect.x(), rect.y(), rect.width(), rect.height()));
+            let stable = key.is_some() && prev_bounds.get() == key;
+            prev_bounds.set(key);
+
+            if near_staging
+                && stable
+                && let Some(bounds) = bounds
+            {
+                imp.send_poll.take();
+                obj.glide_send_ghost(bounds);
+                return glib::ControlFlow::Break;
             }
 
             if now - first_frame_time.get() > 1_200_000 {
@@ -1362,13 +1383,13 @@ impl ChatHistory {
         row
     }
 
-    /// Phase 2: the ghost — which lives in the overlay, so it is never clipped by the
-    /// composer edge the way rows are — springs from wherever the morph currently has it
-    /// onto the real bubble, re-reading the bubble's bounds every frame so a settling
-    /// auto-scroll can't stale the target. When it lands the real row takes over.
-    fn fly_send_ghost(&self, message_id: i64, text: String) {
+    /// Phase 2: a short, decisive glide of the ghost from wherever the morph currently
+    /// has it onto the real bubble's (settled) rectangle, then the real row takes over.
+    /// The ghost lives in the overlay, so unlike rows it is never clipped by the composer
+    /// edge on the way.
+    fn glide_send_ghost(&self, bounds: graphene::Rect) {
         let imp = self.imp();
-        // Freeze the morph; the flight continues from the ghost's current rectangle.
+        // Freeze the morph; the glide continues from the ghost's current rectangle.
         if let Some(animation) = imp.send_animation.take() {
             animation.pause();
         }
@@ -1382,38 +1403,23 @@ impl ChatHistory {
             return;
         };
 
-        let last_end = Rc::new(Cell::new((from.x(), from.y(), from.width(), from.height())));
         let target = adw::CallbackAnimationTarget::new(clone!(
-            #[weak(rename_to = obj)]
-            self,
             #[weak]
             ghost,
             move |value| {
-                // Track the live bubble: the sticky scroll may still be moving it.
-                let imp = obj.imp();
-                if let Some(bounds) = obj
-                    .acquire_sent_row(message_id, &text)
-                    .as_ref()
-                    .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
-                    .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
-                    .filter(|bounds| bounds.width() > 1.0)
-                {
-                    last_end.set((bounds.x(), bounds.y(), bounds.width(), bounds.height()));
-                }
-                let end = last_end.get();
                 let progress = value as f32;
                 let lerp = |a: f32, b: f32| a + (b - a) * progress;
-                let width = lerp(from.width(), end.2);
-                let height = lerp(from.height(), end.3);
+                let width = lerp(from.width(), bounds.width());
+                let height = lerp(from.height(), bounds.height());
                 // Right edges aligned: outgoing bubbles are anchored right.
-                let right = lerp(from.x() + from.width(), end.0 + end.2);
+                let right = lerp(from.x() + from.width(), bounds.x() + bounds.width());
                 ghost.set_margin_start((right - width) as i32);
-                ghost.set_margin_top(lerp(from.y(), end.1) as i32);
+                ghost.set_margin_top(lerp(from.y(), bounds.y()) as i32);
                 ghost.set_size_request(width as i32, height as i32);
             }
         ));
-        let animation = adw::SpringAnimation::new(&ghost, 0.0, 1.0, Self::send_spring(), target);
-        animation.set_initial_velocity(0.5);
+        let animation = adw::TimedAnimation::new(&ghost, 0.0, 1.0, 200, target);
+        animation.set_easing(adw::Easing::EaseOutCubic);
         animation.connect_done(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -1507,17 +1513,13 @@ impl ChatHistory {
             };
         let right_edge = column_right - 38.0 - 24.0;
 
-        let label = gtk::Label::builder()
-            .label(text)
-            .wrap(true)
-            .wrap_mode(gtk::pango::WrapMode::WordChar)
-            .build();
+        // Measured unwrapped: the ghost is a single ellipsized line, so the staging rect
+        // is its natural one-line size capped at the column.
+        let label = gtk::Label::new(Some(text));
         let max_text_width = (right_edge - 12.0 - 24.0).max(72.0);
         let text_width =
             (label.measure(gtk::Orientation::Horizontal, -1).1 as f32).clamp(72.0, max_text_width);
-        let text_height = label
-            .measure(gtk::Orientation::Vertical, text_width as i32)
-            .1 as f32;
+        let text_height = label.measure(gtk::Orientation::Vertical, -1).1 as f32;
 
         let width = text_width + 24.0;
         let height = text_height + 16.0;
