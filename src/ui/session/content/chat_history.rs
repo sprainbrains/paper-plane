@@ -1328,22 +1328,46 @@ impl ChatHistory {
                 row.set_opacity(0.0);
             }
 
+            // Convert only once everything the row-flight will draw stays inside the
+            // scrolled window: the ghost (flight start) must have risen clear of the
+            // composer, and the bubble's rest position (flight end) must not still be
+            // below the viewport edge while the sticky auto-scroll settles — the row is
+            // clipped at that edge, so converting earlier cuts its bottom off. Until
+            // then the ghost, which lives in the overlay and is never clipped, carries
+            // the animation.
             let colour_settled =
                 animation.value() >= 0.5 || animation.state() != adw::AnimationState::Playing;
             if colour_settled {
+                let viewport_bottom = imp
+                    .scrolled_window
+                    .compute_bounds(&*imp.send_overlay)
+                    .map(|viewport| viewport.y() + viewport.height());
+                let ghost_clear = imp
+                    .send_ghost
+                    .borrow()
+                    .as_ref()
+                    .and_then(|ghost| ghost.compute_bounds(&*imp.send_overlay))
+                    .zip(viewport_bottom)
+                    .is_some_and(|(ghost, bottom)| ghost.y() + ghost.height() <= bottom - 2.0);
                 let bounds = row
                     .as_ref()
                     .and_then(|row| utils::descendant::<_, ui::MessageBubble>(row))
                     .and_then(|bubble| bubble.compute_bounds(&*imp.send_overlay))
-                    .filter(|bounds| bounds.width() > 1.0);
-                if let Some(bounds) = bounds {
+                    .filter(|bounds| bounds.width() > 1.0)
+                    .filter(|bounds| {
+                        viewport_bottom
+                            .is_some_and(|bottom| bounds.y() + bounds.height() <= bottom + 1.0)
+                    });
+                if let Some(bounds) = bounds
+                    && ghost_clear
+                {
                     imp.send_poll.take();
                     obj.launch_send_flight(bounds);
                     return glib::ControlFlow::Break;
                 }
             }
 
-            if now - first_frame_time.get() > 800_000 {
+            if now - first_frame_time.get() > 1_200_000 {
                 imp.send_poll.take();
                 obj.abort_send_ghost();
                 return glib::ControlFlow::Break;
