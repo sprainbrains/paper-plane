@@ -150,6 +150,9 @@ mod imp {
         /// advances to the next older one, cycling through all of them.
         pub(super) pinned_messages: RefCell<Vec<model::Message>>,
         pub(super) pinned_index: Cell<usize>,
+        /// The running focus-settling loop; a new focus cancels the previous one so two
+        /// jumps in quick succession don't fight over the scroll position.
+        pub(super) focus_tick: RefCell<Option<gtk::TickCallbackId>>,
         #[template_child]
         pub(super) pinned_view: TemplateChild<gtk::Box>,
         #[template_child]
@@ -348,10 +351,10 @@ mod imp {
                             newest_loaded && adj.value() + adj.page_size() >= adj.upper(),
                         );
 
-                        // Near the bottom of a jumped-to window: pull newer messages in
-                        // to close the gap towards the present.
+                        // At the bottom edge of a jumped-to window: pull newer messages
+                        // in to close the gap towards the present.
                         if !newest_loaded
-                            && adj.value() + adj.page_size() * 2.0 >= adj.upper()
+                            && adj.value() + adj.page_size() * 1.5 >= adj.upper()
                             && let Some(model) = imp.model.borrow().as_ref()
                         {
                             imp.is_loading_messages.set(true);
@@ -361,12 +364,12 @@ mod imp {
                                 #[weak]
                                 model,
                                 async move {
-                                    obj.imp().is_loading_messages.set(false);
                                     if let Err(model::ChatHistoryError::Tdlib(e)) =
                                         model.load_newer_messages(30).await
                                     {
                                         log::warn!("Couldn't load newer chat messages: {e:?}");
                                     }
+                                    obj.imp().is_loading_messages.set(false);
                                 }
                             ));
                             return;
@@ -387,13 +390,12 @@ mod imp {
                                 #[weak]
                                 model,
                                 async move {
-                                    obj.imp().is_loading_messages.set(false);
-
                                     if let Err(model::ChatHistoryError::Tdlib(e)) =
                                         model.load_older_messages(2).await
                                     {
                                         log::warn!("Couldn't load more chat messages: {e:?}");
                                     }
+                                    obj.imp().is_loading_messages.set(false);
                                 }
                             ));
                         }
@@ -711,6 +713,9 @@ impl ChatHistory {
         imp.pinned_messages.borrow_mut().clear();
         imp.pinned_index.set(0);
         imp.pinned_view.set_visible(false);
+        if let Some(id) = imp.focus_tick.take() {
+            id.remove();
+        }
 
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
@@ -1845,9 +1850,14 @@ impl ChatHistory {
             .list_view
             .scroll_to(position, gtk::ListScrollFlags::empty(), None);
 
+        // Only one settling loop at a time: a quick second jump must not fight the
+        // previous one over the scroll position.
+        if let Some(id) = self.imp().focus_tick.take() {
+            id.remove();
+        }
         let stable_frames = Rc::new(Cell::new(0u32));
         let first_frame_time = Rc::new(Cell::new(0i64));
-        self.add_tick_callback(move |obj, clock| {
+        let id = self.add_tick_callback(move |obj, clock| {
             let imp = obj.imp();
             let now = clock.frame_time();
             if first_frame_time.get() == 0 {
@@ -1883,11 +1893,13 @@ impl ChatHistory {
             }
 
             if stable_frames.get() >= 3 || deadline {
+                imp.focus_tick.take();
                 obj.flash_message(message_id);
                 return glib::ControlFlow::Break;
             }
             glib::ControlFlow::Continue
         });
+        self.imp().focus_tick.replace(Some(id));
     }
 
     fn flash_message(&self, message_id: i64) {
@@ -2178,12 +2190,12 @@ impl ChatHistory {
             #[weak(rename_to = obj)]
             self,
             async move {
-                for _ in 0..10 {
+                // A scroll-edge load may be in flight; wait it out rather than give up.
+                for attempt in 0.. {
                     match model.load_around_message(message_id).await {
                         Ok(()) => break,
-                        // Most likely a scroll-edge load in flight; retry shortly.
-                        Err(model::ChatHistoryError::AlreadyLoading) => {
-                            glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                        Err(model::ChatHistoryError::AlreadyLoading) if attempt < 30 => {
+                            glib::timeout_future(std::time::Duration::from_millis(100)).await;
                         }
                         Err(e) => {
                             log::warn!("Couldn't jump to message {message_id}: {e}");
