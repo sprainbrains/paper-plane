@@ -12,6 +12,31 @@ use crate::model;
 use crate::types::ChatFolderId;
 use crate::utils;
 
+fn changed_range<T: PartialEq>(old: &[T], new: &[T]) -> Option<(u32, u32, u32)> {
+    let prefix = old
+        .iter()
+        .zip(new)
+        .take_while(|(old_item, new_item)| old_item == new_item)
+        .count();
+
+    if prefix == old.len() && prefix == new.len() {
+        return None;
+    }
+
+    let suffix = old[prefix..]
+        .iter()
+        .rev()
+        .zip(new[prefix..].iter().rev())
+        .take_while(|(old_item, new_item)| old_item == new_item)
+        .count();
+
+    Some((
+        prefix as u32,
+        (old.len() - prefix - suffix) as u32,
+        (new.len() - prefix - suffix) as u32,
+    ))
+}
+
 mod imp {
     use super::*;
 
@@ -91,7 +116,13 @@ mod imp {
                 return;
             }
 
+            let old_items = obj.snapshot();
             self.main_chat_list_position.set(position);
+            let new_items = obj.snapshot();
+
+            if let Some((position, removed, added)) = changed_range(&old_items, &new_items) {
+                obj.items_changed(position, removed, added);
+            }
             obj.notify_main_chat_list_position();
         }
     }
@@ -189,107 +220,69 @@ impl ChatFolderList {
             })
     }
 
-    fn internal_get_or_create(&self, id: ChatFolderId, position: u32) -> model::ChatList {
-        let imp = self.imp();
-
-        let mut list = imp.list.borrow_mut();
-
-        match list
-            .iter()
-            .cloned()
-            .enumerate()
-            .find(|(_, chat_list)| chat_list.list_type().chat_folder_id().unwrap() == id.get())
-        {
-            Some((old_position, chat_list)) => {
-                if position as usize != old_position {
-                    list.remove(old_position);
-                    drop(list);
-                    self.delegate_items_changed(old_position as u32, 1, 0);
-
-                    let mut order = imp.list.borrow_mut();
-                    order.insert(position as usize, chat_list.clone());
-
-                    drop(order);
-
-                    self.delegate_items_changed(position, 0, 1);
-                }
-
-                chat_list
-            }
-            None => {
-                let chat_list = model::ChatList::new(
-                    &self.session_(),
-                    tdlib::enums::ChatList::Folder(tdlib::types::ChatListFolder {
-                        chat_folder_id: id.get(),
-                    }),
-                );
-
-                list.insert(position as usize, chat_list.to_owned());
-
-                drop(list);
-
-                self.delegate_items_changed(position, 0, 1);
-
-                chat_list
-            }
-        }
-    }
-
-    fn delegate_items_changed(&self, position: u32, removed: u32, added: u32) {
-        self.items_changed(
-            if (position as i32) < self.main_chat_list_position() {
-                position
-            } else {
-                position + 1
-            },
-            removed,
-            added,
-        );
-    }
-
     pub(crate) fn handle_update(&self, update: tdlib::enums::Update) {
         if let tdlib::enums::Update::ChatFolders(update) = update {
             let imp = self.imp();
+            let old_items = self.snapshot();
+            let old_order = imp.list.borrow().clone();
+            let old_main_chat_list_position = self.main_chat_list_position();
+            let main_chat_list_position = update.main_chat_list_position;
+            let mut order = Vec::with_capacity(update.chat_folders.len());
 
-            let mut order = self.imp().list.borrow_mut();
+            for info in update.chat_folders {
+                let chat_list = old_order
+                    .iter()
+                    .find(|chat_list| chat_list.list_type().chat_folder_id().unwrap() == info.id)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        model::ChatList::new(
+                            &self.session_(),
+                            tdlib::enums::ChatList::Folder(tdlib::types::ChatListFolder {
+                                chat_folder_id: info.id,
+                            }),
+                        )
+                    });
 
-            let mut removed_positions = Vec::new();
-            order
-                .iter()
-                .map(|chat_list| chat_list.list_type().chat_folder_id().unwrap())
-                .collect::<Vec<_>>()
-                .iter()
-                .enumerate()
-                .for_each(|(position, old_id)| {
-                    if !update
-                        .chat_folders
-                        .iter()
-                        .map(|info| info.id)
-                        .any(|new_id| &new_id == old_id)
-                    {
-                        order.remove(position);
-                        removed_positions.push(position);
-                    }
-                });
+                chat_list.set_title(info.name.text.text.as_str());
+                chat_list.set_icon(info.icon.name.as_str());
+                order.push(chat_list);
+            }
 
-            drop(order);
+            if old_order == order {
+                imp.set_main_chat_list_position(main_chat_list_position);
+                return;
+            }
 
-            removed_positions.into_iter().for_each(|position| {
-                self.delegate_items_changed(position as u32, 1, 0);
-            });
+            *imp.list.borrow_mut() = order;
+            imp.main_chat_list_position.set(main_chat_list_position);
 
-            update
-                .chat_folders
-                .into_iter()
-                .enumerate()
-                .for_each(|(position, info)| {
-                    let chat_list = self.internal_get_or_create(info.id.into(), position as u32);
-
-                    chat_list.set_title(info.name.text.text.as_str());
-                    chat_list.set_icon(info.icon.name.as_str());
-                });
-
-            imp.set_main_chat_list_position(update.main_chat_list_position);
+            let new_items = self.snapshot();
+            if let Some((position, removed, added)) = changed_range(&old_items, &new_items) {
+                self.items_changed(position, removed, added);
+            }
+            if old_main_chat_list_position != main_chat_list_position {
+                self.notify_main_chat_list_position();
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::changed_range;
+
+    #[test]
+    fn changed_range_is_minimal_for_removals() {
+        assert_eq!(changed_range(&[0, 1, 2, 3, 4], &[0, 2, 4]), Some((1, 3, 1)));
+    }
+
+    #[test]
+    fn changed_range_covers_reordering() {
+        assert_eq!(changed_range(&[0, 1, 2, 3], &[0, 3, 1, 2]), Some((1, 3, 3)));
+    }
+
+    #[test]
+    fn changed_range_covers_main_chat_list_move() {
+        assert_eq!(changed_range(&[0, 1, 2, 3], &[1, 2, 0, 3]), Some((0, 3, 3)));
     }
 }
