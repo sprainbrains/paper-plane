@@ -2099,17 +2099,19 @@ impl ChatHistory {
         let window = count.min(5);
         let start = index.saturating_sub(2).min(count - window);
         let height = (26 / window as i32).clamp(4, 12);
-        for i in 0..window {
+        // Top line = oldest, bottom = newest, matching the chat's layout (index 0 is
+        // the newest pinned message, so the window is walked in reverse).
+        for i in (0..window).rev() {
             let dot = gtk::Box::new(gtk::Orientation::Vertical, 0);
             dot.set_size_request(3, height);
             dot.add_css_class("pinned-dot");
             if start + i == index {
                 dot.add_css_class("active");
             }
-            if i == 0 && start > 0 {
+            if i == window - 1 && start + window < count {
                 dot.add_css_class("fade-top");
             }
-            if i == window - 1 && start + window < count {
+            if i == 0 && start > 0 {
                 dot.add_css_class("fade-bottom");
             }
             imp.pinned_dots.append(&dot);
