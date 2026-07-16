@@ -18,6 +18,18 @@ use crate::utils;
 
 const MAX_WIDTH: i32 = 400;
 
+/// Bubble corner radii: full for a standalone/outer corner, tight where a bubble abuts
+/// its same-sender neighbour in a run. Keep in sync with the `.grouped-*` CSS radii.
+const RADIUS: f64 = 15.0;
+const RADIUS_TIGHT: f64 = 6.0;
+
+/// Tail geometry (tunable), for the code-drawn outline of a group's last bubble.
+/// `START` is how far along the bottom edge the tail begins, `OVERHANG` how far past the
+/// bubble edge the tip reaches, `HEIGHT` how far up the side it blends back in.
+const TAIL_START: f64 = 9.0;
+const TAIL_OVERHANG: f64 = 4.0;
+const TAIL_HEIGHT: f64 = 12.0;
+
 /// Where the message indicators (timestamp etc.) currently live. The template starts
 /// them overlaid on the content (see `bubble.blp`), and they migrate as the message
 /// gains a text label or reactions.
@@ -55,6 +67,8 @@ mod imp {
         pub(super) sender_color_class: RefCell<Option<String>>,
         pub(super) sender_binding: RefCell<Option<gtk::ExpressionWatch>>,
         pub(super) indicator_placement: Cell<IndicatorPlacement>,
+        pub(super) group_start: Cell<bool>,
+        pub(super) group_end: Cell<bool>,
         pub(super) message: glib::WeakRef<model::Message>,
         pub(super) hover_pill: RefCell<Option<gtk::Box>>,
         pub(super) hover_reaction_button: RefCell<Option<gtk::Button>>,
@@ -159,21 +173,22 @@ mod imp {
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
-            // Draw the tail behind the bubble so its inner edge tucks seamlessly under the
-            // rounded bottom corner; the protruding tip is all that shows past the body.
-            // Skipped for media bubbles, whose picture fills the whole rounded rectangle.
-            let obj = self.obj();
-            if obj.has_css_class("with-tail") && !obj.has_css_class("media") {
-                self.snapshot_tail(snapshot);
+            // The last bubble of a same-sender run draws its own background — a rounded
+            // rectangle whose sender-side bottom corner flows into a tail — so the corner,
+            // body, tail, and shadow are one continuous shape (the CSS background is
+            // suppressed for these, see `.custom-tail-shape`). All other bubbles keep the
+            // plain CSS rounded rectangle drawn by the parent snapshot.
+            if self.obj().draws_custom_shape() {
+                self.snapshot_shape(snapshot);
             }
             self.parent_snapshot(snapshot);
         }
     }
 
     impl MessageBubble {
-        /// Paints a small bubble tail at the bottom corner facing the sender: bottom-left
-        /// for incoming, bottom-right for outgoing, in the bubble's own background color.
-        fn snapshot_tail(&self, snapshot: &gtk::Snapshot) {
+        /// Paints the bubble outline (rounded rect + tail) as a single filled path, with a
+        /// 1px drop shadow and, in high-contrast, a hairline border.
+        fn snapshot_shape(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
             let w = obj.width() as f64;
             let h = obj.height() as f64;
@@ -182,9 +197,17 @@ mod imp {
             }
 
             let outgoing = obj.has_css_class("outgoing");
+            // Top corners are tightened when this bubble continues a run from above.
+            let top = if self.group_start.get() {
+                RADIUS
+            } else {
+                RADIUS_TIGHT
+            };
+
             #[allow(deprecated)]
-            let color = obj
-                .style_context()
+            let style = obj.style_context();
+            #[allow(deprecated)]
+            let color = style
                 .lookup_color(if outgoing {
                     "accent_bg_color"
                 } else {
@@ -192,28 +215,85 @@ mod imp {
                 })
                 .unwrap_or_else(|| gtk::gdk::RGBA::new(1.0, 1.0, 1.0, 1.0));
 
-            let bounds = graphene::Rect::new(-8.0, 0.0, (w + 16.0) as f32, h as f32);
+            let bounds = graphene::Rect::new(
+                (-TAIL_OVERHANG - 1.0) as f32,
+                -1.0,
+                (w + 2.0 * (TAIL_OVERHANG + 1.0)) as f32,
+                (h + 2.0) as f32,
+            );
             let ctx = snapshot.append_cairo(&bounds);
+
+            // Drop shadow: the same outline offset 1px down in translucent black (matches
+            // the former CSS `box-shadow: 0 1px alpha(black, 0.1)`, and includes the tail).
+            let _ = ctx.save();
+            ctx.translate(0.0, 1.0);
+            append_bubble_path(&ctx, w, h, top, outgoing);
+            ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
+            let _ = ctx.fill();
+            let _ = ctx.restore();
+
+            append_bubble_path(&ctx, w, h, top, outgoing);
             ctx.set_source_rgba(
                 color.red() as f64,
                 color.green() as f64,
                 color.blue() as f64,
                 color.alpha() as f64,
             );
+            ctx.fill_preserve().ok();
 
-            if outgoing {
-                ctx.move_to(w - 2.0, h - 16.0);
-                ctx.curve_to(w - 2.0, h - 4.0, w - 2.0, h, w + 6.0, h);
-                ctx.curve_to(w, h, w - 3.0, h - 2.0, w - 9.0, h - 4.0);
+            if adw::StyleManager::default().is_high_contrast() {
+                #[allow(deprecated)]
+                let border = style
+                    .lookup_color("borders")
+                    .unwrap_or_else(|| gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.15));
+                ctx.set_source_rgba(
+                    border.red() as f64,
+                    border.green() as f64,
+                    border.blue() as f64,
+                    border.alpha() as f64,
+                );
+                ctx.set_line_width(1.0);
+                let _ = ctx.stroke();
             } else {
-                ctx.move_to(2.0, h - 16.0);
-                ctx.curve_to(2.0, h - 4.0, 2.0, h, -6.0, h);
-                ctx.curve_to(0.0, h, 3.0, h - 2.0, 9.0, h - 4.0);
+                ctx.new_path();
             }
-            ctx.close_path();
-            let _ = ctx.fill();
         }
     }
+}
+
+/// Appends the bubble outline to `ctx`: a rounded rectangle with `top` top-corner radius
+/// and full bottom corners, except the sender-side bottom corner, which is replaced by a
+/// tail (bottom-left for incoming, bottom-right for outgoing).
+fn append_bubble_path(ctx: &gtk::cairo::Context, w: f64, h: f64, top: f64, outgoing: bool) {
+    use std::f64::consts::FRAC_PI_2;
+    use std::f64::consts::PI;
+
+    let r = RADIUS;
+
+    ctx.new_path();
+    ctx.move_to(top, 0.0);
+    ctx.line_to(w - top, 0.0);
+    ctx.arc(w - top, top, top, -FRAC_PI_2, 0.0); // top-right
+
+    if outgoing {
+        // Right edge down to where the tail blends in, then the tail out to its tip and
+        // back onto the bottom edge.
+        ctx.line_to(w, h - TAIL_HEIGHT);
+        ctx.curve_to(w, h - 8.0, w + TAIL_OVERHANG * 0.2, h - 5.0, w + TAIL_OVERHANG, h - 1.5);
+        ctx.curve_to(w + TAIL_OVERHANG * 0.4, h, w - TAIL_START + 4.0, h, w - TAIL_START, h);
+        ctx.line_to(r, h);
+        ctx.arc(r, h - r, r, FRAC_PI_2, PI); // bottom-left
+    } else {
+        ctx.line_to(w, h - r);
+        ctx.arc(w - r, h - r, r, 0.0, FRAC_PI_2); // bottom-right
+        ctx.line_to(TAIL_START, h);
+        ctx.curve_to(TAIL_START - 4.0, h, -TAIL_OVERHANG * 0.4, h, -TAIL_OVERHANG, h - 1.5);
+        ctx.curve_to(-TAIL_OVERHANG * 0.2, h - 5.0, 0.0, h - 8.0, 0.0, h - TAIL_HEIGHT);
+    }
+
+    ctx.line_to(0.0, top);
+    ctx.arc(top, top, top, PI, 1.5 * PI); // top-left
+    ctx.close_path();
 }
 
 glib::wrapper! {
@@ -412,6 +492,10 @@ impl MessageBubble {
         // that don't drive the bubble's `label` (polls, location, audio…) rely on this
         // call, while caption types re-run it from `set_label`.
         self.update_indicators_position();
+
+        // The content type may have changed under a recycled bubble (e.g. media → text),
+        // which flips whether it's eligible for the code-drawn tail shape.
+        self.refresh_shape_class();
     }
 
     pub(crate) fn update_from_sponsored_message(
@@ -456,17 +540,38 @@ impl MessageBubble {
         self.imp().sender_label.set_visible(false);
     }
 
-    /// Toggles the bubble tail, drawn on the last message of a same-sender run.
-    pub(crate) fn set_tail(&self, tail: bool) {
-        if tail == self.has_css_class("with-tail") {
-            return;
-        }
-        if tail {
-            self.add_css_class("with-tail");
-        } else {
-            self.remove_css_class("with-tail");
-        }
+    /// Records this bubble's position within its same-sender run. The last bubble of a run
+    /// (`is_group_end`) gets the code-drawn tail shape; `is_group_start` controls whether the
+    /// top corners are full or tightened.
+    pub(crate) fn set_shape(&self, is_group_start: bool, is_group_end: bool) {
+        let imp = self.imp();
+        imp.group_start.set(is_group_start);
+        imp.group_end.set(is_group_end);
+        self.refresh_shape_class();
         self.queue_draw();
+    }
+
+    /// Whether this bubble draws its own background+tail: the last bubble of a run, and a
+    /// solid-background type (media / maps keep the CSS rounded rectangle and get no tail).
+    pub(crate) fn draws_custom_shape(&self) -> bool {
+        self.imp().group_end.get()
+            && !self.has_css_class("media")
+            && !self.has_css_class("location")
+            && !self.has_css_class("venue")
+    }
+
+    /// Keeps the `.custom-tail-shape` class (which suppresses the CSS background so it isn't
+    /// painted twice) in sync with `draws_custom_shape`. Re-run whenever the content type or
+    /// grouping changes.
+    fn refresh_shape_class(&self) {
+        let custom = self.draws_custom_shape();
+        if custom != self.has_css_class("custom-tail-shape") {
+            if custom {
+                self.add_css_class("custom-tail-shape");
+            } else {
+                self.remove_css_class("custom-tail-shape");
+            }
+        }
     }
 
     pub(crate) fn set_prefix(&self, prefix: Option<&gtk::Widget>) {

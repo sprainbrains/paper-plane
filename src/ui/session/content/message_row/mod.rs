@@ -643,8 +643,9 @@ impl Row {
             if !is_group_start {
                 bubble.hide_sender();
             }
-            // The last message of a run (and standalone messages) gets a bubble tail.
-            bubble.set_tail(is_group_end);
+            // Feed the run position to the bubble so it can draw its outline: the last
+            // message of a run (and standalone messages) gets the tail shape.
+            bubble.set_shape(is_group_start, is_group_end);
         }
     }
 

@@ -18,6 +18,13 @@ messagebubble:not(.outgoing) {
   background: #262626;
 }
 
+/* Keep the code-drawn tail bubbles background-free in dark mode too (higher specificity
+   than the incoming rule above, which would otherwise repaint it). */
+messagebubble.custom-tail-shape:not(.outgoing),
+messagebubble.custom-tail-shape.outgoing {
+  background: none;
+}
+
 messagebubble.outgoing {
   background-color: @accent_bg_color;
   color: @accent_fg_color;

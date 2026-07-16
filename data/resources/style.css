@@ -222,6 +222,10 @@ listview.chat-history > row {
   background: #f0f0f0;
 }
 
+.fallback messagebubble.custom-tail-shape:not(.outgoing) {
+  background: none;
+}
+
 .fallback .event-row {
   background: transparent;
   color: currentColor;
@@ -395,6 +399,15 @@ listview.chat-history.menu-dimmed > row.menu-active {
 messagebubble.outgoing {
   background-color: @accent_bg_color;
   color: @accent_fg_color;
+}
+
+/* The last bubble of a same-sender run draws its own background + tail + shadow in code
+   (MessageBubble::snapshot). Suppress the CSS-painted background and shadow for these so
+   they aren't drawn twice; the text color still comes from `.outgoing` above. */
+messagebubble.custom-tail-shape,
+messagebubble.custom-tail-shape.outgoing {
+  background: none;
+  box-shadow: none;
 }
 
 messagebubble:not(.outgoing):dir(ltr),
