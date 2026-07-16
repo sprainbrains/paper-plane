@@ -36,12 +36,13 @@ template $Session : Adw.Bin {
         child: Adw.OverlaySplitView content_picker_split {
           sidebar-position: end;
           show-sidebar: false;
-          min-sidebar-width: 320;
+          min-sidebar-width: 260;
           max-sidebar-width: 420;
           sidebar-width-fraction: 0.35;
 
           content: $Content content {
             hexpand: true;
+            compact: bind split_view.collapsed;
           };
 
           sidebar: Box {
@@ -53,7 +54,7 @@ template $Session : Adw.Bin {
 
             $PaplContentPicker content_picker {
               hexpand: true;
-              width-request: 320;
+              width-request: 260;
               show-window-controls: true;
               session: bind template.model;
               chat: bind content.chat;
@@ -63,17 +64,20 @@ template $Session : Adw.Bin {
       };
     };
 
-    Adw.Breakpoint {
-      condition ("max-width: 560sp")
-      setters {
-        split_view.collapsed: true;
-      }
-    }
-
+    // BreakpointBin applies only the *last* matching breakpoint, so these must be
+    // ordered widest-first and each narrower one must repeat the wider setters.
     Adw.Breakpoint {
       condition ("max-width: 860sp")
       setters {
         content_picker_split.collapsed: true;
+      }
+    }
+
+    Adw.Breakpoint {
+      condition ("max-width: 560sp")
+      setters {
+        content_picker_split.collapsed: true;
+        split_view.collapsed: true;
       }
     }
   };

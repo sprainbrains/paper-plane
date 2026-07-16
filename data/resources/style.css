@@ -1,3 +1,7 @@
+/* The incoming message-bubble background, exposed as a named color so the bubble tail
+   (drawn in code, see MessageBubble::snapshot) can match it. Overridden in style-dark. */
+@define-color message_bubble_bg #ffffff;
+
 .regular {
   font-weight: normal;
 }
@@ -324,6 +328,18 @@ listview.chat-history > row.selection-run-end {
   border-bottom-right-radius: 12px;
 }
 
+/* While a message context menu is open, dim every row except the one it was opened for,
+   to spotlight that message. Opacity is applied per-row (not on the list) so the active
+   row can override it — a child can't be more opaque than an opacity-dimmed ancestor. */
+listview.chat-history.menu-dimmed > row {
+  opacity: 0.35;
+  transition: opacity 150ms ease-out;
+}
+
+listview.chat-history.menu-dimmed > row.menu-active {
+  opacity: 1;
+}
+
 /* Briefly flashes a row's background when a reply/jump/link focuses its message. */
 @keyframes message-flash {
   0% {
@@ -340,6 +356,7 @@ listview.chat-history > row.selection-run-end {
 }
 
 .message-flash {
+  border-radius: 9px;
   animation: message-flash 1.5s ease-out;
 }
 
@@ -625,6 +642,29 @@ messagesticker {
   border-radius: 9999px;
 }
 
+/* Hover-actions island (Reply + favorite reaction), overlaid at the bubble's top-
+   trailing corner and revealed only while the pointer is over the message. */
+.hover-actions {
+  border-spacing: 2px;
+  padding: 2px;
+  margin: 3px;
+  border-radius: 9999px;
+  background-color: @popover_bg_color;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 2px 6px 1px rgba(0, 0, 0, 0.12);
+}
+
+.hover-action-button {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 2px;
+}
+
+.hover-action-button image,
+.hover-action-button label {
+  -gtk-icon-size: 15px;
+  font-size: 15px;
+}
+
 .message-reactions {
   margin-top: 4px;
 }
@@ -632,9 +672,9 @@ messagesticker {
 .reaction-chip {
   min-height: 0;
   min-width: 0;
-  padding: 2px 4px;
-  border-radius: 12px;
-  font-size: smaller;
+  padding: 2px 6px;
+  border-radius: 13px;
+  font-size: 0.95em;
 }
 
 .reaction-chip.chosen {
@@ -655,7 +695,8 @@ messagesticker {
   padding: 3px 5px;
   border-radius: 9999px;
   background-color: @popover_bg_color;
-  box-shadow: 0 2px 6px 1px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.28);
+  border: 1px solid alpha(@window_fg_color, 0.07);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 3px 9px 1px rgba(0, 0, 0, 0.14);
   animation: message-menu-pop 150ms ease-out;
 }
 
@@ -690,14 +731,24 @@ messagesticker {
   padding: 6px;
   border-radius: 12px;
   background-color: @popover_bg_color;
-  box-shadow: 0 2px 6px 1px rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.28);
+  border: 1px solid alpha(@window_fg_color, 0.07);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 3px 9px 1px rgba(0, 0, 0, 0.14);
   animation: message-menu-pop 150ms ease-out;
 }
 
 .message-menu-item {
   min-height: 0;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 8px;
+  font-weight: normal;
+}
+
+.message-menu-item > box {
+  border-spacing: 12px;
+}
+
+.message-menu-item image {
+  opacity: 0.75;
 }
 
 .message-menu-item.message-menu-item-destructive {
@@ -873,6 +924,16 @@ contentpicker.content-picker.reaction-mode separator {
   padding: 0;
 }
 
+/* Grayish hover box so it's clear which pickable item is under the pointer. */
+.emoji-picker-item:hover,
+.gif-picker-item:hover {
+  background-color: alpha(@window_fg_color, 0.08);
+}
+
+.emoji-picker-item {
+  border-radius: 8px;
+}
+
 /* The emoji page is a virtualized ListView; give its rows the horizontal insets
    the old Box had, and drop the default list row styling. */
 .emoji-picker-list {
@@ -924,4 +985,10 @@ contentpicker.content-picker.reaction-mode separator {
 
 .gif-picker-grid > child {
   padding: 3px;
+}
+
+/* The fullscreen media viewer: a near-opaque backdrop that covers the whole app and,
+   being opaque, swallows clicks to the chat behind it while open. */
+mediaviewer {
+  background-color: rgba(0, 0, 0, 0.9);
 }

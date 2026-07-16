@@ -6,11 +6,13 @@ mod chat_info_window;
 mod content_picker;
 mod event_row;
 mod forward_window;
+mod media_viewer;
 mod message_menu;
 mod message_menu_reactions;
 mod message_row;
 mod send_media_window;
 
+use std::cell::Cell;
 use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
@@ -26,6 +28,7 @@ pub(crate) use self::chat_info_window::ChatInfoWindow;
 pub(crate) use self::content_picker::ContentPicker;
 pub(crate) use self::event_row::EventRow;
 pub(crate) use self::forward_window::ForwardWindow;
+pub(crate) use self::media_viewer::MediaViewer;
 pub(crate) use self::message_menu::MessageMenu;
 pub(crate) use self::message_menu_reactions::MessageMenuReactions;
 pub(crate) use self::message_row::MediaPicture;
@@ -76,6 +79,7 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/session/content/mod.ui")]
     pub(crate) struct Content {
         pub(super) chat: glib::WeakRef<model::Chat>,
+        pub(super) compact: Cell<bool>,
         #[template_child]
         pub(super) stack: TemplateChild<gtk::Stack>,
         #[template_child]
@@ -107,6 +111,7 @@ mod imp {
                     glib::ParamSpecObject::builder::<model::Chat>("chat")
                         .explicit_notify()
                         .build(),
+                    glib::ParamSpecBoolean::builder("compact").build(),
                 ]
             })
         }
@@ -119,6 +124,12 @@ mod imp {
                     let chat = value.get().unwrap();
                     obj.set_chat(chat);
                 }
+                "compact" => {
+                    let compact = value.get().unwrap();
+                    if self.compact.replace(compact) != compact {
+                        obj.notify("compact");
+                    }
+                }
                 _ => unimplemented!(),
             }
         }
@@ -128,6 +139,7 @@ mod imp {
 
             match pspec.name() {
                 "chat" => obj.chat().to_value(),
+                "compact" => self.compact.get().to_value(),
                 _ => unimplemented!(),
             }
         }

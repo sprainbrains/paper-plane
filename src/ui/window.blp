@@ -13,7 +13,16 @@ template $PaplWindow : Adw.ApplicationWindow {
 
   notify::is_active => $on_notify_is_active() swapped;
 
-  content: Adw.ToastOverlay {
-    $PaplClientManagerView client_manager_view {}
+  content: Overlay {
+    Adw.ToastOverlay {
+      $PaplClientManagerView client_manager_view {}
+    }
+
+    [overlay]
+    $PaplMediaViewer media_viewer {
+      visible: false;
+      halign: fill;
+      valign: fill;
+    }
   };
 }

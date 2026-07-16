@@ -9,6 +9,7 @@ mod window;
 use gtk::glib::prelude::*;
 
 pub(crate) use self::client_manager_view::ClientManagerView;
+pub(crate) use self::client_manager_view::InitialView;
 pub(crate) use self::client_view::ClientView;
 pub(crate) use self::components::AnimatedBin;
 pub(crate) use self::components::Avatar;
@@ -47,6 +48,7 @@ pub(crate) use self::session::ContentPicker;
 pub(crate) use self::session::EventRow;
 pub(crate) use self::session::ForwardWindow;
 pub(crate) use self::session::MediaPicture;
+pub(crate) use self::session::MediaViewer;
 pub(crate) use self::session::MessageAudio;
 pub(crate) use self::session::MessageBase;
 pub(crate) use self::session::MessageBaseExt;
@@ -123,6 +125,7 @@ pub(crate) fn init() {
     MapMarker::static_type();
     MapWindow::static_type();
     MediaPicture::static_type();
+    MediaViewer::static_type();
     MessageBase::static_type();
     MessageBubble::static_type();
     MessageDocument::static_type();

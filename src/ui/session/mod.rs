@@ -30,6 +30,7 @@ pub(crate) use self::content::ContentPicker;
 pub(crate) use self::content::EventRow;
 pub(crate) use self::content::ForwardWindow;
 pub(crate) use self::content::MediaPicture;
+pub(crate) use self::content::MediaViewer;
 pub(crate) use self::content::MessageAudio;
 pub(crate) use self::content::MessageBase;
 pub(crate) use self::content::MessageBaseExt;
@@ -216,7 +217,7 @@ impl From<&model::ClientStateSession> for Session {
 
 const SIDEBAR_MIN_WIDTH: i32 = 240;
 const SIDEBAR_MAX_WIDTH: i32 = 500;
-const PICKER_MIN_WIDTH: i32 = 320;
+const PICKER_MIN_WIDTH: i32 = 260;
 const PICKER_MAX_WIDTH: i32 = 560;
 
 impl Session {
@@ -260,6 +261,7 @@ impl Session {
         picker_split.set_min_sidebar_width(picker_width);
         picker_split.set_max_sidebar_width(picker_width);
         let picker_apply = picker_split.downgrade();
+        let picker_reflow = imp.content_picker.downgrade();
         self.setup_panel_resize(
             imp.picker_resize_handle.upcast_ref(),
             false,
@@ -270,6 +272,12 @@ impl Session {
                 if let Some(split) = picker_apply.upgrade() {
                     split.set_min_sidebar_width(width);
                     split.set_max_sidebar_width(width);
+                }
+                // The picker's own `size_allocate` override does not reliably fire for the
+                // templated BoxLayout widget, so re-chunk the sticker/emoji grid to the new
+                // width from here — the only place the (pinned) picker width changes.
+                if let Some(picker) = picker_reflow.upgrade() {
+                    picker.reflow_now();
                 }
             },
         );
@@ -381,6 +389,13 @@ impl Session {
         self.imp().content.scroll_history_to_latest();
     }
 
+    /// Reveals the content (chat) page. On a collapsed (mobile) layout this navigates
+    /// away from the chat-list sidebar; when expanded both are already visible, so it
+    /// has no visible effect.
+    pub(crate) fn show_chat_content(&self) {
+        self.imp().split_view.set_show_content(true);
+    }
+
     /// Opens the content-picker sidebar on the sticker tab, showing a single sticker
     /// pack (triggered by "Show Sticker Pack" in a sticker message's menu).
     pub(crate) fn show_sticker_pack(&self, set_id: i64) {
@@ -398,6 +413,11 @@ impl Session {
     }
 
     pub(crate) fn show_content_picker_popup(&self, anchor: &gtk::Image) {
+        // The hover popover is a stand-in for the picker sidebar; when that sidebar is
+        // already visible (side-by-side or as its own overlay), don't stack a popover on it.
+        if self.imp().content_picker_split.shows_sidebar() {
+            return;
+        }
         self.cancel_content_picker_close();
         let popover = self.content_picker_popover(anchor);
         if let Some(picker) = &*self.imp().popup_content_picker.borrow() {

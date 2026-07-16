@@ -1,7 +1,5 @@
 use adw::prelude::AdwDialogExt;
 use adw::subclass::prelude::*;
-use gettextrs::gettext;
-use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
@@ -11,7 +9,6 @@ use gtk::prelude::*;
 use crate::Application;
 use crate::config;
 use crate::model;
-use crate::strings;
 use crate::types::ChatId;
 use crate::types::ClientId;
 use crate::ui;
@@ -26,6 +23,8 @@ mod imp {
         pub(super) settings: utils::PaperPlaneSettings,
         #[template_child]
         pub(super) client_manager_view: TemplateChild<ui::ClientManagerView>,
+        #[template_child]
+        pub(super) media_viewer: TemplateChild<ui::MediaViewer>,
     }
 
     #[glib::object_subclass]
@@ -53,16 +52,6 @@ mod imp {
 
             let obj = &*self.obj();
 
-            obj.client_manager_view()
-                .client_manager()
-                .connect_update_notification_group(clone!(
-                    #[weak]
-                    obj,
-                    move |_, notification_group, session| {
-                        obj.handle_notifications(notification_group, session);
-                    }
-                ));
-
             // Devel profile
             if config::PROFILE == "Devel" {
                 obj.add_css_class("devel");
@@ -78,8 +67,15 @@ mod imp {
     impl WindowImpl for Window {
         // Save window state on delete event
         fn close_request(&self) -> glib::Propagation {
-            if let Err(err) = self.obj().save_window_size() {
+            let obj = self.obj();
+
+            if let Err(err) = obj.save_window_size() {
                 log::warn!("Failed to save window state, {err}");
+            }
+
+            // Drop this window's entries from the cross-window open-chat registry.
+            if let Some(app) = obj.application().and_downcast::<Application>() {
+                app.unregister_window(&obj);
             }
 
             // Pass close request on to the parent
@@ -133,6 +129,13 @@ impl Window {
         glib::Object::builder().property("application", app).build()
     }
 
+    /// Wires this window's client-manager view to the shared manager and shows the
+    /// requested initial account/chat. Must be called once, right after `new`.
+    pub(crate) fn init_session(&self, initial: ui::InitialView) {
+        let app = self.application().and_downcast::<Application>().unwrap();
+        self.client_manager_view().init(&app.client_manager(), initial);
+    }
+
     pub(crate) fn select_chat(&self, client_id: ClientId, chat_id: ChatId) {
         self.client_manager_view().select_chat(client_id, chat_id);
     }
@@ -141,106 +144,8 @@ impl Window {
         &self.imp().client_manager_view
     }
 
-    fn handle_notifications(
-        &self,
-        notification_group: model::BoxedUpdateNotificationGroup,
-        session: &model::ClientStateSession,
-    ) {
-        // Respect the user's notifications preference.
-        if !gio::Settings::new(config::APP_ID).boolean("notifications-enabled") {
-            return;
-        }
-
-        let app = self.application().unwrap();
-
-        let chat = session.chat(notification_group.0.chat_id);
-
-        for notification in notification_group.0.added_notifications {
-            let notification_id = notification.id;
-
-            let notification = match notification.r#type {
-                tdlib::enums::NotificationType::NewMessage(data) => {
-                    let message = chat.upsert_message(data.message);
-                    let mut body = strings::message_content(&message);
-
-                    // Add the sender's name to the body if the chat is a group
-                    if matches!(chat.chat_type(), model::ChatType::BasicGroup(_))
-                        || matches!(chat.chat_type(), model::ChatType::Supergroup(s) if !s.is_channel())
-                    {
-                        let sender_name = strings::message_sender(&message.sender(), true);
-                        body.insert_str(0, &(sender_name + ": "));
-                    }
-
-                    let notification = gio::Notification::new(&chat.title());
-                    notification.set_body(Some(&body));
-
-                    Some(notification)
-                }
-                tdlib::enums::NotificationType::NewCall(_) => {
-                    let body = gettext("Incoming call");
-                    let notification = gio::Notification::new(&chat.title());
-                    notification.set_body(Some(&body));
-
-                    Some(notification)
-                }
-                _ => None,
-            };
-
-            if let Some(notification) = notification {
-                notification.set_default_action_and_target_value(
-                    "app.select-chat",
-                    Some(&(session.client_().id(), chat.id()).to_variant()),
-                );
-
-                if let Some(avatar) = chat.avatar() {
-                    let avatar_file = &avatar.0;
-                    if avatar_file.local.is_downloading_completed {
-                        match gdk::Texture::from_filename(&avatar_file.local.path) {
-                            Ok(texture) => notification.set_icon(&texture),
-                            Err(error) => {
-                                log::warn!("Failed to load a notification avatar: {error:?}")
-                            }
-                        }
-                        app.send_notification(Some(&notification_id.to_string()), &notification);
-                    } else {
-                        app.send_notification(Some(&notification_id.to_string()), &notification);
-
-                        let file_id = avatar_file.id;
-                        utils::spawn(clone!(
-                            #[weak]
-                            session,
-                            #[weak]
-                            app,
-                            async move {
-                                match session.download_file(file_id).await {
-                                    Ok(file) => {
-                                        match gdk::Texture::from_filename(file.local.path) {
-                                            Ok(texture) => {
-                                                notification.set_icon(&texture);
-                                                app.send_notification(
-                                                    Some(&notification_id.to_string()),
-                                                    &notification,
-                                                );
-                                            }
-                                            Err(error) => log::warn!(
-                                                "Failed to load a notification avatar: {error:?}"
-                                            ),
-                                        }
-                                    }
-                                    Err(e) => {
-                                        log::warn!("Failed to download an avatar: {e:?}");
-                                    }
-                                }
-                            }
-                        ));
-                    }
-                }
-            }
-        }
-
-        for notification_id in notification_group.0.removed_notification_ids {
-            app.withdraw_notification(&notification_id.to_string());
-        }
+    pub(crate) fn open_media_viewer(&self, message: &model::Message) {
+        self.imp().media_viewer.open(message);
     }
 
     fn save_window_size(&self) -> Result<(), glib::BoolError> {

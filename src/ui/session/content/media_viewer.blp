@@ -1,0 +1,45 @@
+using Gtk 4.0;
+
+template $PaplMediaViewer : Widget {
+  layout-manager: BinLayout {};
+  visible: false;
+  focusable: true;
+
+  EventControllerKey {
+    propagation-phase: capture;
+    key-pressed => $on_key_pressed() swapped;
+  }
+
+  Overlay {
+    Stack stack {
+      StackPage {
+        name: "photo";
+
+        child: Picture picture {
+          content-fit: contain;
+        };
+      }
+
+      StackPage {
+        name: "video";
+
+        child: Video video {};
+      }
+    }
+
+    [overlay]
+    Button close_button {
+      halign: end;
+      valign: start;
+      margin-top: 12;
+      margin-end: 12;
+      icon-name: "window-close-symbolic";
+      clicked => $on_close_clicked() swapped;
+
+      styles [
+        "osd",
+        "circular",
+      ]
+    }
+  }
+}

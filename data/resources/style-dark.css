@@ -1,3 +1,6 @@
+/* Keep in sync with `messagebubble:not(.outgoing)` below; the bubble tail reads this. */
+@define-color message_bubble_bg #262626;
+
 #new-login-icon {
   background-color: @dark_2;
 }

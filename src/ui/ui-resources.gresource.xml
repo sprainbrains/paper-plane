@@ -31,6 +31,7 @@
     <file compressed="true" preprocess="xml-stripblanks">session/content/chat_info_window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/event_row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/forward_window.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">session/content/media_viewer.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/audio.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/base.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/bubble.ui</file>
@@ -56,6 +57,7 @@
     <file compressed="true" preprocess="xml-stripblanks">session/mod.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/preferences_window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/row.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">session/row_menu.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/avatar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/chat_folder/bar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/chat_folder/edit_window.ui</file>
