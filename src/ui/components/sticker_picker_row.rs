@@ -19,6 +19,10 @@ const DEFAULT_CELL_SIZE: i32 = 68;
 const DEFAULT_STICKER_SIZE: i32 = 64;
 const DEFAULT_COLUMNS: i32 = 5;
 type ActivateSticker = Box<dyn Fn(tdlib::types::Sticker)>;
+type RemoveSticker = Box<dyn Fn(tdlib::types::Sticker)>;
+
+/// Radius of the hovered-cell remove badge (recents/favorites rows only).
+const REMOVE_BADGE_RADIUS: f32 = 9.0;
 
 /// Per-cell Lottie playback state for an animated (`.tgs`) cell. The row draws the
 /// cached frame itself (no child widget); frames come from the shared `rlt` cache.
@@ -50,6 +54,13 @@ mod imp {
         pub(super) scrolling: RefCell<Option<Rc<Cell<bool>>>>,
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         pub(super) activate: RefCell<Option<ActivateSticker>>,
+        /// Set for the "Recently Used" / "Favorites" rows: the hovered cell then shows a
+        /// remove badge and a click on it invokes `remove` instead of `activate`.
+        pub(super) remove: RefCell<Option<RemoveSticker>>,
+        pub(super) removable: Cell<bool>,
+        /// The cell currently under the pointer, drawn with a hover box (and a remove
+        /// badge on removable rows). `None` when the pointer is off the row.
+        pub(super) hovered: Cell<Option<usize>>,
         pub(super) generation: Cell<u64>,
         pub(super) shimmer: Cell<f32>,
         pub(super) demand: Rc<Cell<bool>>,
@@ -74,6 +85,9 @@ mod imp {
                 scrolling: RefCell::default(),
                 session: glib::WeakRef::new(),
                 activate: RefCell::default(),
+                remove: RefCell::default(),
+                removable: Cell::new(false),
+                hovered: Cell::new(None),
                 generation: Cell::default(),
                 shimmer: Cell::new(-0.4),
                 demand: Rc::new(Cell::new(true)),
@@ -102,9 +116,24 @@ mod imp {
             click.connect_released(clone!(
                 #[weak]
                 obj,
-                move |_, _, x, _| obj.activate_at(x)
+                move |_, _, x, y| obj.activate_at(x, y)
             ));
             obj.add_controller(click);
+
+            // Track the hovered cell so the row can paint a hover box under it (and, on
+            // recents/favorites rows, a remove badge at its top-right corner).
+            let motion = gtk::EventControllerMotion::new();
+            motion.connect_motion(clone!(
+                #[weak]
+                obj,
+                move |_, x, _| obj.set_hovered_at(x)
+            ));
+            motion.connect_leave(clone!(
+                #[weak]
+                obj,
+                move |_| obj.set_hovered(None)
+            ));
+            obj.add_controller(motion);
 
             // Only on-screen rows do work (preview decode, animation, frame ticks): they
             // start on `map` and stop on `unmap`, tdesktop-style. This bounds the cost to
@@ -124,12 +153,15 @@ mod imp {
     impl WidgetImpl for StickerPickerRow {
         fn measure(&self, orientation: gtk::Orientation, _: i32) -> (i32, i32, i32, i32) {
             let cell_size = self.cell_size.get();
-            let size = if orientation == gtk::Orientation::Horizontal {
-                cell_size * self.columns.get()
+            if orientation == gtk::Orientation::Horizontal {
+                // Minimum is a single cell so the row (and thus the list, the picker, and
+                // the whole sidebar) can shrink freely; the picker re-chunks to fewer
+                // columns as it narrows. Natural is the full width for the current column
+                // count so it fills the panel when there's room.
+                (cell_size, cell_size * self.columns.get(), -1, -1)
             } else {
-                cell_size
-            };
-            (size, size, -1, -1)
+                (cell_size, cell_size, -1, -1)
+            }
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
@@ -138,6 +170,24 @@ mod imp {
             let sticker_size = self.sticker_size.get() as f32;
             let width = obj.width() as f32;
             let cell_width = width / self.columns.get() as f32;
+            let hovered = self.hovered.get();
+
+            // A grayish rounded box under the hovered cell so it's clear which sticker /
+            // custom-emoji is targeted.
+            if let Some(index) = hovered {
+                let inset = 3.0;
+                let rect = graphene::Rect::new(
+                    index as f32 * cell_width + inset,
+                    inset,
+                    cell_width - inset * 2.0,
+                    cell_size as f32 - inset * 2.0,
+                );
+                let radius = 10.0;
+                snapshot.push_rounded_clip(&gsk::RoundedRect::from_rect(rect, radius));
+                snapshot.append_color(&gdk::RGBA::new(0.5, 0.5, 0.5, 0.16), &rect);
+                snapshot.pop();
+            }
+
             for (index, preview) in self.previews.borrow().iter().enumerate() {
                 let aspect = preview.sticker.width as f32 / preview.sticker.height.max(1) as f32;
                 let (draw_width, draw_height) = if aspect >= 1.0 {
@@ -158,6 +208,30 @@ mod imp {
                 } else {
                     obj.snapshot_skeleton(snapshot, preview, &rect);
                 }
+            }
+
+            // A remove badge at the hovered cell's top-right corner on recents/favorites rows.
+            if self.removable.get()
+                && let Some(index) = hovered
+                && index < self.previews.borrow().len()
+            {
+                let (cx, cy) = obj.remove_badge_center(index);
+                let r = REMOVE_BADGE_RADIUS;
+                let bounds =
+                    graphene::Rect::new(cx - r - 1.0, cy - r - 1.0, (r + 1.0) * 2.0, (r + 1.0) * 2.0);
+                let ctx = snapshot.append_cairo(&bounds);
+                ctx.arc(cx as f64, cy as f64, r as f64, 0.0, std::f64::consts::TAU);
+                ctx.set_source_rgba(0.0, 0.0, 0.0, 0.55);
+                let _ = ctx.fill();
+                let arm = (r as f64) * 0.45;
+                ctx.set_source_rgba(1.0, 1.0, 1.0, 0.95);
+                ctx.set_line_width(1.6);
+                ctx.set_line_cap(gtk::cairo::LineCap::Round);
+                ctx.move_to(cx as f64 - arm, cy as f64 - arm);
+                ctx.line_to(cx as f64 + arm, cy as f64 + arm);
+                ctx.move_to(cx as f64 + arm, cy as f64 - arm);
+                ctx.line_to(cx as f64 - arm, cy as f64 + arm);
+                let _ = ctx.stroke();
             }
         }
     }
@@ -325,13 +399,62 @@ impl StickerPickerRow {
             .is_some_and(|scrolling| scrolling.get())
     }
 
-    fn activate_at(&self, x: f64) {
+    /// Marks the row as one whose cells can be removed from recents/favorites: hovering a
+    /// cell then shows a remove badge, and clicking it calls `remove` instead of `activate`.
+    pub(crate) fn set_removable(&self, remove: impl Fn(tdlib::types::Sticker) + 'static) {
+        self.imp().removable.set(true);
+        *self.imp().remove.borrow_mut() = Some(Box::new(remove));
+    }
+
+    /// The cell index under an x offset, or `None` past the last populated cell.
+    fn cell_at(&self, x: f64) -> Option<usize> {
         let count = self.imp().previews.borrow().len();
-        let index = (x / (self.width() as f64 / self.imp().columns.get() as f64)).floor() as usize;
-        if index >= count {
-            return;
+        let cell_width = self.width() as f64 / self.imp().columns.get() as f64;
+        if cell_width <= 0.0 {
+            return None;
         }
+        let index = (x / cell_width).floor() as usize;
+        (index < count).then_some(index)
+    }
+
+    /// The center of a cell's remove badge, in widget coordinates (top-right of the cell).
+    fn remove_badge_center(&self, index: usize) -> (f32, f32) {
+        let cell_width = self.width() as f32 / self.imp().columns.get() as f32;
+        let inset = REMOVE_BADGE_RADIUS + 2.0;
+        (
+            index as f32 * cell_width + cell_width - inset,
+            inset,
+        )
+    }
+
+    fn set_hovered_at(&self, x: f64) {
+        self.set_hovered(self.cell_at(x));
+    }
+
+    fn set_hovered(&self, index: Option<usize>) {
+        if self.imp().hovered.replace(index) != index {
+            self.queue_draw();
+        }
+    }
+
+    fn activate_at(&self, x: f64, y: f64) {
+        let Some(index) = self.cell_at(x) else {
+            return;
+        };
         let sticker = self.imp().previews.borrow()[index].sticker.clone();
+
+        // A click within the remove badge (recents/favorites rows) removes rather than sends.
+        if self.imp().removable.get() {
+            let (cx, cy) = self.remove_badge_center(index);
+            let (dx, dy) = (x as f32 - cx, y as f32 - cy);
+            if dx * dx + dy * dy <= REMOVE_BADGE_RADIUS * REMOVE_BADGE_RADIUS {
+                if let Some(remove) = &*self.imp().remove.borrow() {
+                    remove(sticker);
+                }
+                return;
+            }
+        }
+
         if let Some(activate) = &*self.imp().activate.borrow() {
             activate(sticker);
         }

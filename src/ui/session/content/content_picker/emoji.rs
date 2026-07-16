@@ -53,7 +53,6 @@ pub(super) const EMOJI_SECTIONS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-pub(super) const EMOJI_ROW_LEN: usize = 8;
 pub(super) const CUSTOM_EMOJI_COLUMNS: i32 = 8;
 pub(super) const CUSTOM_EMOJI_CELL_SIZE: i32 = 44;
 pub(super) const CUSTOM_EMOJI_SIZE: i32 = 30;

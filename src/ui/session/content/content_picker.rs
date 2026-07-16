@@ -60,9 +60,10 @@ mod imp {
         pub(super) custom_emoji_generation: Cell<u64>,
         pub(super) sticker_scrolling: Rc<Cell<bool>>,
         pub(super) scroll_timeout: RefCell<Option<glib::SourceId>>,
-        /// Last sticker column count applied, so a resize only re-chunks when the number of
-        /// columns actually changes (debounced onto idle via reflow_source).
+        /// Last sticker / custom-emoji column count applied, so a resize only re-chunks when
+        /// the number of columns actually changes (debounced onto idle via reflow_source).
         pub(super) sticker_columns: Cell<usize>,
+        pub(super) emoji_columns: Cell<usize>,
         pub(super) reflow_source: RefCell<Option<glib::SourceId>>,
         pub(super) emoji_model: OnceCell<gio::ListStore>,
         pub(super) sticker_model: OnceCell<gio::ListStore>,
@@ -250,12 +251,24 @@ enum StickerRow {
         title: String,
         is_installed: bool,
     },
-    Stickers(Vec<tdlib::types::Sticker>),
+    Stickers {
+        stickers: Vec<tdlib::types::Sticker>,
+        removal: StickerRemoval,
+    },
     Loading(String),
     Error {
         set_id: i64,
         title: String,
     },
+}
+
+/// Whether — and from which list — a hovered sticker in a row can be removed. Only the
+/// "Recently Used" and "Favorites" sections are removable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StickerRemoval {
+    None,
+    Recent,
+    Favorite,
 }
 
 /// How many sticker rows past the just-bound one to warm the preview cache for, so a
@@ -308,30 +321,49 @@ impl ContentPicker {
         self.imp().emoji_list.set_factory(Some(&factory));
     }
 
-    /// Schedules a reflow after the current allocation (re-chunking mid-allocate is unsafe);
-    /// debounced so a stream of resize allocations collapses to one rebuild.
+    /// Requests a sticker/emoji column reflow. Called when the panel is resized (the
+    /// drag handle drives this directly, since the templated `BoxLayout` widget's
+    /// `size_allocate` override does not reliably fire).
+    pub(crate) fn reflow_now(&self) {
+        self.queue_reflow();
+    }
+
+    /// Schedules a reflow shortly after the last resize event. Re-chunking rebuilds the
+    /// whole sticker/emoji model, so this is debounced with a trailing timer that resets on
+    /// each call: a drag collapses into a single rebuild once the user settles, instead of
+    /// re-chunking on every intermediate width and freezing the UI.
     fn queue_reflow(&self) {
-        if self.imp().reflow_source.borrow().is_some() {
-            return;
+        if let Some(source) = self.imp().reflow_source.borrow_mut().take() {
+            source.remove();
         }
-        let source = glib::idle_add_local_once(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move || {
-                obj.imp().reflow_source.replace(None);
-                obj.apply_reflow();
-            }
-        ));
+        let source = glib::timeout_add_local_once(
+            std::time::Duration::from_millis(150),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move || {
+                    obj.imp().reflow_source.replace(None);
+                    obj.apply_reflow();
+                }
+            ),
+        );
         self.imp().reflow_source.replace(Some(source));
     }
 
-    /// Re-chunks the sticker rows when the panel width now fits a different column count.
-    /// (Emoji reflow themselves via their FlowBox and need no rebuild here.)
+    /// Re-chunks the sticker and custom-emoji rows when the panel width now fits a different
+    /// column count. (Standard-emoji rows reflow themselves via their FlowBox and are left
+    /// untouched.)
     fn apply_reflow(&self) {
         let sticker_columns = self.sticker_columns_target();
         if sticker_columns != self.sticker_columns() && self.imp().sticker_model.get().is_some() {
             self.imp().sticker_columns.set(sticker_columns);
             self.rechunk_sticker_model(sticker_columns);
+        }
+
+        let emoji_columns = self.emoji_columns_target();
+        if emoji_columns != self.emoji_columns() && self.imp().emoji_model.get().is_some() {
+            self.imp().emoji_columns.set(emoji_columns);
+            self.rechunk_emoji_model(emoji_columns);
         }
     }
 
@@ -342,13 +374,18 @@ impl ContentPicker {
         let model = self.sticker_model();
         let mut new_rows: Vec<glib::BoxedAnyObject> = Vec::new();
         let mut pending: Vec<tdlib::types::Sticker> = Vec::new();
+        // All sticker rows between two headers belong to one section, so they share a
+        // removal kind; carry it onto the re-chunked rows.
+        let mut pending_removal = StickerRemoval::None;
 
         let flush = |pending: &mut Vec<tdlib::types::Sticker>,
+                     removal: StickerRemoval,
                      out: &mut Vec<glib::BoxedAnyObject>| {
             for chunk in pending.chunks(columns) {
-                out.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
-                    chunk.to_vec(),
-                )));
+                out.push(glib::BoxedAnyObject::new(StickerRow::Stickers {
+                    stickers: chunk.to_vec(),
+                    removal,
+                }));
             }
             pending.clear();
         };
@@ -359,7 +396,49 @@ impl ContentPicker {
                 .and_downcast::<glib::BoxedAnyObject>()
                 .unwrap();
             let stickers = match &*item.borrow::<StickerRow>() {
-                StickerRow::Stickers(stickers) => Some(stickers.clone()),
+                StickerRow::Stickers { stickers, removal } => Some((stickers.clone(), *removal)),
+                _ => None,
+            };
+            match stickers {
+                Some((stickers, removal)) => {
+                    pending_removal = removal;
+                    pending.extend(stickers);
+                }
+                None => {
+                    flush(&mut pending, pending_removal, &mut new_rows);
+                    new_rows.push(item);
+                }
+            }
+        }
+        flush(&mut pending, pending_removal, &mut new_rows);
+
+        // Replace every row in a single splice so the list emits one items-changed
+        // (remove_all + splice would fire two, doubling the list's rebind work).
+        model.splice(0, model.n_items(), &new_rows);
+    }
+
+    /// Re-chunks the emoji model's custom-emoji rows to `columns` per row. Header and
+    /// standard-emoji rows (the latter self-reflow via their FlowBox) are kept as-is.
+    fn rechunk_emoji_model(&self, columns: usize) {
+        let model = self.emoji_model();
+        let mut new_rows: Vec<glib::BoxedAnyObject> = Vec::new();
+        let mut pending: Vec<tdlib::types::Sticker> = Vec::new();
+
+        let flush = |pending: &mut Vec<tdlib::types::Sticker>,
+                     out: &mut Vec<glib::BoxedAnyObject>| {
+            for chunk in pending.chunks(columns) {
+                out.push(glib::BoxedAnyObject::new(EmojiRow::CustomEmoji(chunk.to_vec())));
+            }
+            pending.clear();
+        };
+
+        for position in 0..model.n_items() {
+            let item = model
+                .item(position)
+                .and_downcast::<glib::BoxedAnyObject>()
+                .unwrap();
+            let stickers = match &*item.borrow::<EmojiRow>() {
+                EmojiRow::CustomEmoji(stickers) => Some(stickers.clone()),
                 _ => None,
             };
             match stickers {
@@ -372,8 +451,9 @@ impl ContentPicker {
         }
         flush(&mut pending, &mut new_rows);
 
-        model.remove_all();
-        model.splice(0, 0, &new_rows);
+        // Replace every row in a single splice so the list emits one items-changed
+        // (remove_all + splice would fire two, doubling the list's rebind work).
+        model.splice(0, model.n_items(), &new_rows);
     }
 
     /// A row of standard-emoji buttons (built on bind, so only visible rows exist).
@@ -393,7 +473,7 @@ impl ContentPicker {
             self.imp().sticker_scrolling.clone(),
             CUSTOM_EMOJI_CELL_SIZE,
             CUSTOM_EMOJI_SIZE,
-            CUSTOM_EMOJI_COLUMNS,
+            self.emoji_columns() as i32,
             // No outlines (dense); animated (frames come from the shared cache).
             false,
             true,
@@ -436,7 +516,9 @@ impl ContentPicker {
                         title,
                         is_installed,
                     } => obj.build_pack_header(*set_id, title, *is_installed),
-                    StickerRow::Stickers(stickers) => obj.build_sticker_row(stickers).upcast(),
+                    StickerRow::Stickers { stickers, removal } => {
+                        obj.build_sticker_row(stickers, *removal).upcast()
+                    }
                     StickerRow::Loading(title) => status_row(title, &gettext("Loading…"), None),
                     StickerRow::Error { set_id, title } => {
                         let set_id = *set_id;
@@ -468,7 +550,11 @@ impl ContentPicker {
         self.imp().sticker_list.set_factory(Some(&factory));
     }
 
-    fn build_sticker_row(&self, stickers: &[tdlib::types::Sticker]) -> gtk::Box {
+    fn build_sticker_row(
+        &self,
+        stickers: &[tdlib::types::Sticker],
+        removal: StickerRemoval,
+    ) -> gtk::Box {
         let session = self.imp().session.upgrade().unwrap();
         let preview = ui::StickerPickerRow::new_sized(
             stickers,
@@ -485,9 +571,48 @@ impl ContentPicker {
                 move |sticker| obj.activate_sticker(sticker)
             ),
         );
+        if removal != StickerRemoval::None {
+            preview.set_removable(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |sticker| obj.remove_sticker(sticker, removal)
+            ));
+        }
         let row = gtk::Box::builder().margin_start(12).margin_end(12).build();
         row.append(&preview);
         row
+    }
+
+    /// Removes a sticker from the "Recently Used" or "Favorites" list (the ✕ badge on a
+    /// hovered cell), then refreshes so the section re-renders without it.
+    fn remove_sticker(&self, sticker: tdlib::types::Sticker, removal: StickerRemoval) {
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let client_id = session.client_().id();
+        let input = tdlib::enums::InputFile::Id(tdlib::types::InputFileId {
+            id: sticker.sticker.id,
+        });
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let result = match removal {
+                    StickerRemoval::Recent => {
+                        tdlib::functions::remove_recent_sticker(false, input, client_id).await
+                    }
+                    StickerRemoval::Favorite => {
+                        tdlib::functions::remove_favorite_sticker(input, client_id).await
+                    }
+                    StickerRemoval::None => return,
+                };
+                if let Err(e) = result {
+                    log::warn!("Failed to remove sticker from recents/favorites: {e:?}");
+                    return;
+                }
+                obj.refresh();
+            }
+        ));
     }
 
     /// The column count sticker rows are currently chunked/rendered at (the applied value,
@@ -509,6 +634,25 @@ impl ContentPicker {
         (((width - 24).max(ui::StickerPickerRow::CELL_SIZE) / ui::StickerPickerRow::CELL_SIZE)
             as usize)
             .max(3)
+    }
+
+    /// The custom-emoji column count currently applied (or the default until the first
+    /// reflow). Custom-emoji rows are drawn edge-to-edge with no row margins.
+    fn emoji_columns(&self) -> usize {
+        match self.imp().emoji_columns.get() {
+            0 => CUSTOM_EMOJI_COLUMNS as usize,
+            columns => columns,
+        }
+    }
+
+    /// The custom-emoji column count that would fit the current panel width. Floored to 4
+    /// to match the standard-emoji FlowBox's `min-children-per-line`.
+    fn emoji_columns_target(&self) -> usize {
+        let width = self.imp().emoji_list.width();
+        if width <= 0 {
+            return self.emoji_columns();
+        }
+        ((width.max(CUSTOM_EMOJI_CELL_SIZE) / CUSTOM_EMOJI_CELL_SIZE) as usize).max(4)
     }
 
     fn setup_sticker_scrolling(&self) {
@@ -559,7 +703,7 @@ impl ContentPicker {
         let end = (position + 1 + PICKER_PRELOAD_ROWS).min(model.n_items());
         for pos in (position + 1)..end {
             if let Some(item) = model.item(pos).and_downcast::<glib::BoxedAnyObject>()
-                && let StickerRow::Stickers(stickers) = &*item.borrow::<StickerRow>()
+                && let StickerRow::Stickers { stickers, .. } = &*item.borrow::<StickerRow>()
             {
                 ui::prefetch_sticker_previews(stickers, &session, scale);
             }
@@ -861,7 +1005,7 @@ impl ContentPicker {
             title: title.to_owned(),
             name: custom_emoji_section_name(set_id),
         }));
-        for chunk in stickers.chunks(EMOJI_ROW_LEN) {
+        for chunk in stickers.chunks(self.emoji_columns()) {
             model.append(&glib::BoxedAnyObject::new(EmojiRow::CustomEmoji(
                 chunk.to_vec(),
             )));
@@ -1295,9 +1439,10 @@ impl ContentPicker {
                                 is_installed: set.is_installed,
                             })];
                         for chunk in set.stickers.chunks(obj.sticker_columns()) {
-                            rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
-                                chunk.to_vec(),
-                            )));
+                            rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers {
+                                stickers: chunk.to_vec(),
+                                removal: StickerRemoval::None,
+                            }));
                         }
                         model.splice(0, 0, &rows);
                         // A single pack needs no section rail.
@@ -1469,9 +1614,12 @@ impl ContentPicker {
         emoji_sets: Option<tdlib::enums::StickerSets>,
     ) {
         let started = Instant::now();
-        for (title, data) in [("Favorites", favorites), ("Recently Used", recent)] {
+        for (title, removal, data) in [
+            ("Favorites", StickerRemoval::Favorite, favorites),
+            ("Recently Used", StickerRemoval::Recent, recent),
+        ] {
             if let Some(tdlib::enums::Stickers::Stickers(data)) = data {
-                self.append_sticker_section(&gettext(title), data.stickers);
+                self.append_sticker_section(&gettext(title), removal, data.stickers);
             }
         }
         let Some(session) = self.imp().session.upgrade() else {
@@ -1640,7 +1788,13 @@ impl ContentPicker {
                     && let Some(position) = obj.sticker_set_error_position(set_id)
                 {
                     obj.sticker_model().remove(position);
-                    obj.insert_sticker_section(position, Some(set_id), &set.title, set.stickers);
+                    obj.insert_sticker_section(
+                        position,
+                        Some(set_id),
+                        &set.title,
+                        StickerRemoval::None,
+                        set.stickers,
+                    );
                 }
             }
         ));
@@ -1663,8 +1817,19 @@ impl ContentPicker {
         None
     }
 
-    fn append_sticker_section(&self, title: &str, stickers: Vec<tdlib::types::Sticker>) {
-        self.insert_sticker_section(self.sticker_model().n_items(), None, title, stickers);
+    fn append_sticker_section(
+        &self,
+        title: &str,
+        removal: StickerRemoval,
+        stickers: Vec<tdlib::types::Sticker>,
+    ) {
+        self.insert_sticker_section(
+            self.sticker_model().n_items(),
+            None,
+            title,
+            removal,
+            stickers,
+        );
     }
 
     fn append_sticker_set_section(
@@ -1677,6 +1842,7 @@ impl ContentPicker {
             self.sticker_model().n_items(),
             Some(set_id),
             title,
+            StickerRemoval::None,
             stickers,
         );
     }
@@ -1686,6 +1852,7 @@ impl ContentPicker {
         position: u32,
         set_id: Option<i64>,
         title: &str,
+        removal: StickerRemoval,
         stickers: Vec<tdlib::types::Sticker>,
     ) {
         if stickers.is_empty() {
@@ -1698,9 +1865,10 @@ impl ContentPicker {
             set_id,
         })];
         for row in stickers.chunks(self.sticker_columns()) {
-            rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers(
-                row.to_vec(),
-            )));
+            rows.push(glib::BoxedAnyObject::new(StickerRow::Stickers {
+                stickers: row.to_vec(),
+                removal,
+            }));
         }
         self.sticker_model().splice(position, 0, &rows);
         let elapsed = started.elapsed();
@@ -1905,7 +2073,11 @@ impl ContentPicker {
                         && obj.sticker_generation_is(generation)
                     {
                         obj.sticker_model().remove_all();
-                        obj.append_sticker_section(&gettext("Search Results"), data.stickers);
+                        obj.append_sticker_section(
+                            &gettext("Search Results"),
+                            StickerRemoval::None,
+                            data.stickers,
+                        );
                     }
                 }
             ));
