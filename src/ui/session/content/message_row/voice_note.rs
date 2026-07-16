@@ -138,6 +138,9 @@ impl ui::MessageBaseExt for MessageVoiceNote {
         imp.message_bubble.update_from_message(message, true);
 
         if let tdlib::enums::MessageContent::MessageVoiceNote(data) = message.content().0 {
+            imp.message_bubble
+                .set_label(utils::parse_formatted_text(data.caption));
+
             let voice_note = data.voice_note;
             imp.duration.set(voice_note.duration);
             imp.duration_label

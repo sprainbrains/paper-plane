@@ -126,6 +126,9 @@ impl ui::MessageBaseExt for MessageAudio {
         imp.message_bubble.update_from_message(message, true);
 
         if let tdlib::enums::MessageContent::MessageAudio(data) = message.content().0 {
+            imp.message_bubble
+                .set_label(utils::parse_formatted_text(data.caption));
+
             let audio = data.audio;
 
             let title = if audio.title.is_empty() {

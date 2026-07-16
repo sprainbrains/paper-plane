@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::collections::HashSet;
+
 use gettextrs::gettext;
 use glib::clone;
 use gtk::CompositeTemplate;
@@ -29,6 +32,8 @@ mod imp {
         pub(super) options_box: TemplateChild<gtk::Box>,
         #[template_child]
         pub(super) votes_label: TemplateChild<gtk::Label>,
+        // Options selected but not yet submitted, for multiple-answer polls.
+        pub(super) selected: RefCell<HashSet<i32>>,
     }
 
     #[glib::object_subclass]
@@ -88,6 +93,7 @@ impl ui::MessageBaseExt for MessagePoll {
         }
 
         imp.handler.disconnect();
+        imp.selected.borrow_mut().clear();
 
         imp.message_bubble.update_from_message(message, true);
 
@@ -134,14 +140,55 @@ impl MessagePoll {
         // Show results once the user has voted or the poll is closed.
         let show_results = poll.is_closed || poll.options.iter().any(|option| option.is_chosen);
 
+        let (allow_multiple, correct_option_id) = match &poll.r#type {
+            tdlib::enums::PollType::Regular(regular) => (regular.allow_multiple_answers, None),
+            tdlib::enums::PollType::Quiz(quiz) => (false, Some(quiz.correct_option_id)),
+        };
+
+        // A stale selection can't apply once results are shown.
+        if show_results {
+            imp.selected.borrow_mut().clear();
+        }
+
         // Rebuild the option rows.
         while let Some(child) = imp.options_box.first_child() {
             imp.options_box.remove(&child);
         }
 
         for (index, option) in poll.options.into_iter().enumerate() {
-            let row = self.build_option(message, index as i32, &option, show_results);
+            let row = self.build_option(
+                message,
+                index as i32,
+                &option,
+                show_results,
+                allow_multiple,
+                correct_option_id,
+            );
             imp.options_box.append(&row);
+        }
+
+        // Multiple-answer polls accumulate a selection and submit it with one button.
+        if allow_multiple && !show_results {
+            let vote_button = gtk::Button::builder()
+                .label(gettext("Vote"))
+                .halign(gtk::Align::Center)
+                .build();
+            vote_button.add_css_class("poll-vote");
+            vote_button.connect_clicked(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[weak]
+                message,
+                move |_| {
+                    let selected: Vec<i32> = obj.imp().selected.borrow().iter().copied().collect();
+                    if selected.is_empty() {
+                        utils::show_toast(&obj, gettext("Select at least one option"));
+                        return;
+                    }
+                    obj.submit_answer(&message, selected);
+                }
+            ));
+            imp.options_box.append(&vote_button);
         }
     }
 
@@ -151,6 +198,8 @@ impl MessagePoll {
         index: i32,
         option: &tdlib::types::PollOption,
         show_results: bool,
+        allow_multiple: bool,
+        correct_option_id: Option<i32>,
     ) -> gtk::Widget {
         let content = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -179,10 +228,37 @@ impl MessagePoll {
         if show_results {
             let bar = gtk::ProgressBar::new();
             bar.set_fraction(option.vote_percentage as f64 / 100.0);
-            if option.is_chosen {
+            // In a quiz, mark the correct answer, and a wrong chosen answer; otherwise
+            // just highlight the user's own choices.
+            if correct_option_id == Some(index) {
+                bar.add_css_class("success");
+            } else if option.is_chosen && correct_option_id.is_some() {
+                bar.add_css_class("error");
+            } else if option.is_chosen {
                 bar.add_css_class("accent");
             }
             content.append(&bar);
+        }
+
+        // Multiple-answer polls toggle a selection; single-answer polls and quizzes
+        // submit immediately on click.
+        if allow_multiple && !show_results {
+            let button = gtk::ToggleButton::builder().child(&content).build();
+            button.add_css_class("poll-option");
+            button.set_active(self.imp().selected.borrow().contains(&index));
+            button.connect_toggled(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |button| {
+                    let mut selected = obj.imp().selected.borrow_mut();
+                    if button.is_active() {
+                        selected.insert(index);
+                    } else {
+                        selected.remove(&index);
+                    }
+                }
+            ));
+            return button.upcast();
         }
 
         let button = gtk::Button::builder()
@@ -194,28 +270,29 @@ impl MessagePoll {
         // Voting is only possible before results are shown.
         button.set_sensitive(!show_results);
         button.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
             #[weak]
             message,
             move |_| {
-                let chat = message.chat_();
-                let client_id = chat.session_().client_().id();
-                let chat_id = chat.id();
-                let message_id = message.id();
-                utils::spawn(async move {
-                    if let Err(e) = tdlib::functions::set_poll_answer(
-                        chat_id,
-                        message_id,
-                        vec![index],
-                        client_id,
-                    )
-                    .await
-                    {
-                        log::warn!("Failed to answer a poll: {e:?}");
-                    }
-                });
+                obj.submit_answer(&message, vec![index]);
             }
         ));
 
         button.upcast()
+    }
+
+    fn submit_answer(&self, message: &model::Message, option_ids: Vec<i32>) {
+        let chat = message.chat_();
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::set_poll_answer(chat_id, message_id, option_ids, client_id).await
+            {
+                log::warn!("Failed to answer a poll: {e:?}");
+            }
+        });
     }
 }
