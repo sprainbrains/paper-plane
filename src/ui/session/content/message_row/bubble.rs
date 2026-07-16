@@ -173,21 +173,19 @@ mod imp {
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
-            // The last bubble of a same-sender run draws its own background — a rounded
-            // rectangle whose sender-side bottom corner flows into a tail — so the corner,
-            // body, tail, and shadow are one continuous shape (the CSS background is
-            // suppressed for these, see `.custom-tail-shape`). All other bubbles keep the
-            // plain CSS rounded rectangle drawn by the parent snapshot.
-            if self.obj().draws_custom_shape() {
-                self.snapshot_shape(snapshot);
-            }
+            // Every bubble draws its own background as one continuous filled outline — a
+            // rounded rectangle whose sender-side bottom corner flows into a tail on the
+            // last bubble of a run — so the corner, body, tail, and shadow are one shape.
+            // The CSS paints no background (see style.css); only the content sits on top.
+            self.snapshot_shape(snapshot);
             self.parent_snapshot(snapshot);
         }
     }
 
     impl MessageBubble {
         /// Paints the bubble outline (rounded rect + tail) as a single filled path, with a
-        /// 1px drop shadow and, in high-contrast, a hairline border.
+        /// drop shadow (below and toward the tail, so a light bubble's tail stays visible on
+        /// a light background) and, in high-contrast, a hairline border.
         fn snapshot_shape(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
             let w = obj.width() as f64;
@@ -197,12 +195,18 @@ mod imp {
             }
 
             let outgoing = obj.has_css_class("outgoing");
-            // Top corners are tightened when this bubble continues a run from above.
-            let top = if self.group_start.get() {
+            let tail = self.group_end.get();
+            // Corners tighten where a bubble abuts its same-sender neighbour; media / map
+            // bubbles keep full corners to match their self-clipping picture/map.
+            let media = obj.has_css_class("media")
+                || obj.has_css_class("location")
+                || obj.has_css_class("venue");
+            let top = if media || self.group_start.get() {
                 RADIUS
             } else {
                 RADIUS_TIGHT
             };
+            let bottom = if media || tail { RADIUS } else { RADIUS_TIGHT };
 
             #[allow(deprecated)]
             let style = obj.style_context();
@@ -216,23 +220,32 @@ mod imp {
                 .unwrap_or_else(|| gtk::gdk::RGBA::new(1.0, 1.0, 1.0, 1.0));
 
             let bounds = graphene::Rect::new(
-                (-TAIL_OVERHANG - 1.0) as f32,
+                (-TAIL_OVERHANG - 2.0) as f32,
                 -1.0,
-                (w + 2.0 * (TAIL_OVERHANG + 1.0)) as f32,
+                (w + 2.0 * (TAIL_OVERHANG + 2.0)) as f32,
                 (h + 2.0) as f32,
             );
             let ctx = snapshot.append_cairo(&bounds);
 
-            // Drop shadow: the same outline offset 1px down in translucent black (matches
-            // the former CSS `box-shadow: 0 1px alpha(black, 0.1)`, and includes the tail).
-            let _ = ctx.save();
-            ctx.translate(0.0, 1.0);
-            append_bubble_path(&ctx, w, h, top, outgoing);
-            ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
-            let _ = ctx.fill();
-            let _ = ctx.restore();
+            // Drop shadow: the outline filled in translucent black, once straight down and,
+            // for a tail bubble, once offset toward the tail side, so the tail casts a
+            // shadow on its outer edge and reads against a same-colored background.
+            let tail_dx = if outgoing { 1.5 } else { -1.5 };
+            let offsets: &[(f64, f64)] = if tail {
+                &[(0.0, 1.0), (tail_dx, 1.0)]
+            } else {
+                &[(0.0, 1.0)]
+            };
+            for &(dx, dy) in offsets {
+                let _ = ctx.save();
+                ctx.translate(dx, dy);
+                append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
+                ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
+                let _ = ctx.fill();
+                let _ = ctx.restore();
+            }
 
-            append_bubble_path(&ctx, w, h, top, outgoing);
+            append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
             ctx.set_source_rgba(
                 color.red() as f64,
                 color.green() as f64,
@@ -261,34 +274,43 @@ mod imp {
     }
 }
 
-/// Appends the bubble outline to `ctx`: a rounded rectangle with `top` top-corner radius
-/// and full bottom corners, except the sender-side bottom corner, which is replaced by a
-/// tail (bottom-left for incoming, bottom-right for outgoing).
-fn append_bubble_path(ctx: &gtk::cairo::Context, w: f64, h: f64, top: f64, outgoing: bool) {
+/// Appends the bubble outline to `ctx`: a rounded rectangle with `top`/`bottom` corner
+/// radii, except the sender-side bottom corner, which is replaced by a tail when `tail`
+/// (bottom-left for incoming, bottom-right for outgoing).
+fn append_bubble_path(
+    ctx: &gtk::cairo::Context,
+    w: f64,
+    h: f64,
+    top: f64,
+    bottom: f64,
+    outgoing: bool,
+    tail: bool,
+) {
     use std::f64::consts::FRAC_PI_2;
     use std::f64::consts::PI;
-
-    let r = RADIUS;
 
     ctx.new_path();
     ctx.move_to(top, 0.0);
     ctx.line_to(w - top, 0.0);
     ctx.arc(w - top, top, top, -FRAC_PI_2, 0.0); // top-right
 
-    if outgoing {
-        // Right edge down to where the tail blends in, then the tail out to its tip and
-        // back onto the bottom edge.
+    if outgoing && tail {
+        // Right edge down to the tail blend, then out to the tip and back to the bottom edge.
         ctx.line_to(w, h - TAIL_HEIGHT);
         ctx.curve_to(w, h - 8.0, w + TAIL_OVERHANG * 0.2, h - 5.0, w + TAIL_OVERHANG, h - 1.5);
         ctx.curve_to(w + TAIL_OVERHANG * 0.4, h, w - TAIL_START + 4.0, h, w - TAIL_START, h);
-        ctx.line_to(r, h);
-        ctx.arc(r, h - r, r, FRAC_PI_2, PI); // bottom-left
     } else {
-        ctx.line_to(w, h - r);
-        ctx.arc(w - r, h - r, r, 0.0, FRAC_PI_2); // bottom-right
+        ctx.line_to(w, h - bottom);
+        ctx.arc(w - bottom, h - bottom, bottom, 0.0, FRAC_PI_2); // bottom-right
+    }
+
+    if !outgoing && tail {
         ctx.line_to(TAIL_START, h);
         ctx.curve_to(TAIL_START - 4.0, h, -TAIL_OVERHANG * 0.4, h, -TAIL_OVERHANG, h - 1.5);
         ctx.curve_to(-TAIL_OVERHANG * 0.2, h - 5.0, 0.0, h - 8.0, 0.0, h - TAIL_HEIGHT);
+    } else {
+        ctx.line_to(bottom, h);
+        ctx.arc(bottom, h - bottom, bottom, FRAC_PI_2, PI); // bottom-left
     }
 
     ctx.line_to(0.0, top);
@@ -492,10 +514,6 @@ impl MessageBubble {
         // that don't drive the bubble's `label` (polls, location, audio…) rely on this
         // call, while caption types re-run it from `set_label`.
         self.update_indicators_position();
-
-        // The content type may have changed under a recycled bubble (e.g. media → text),
-        // which flips whether it's eligible for the code-drawn tail shape.
-        self.refresh_shape_class();
     }
 
     pub(crate) fn update_from_sponsored_message(
@@ -540,38 +558,14 @@ impl MessageBubble {
         self.imp().sender_label.set_visible(false);
     }
 
-    /// Records this bubble's position within its same-sender run. The last bubble of a run
-    /// (`is_group_end`) gets the code-drawn tail shape; `is_group_start` controls whether the
-    /// top corners are full or tightened.
+    /// Records this bubble's position within its same-sender run, which drives its drawn
+    /// outline: the last bubble of a run (`is_group_end`) gets the tail; `is_group_start`
+    /// controls whether the top corners are full or tightened.
     pub(crate) fn set_shape(&self, is_group_start: bool, is_group_end: bool) {
         let imp = self.imp();
         imp.group_start.set(is_group_start);
         imp.group_end.set(is_group_end);
-        self.refresh_shape_class();
         self.queue_draw();
-    }
-
-    /// Whether this bubble draws its own background+tail: the last bubble of a run, and a
-    /// solid-background type (media / maps keep the CSS rounded rectangle and get no tail).
-    pub(crate) fn draws_custom_shape(&self) -> bool {
-        self.imp().group_end.get()
-            && !self.has_css_class("media")
-            && !self.has_css_class("location")
-            && !self.has_css_class("venue")
-    }
-
-    /// Keeps the `.custom-tail-shape` class (which suppresses the CSS background so it isn't
-    /// painted twice) in sync with `draws_custom_shape`. Re-run whenever the content type or
-    /// grouping changes.
-    fn refresh_shape_class(&self) {
-        let custom = self.draws_custom_shape();
-        if custom != self.has_css_class("custom-tail-shape") {
-            if custom {
-                self.add_css_class("custom-tail-shape");
-            } else {
-                self.remove_css_class("custom-tail-shape");
-            }
-        }
     }
 
     pub(crate) fn set_prefix(&self, prefix: Option<&gtk::Widget>) {

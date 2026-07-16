@@ -218,14 +218,6 @@ listview.chat-history > row {
   background: @view_bg_color;
 }
 
-.fallback messagebubble:not(.outgoing) {
-  background: #f0f0f0;
-}
-
-.fallback messagebubble.custom-tail-shape:not(.outgoing) {
-  background: none;
-}
-
 .fallback .event-row {
   background: transparent;
   color: currentColor;
@@ -238,11 +230,8 @@ button.scroll-to-bottom {
   margin: 9px;
 }
 
-messagebubble {
-  background: white;
-  border-radius: 15px;
-  box-shadow: 0 1px alpha(black, 0.1);
-}
+/* The bubble background, corners, tail, and shadow are all drawn in code
+   (MessageBubble::snapshot); the CSS only lays out and colors the content on top. */
 
 /* The transient "ghost" shown morphing up from the composer when a message is sent
    (see ChatHistory::play_send_animation). Two stacked layers cross-fade grey → accent
@@ -380,34 +369,10 @@ listview.chat-history.menu-dimmed > row.menu-active {
   border-radius: 100%;
 }
 
-/* Consecutive messages from the same sender are combined: the corners on the side
-   facing the neighbouring bubble are tightened so a run reads as one group. */
-.grouped-top messagebubble {
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-
-.grouped-middle messagebubble {
-  border-radius: 6px;
-}
-
-.grouped-bottom messagebubble {
-  border-top-left-radius: 6px;
-  border-top-right-radius: 6px;
-}
-
+/* Same-sender grouping (tightened corners) is applied by the code-drawn outline via the
+   run flags; only the text color is set here. */
 messagebubble.outgoing {
-  background-color: @accent_bg_color;
   color: @accent_fg_color;
-}
-
-/* The last bubble of a same-sender run draws its own background + tail + shadow in code
-   (MessageBubble::snapshot). Suppress the CSS-painted background and shadow for these so
-   they aren't drawn twice; the text color still comes from `.outgoing` above. */
-messagebubble.custom-tail-shape,
-messagebubble.custom-tail-shape.outgoing {
-  background: none;
-  box-shadow: none;
 }
 
 messagebubble:not(.outgoing):dir(ltr),
