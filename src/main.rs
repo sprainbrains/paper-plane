@@ -15,11 +15,8 @@ macro_rules! gettext {
         ::gettextrs::gettext($msgid)
     };
     ($msgid:expr, $($arg:expr),+ $(,)?) => {{
-        let mut msg = ::gettextrs::gettext($msgid);
-        $(
-            msg = msg.replacen("{}", &::std::string::ToString::to_string(&$arg), 1);
-        )+
-        msg
+        let args = [$(::std::string::ToString::to_string(&$arg)),+];
+        $crate::utils::positional_replace(::gettextrs::gettext($msgid), &args)
     }};
 }
 
@@ -172,7 +169,7 @@ pub(crate) struct ApplicationOptions {
 impl Default for ApplicationOptions {
     fn default() -> Self {
         Self {
-            data_dir: PathBuf::from(glib::user_data_dir().to_str().unwrap()).join("paper-plane"),
+            data_dir: glib::user_data_dir().join("paper-plane"),
             test_dc: Default::default(),
             client_id: config::TG_API_ID,
             client_secret: Cow::Borrowed(config::TG_API_HASH),

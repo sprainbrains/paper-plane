@@ -28,6 +28,33 @@ pub(crate) fn freplace(s: String, args: &[(&str, &str)]) -> String {
     s
 }
 
+/// Replace successive `{}` placeholders in `msg` with `args`, left to right.
+///
+/// Unlike a naive `replacen` loop, substituted text is never rescanned, so an
+/// argument value that itself contains `{}` cannot capture a later argument.
+/// Surplus placeholders are left as literal `{}`; surplus arguments are ignored.
+pub(crate) fn positional_replace(msg: String, args: &[String]) -> String {
+    let mut result = String::with_capacity(msg.len());
+    let mut rest = msg.as_str();
+    let mut args = args.iter();
+
+    while let Some(pos) = rest.find("{}") {
+        result.push_str(&rest[..pos]);
+        match args.next() {
+            Some(arg) => result.push_str(arg),
+            None => {
+                // No argument left for this placeholder; keep the rest verbatim.
+                result.push_str(rest);
+                return result;
+            }
+        }
+        rest = &rest[pos + 2..];
+    }
+
+    result.push_str(rest);
+    result
+}
+
 pub(crate) fn linkify(text: &str) -> String {
     if !protocol_re().is_match(text) {
         format!("http://{text}")
@@ -54,66 +81,71 @@ pub(crate) fn convert_to_markup(text: String, entity: &tdlib::enums::TextEntityT
 }
 
 pub(crate) fn parse_formatted_text(formatted_text: tdlib::types::FormattedText) -> String {
-    let mut entities = formatted_text.entities.iter();
-    let mut entity = entities.next();
+    let entities = &formatted_text.entities;
+
     let mut output = String::new();
     let mut buffer = String::new();
-    let mut is_inside_entity = false;
+    // The entities active over the characters currently in `buffer`, outermost first.
+    let mut current: Vec<usize> = Vec::new();
 
-    // This is the offset in utf16 code units of the text to parse. We need this variable
-    // because tdlib stores the offset and length parameters as utf16 code units instead
-    // of regular code points.
-    let mut code_units_offset = 0;
+    // Entity offsets/lengths are in utf16 code units, not code points, so we track the
+    // offset in utf16 units to line up with them.
+    let mut code_units_offset: usize = 0;
+
+    let flush = |output: &mut String, buffer: &mut String, active: &[usize]| {
+        if buffer.is_empty() {
+            return;
+        }
+        // Wrap innermost-last so the first (outermost) entity ends up outermost.
+        let mut text = escape(buffer);
+        for &i in active.iter().rev() {
+            text = convert_to_markup(text, &entities[i].r#type);
+        }
+        output.push_str(&text);
+        buffer.clear();
+    };
 
     for c in formatted_text.text.chars() {
-        if !is_inside_entity
-            && entity.is_some()
-            && code_units_offset >= entity.unwrap().offset as usize
-        {
-            is_inside_entity = true;
-
-            if !buffer.is_empty() {
-                output.push_str(&escape(&buffer));
-                buffer = String::new();
-            }
+        let active = active_entities(entities, code_units_offset);
+        if active != current {
+            flush(&mut output, &mut buffer, &current);
+            current = active;
         }
 
         buffer.push(c);
         code_units_offset += c.len_utf16();
-
-        if let Some(entity_) = entity
-            && code_units_offset >= (entity_.offset + entity_.length) as usize
-        {
-            buffer = escape(&buffer);
-
-            entity = loop {
-                let entity = entities.next();
-
-                // Handle eventual nested entities
-                match entity {
-                    Some(entity) => {
-                        if entity.offset == entity_.offset {
-                            buffer = convert_to_markup(buffer, &entity.r#type);
-                        } else {
-                            break Some(entity);
-                        }
-                    }
-                    None => break None,
-                }
-            };
-
-            output.push_str(&convert_to_markup(buffer, &entity_.r#type));
-            buffer = String::new();
-            is_inside_entity = false;
-        }
     }
 
-    // Add the eventual leftovers from the buffer to the output
-    if !buffer.is_empty() {
-        output.push_str(&escape(&buffer));
-    }
+    flush(&mut output, &mut buffer, &current);
 
     output
+}
+
+/// Indices of the entities covering `code_units_offset`, ordered outermost first
+/// (earliest start, then longest). Correctly handles nested and partially
+/// overlapping entities, and computes ranges in `i64` to avoid `i32` overflow on
+/// malicious `offset`/`length` values.
+fn active_entities(entities: &[tdlib::types::TextEntity], code_units_offset: usize) -> Vec<usize> {
+    let pos = code_units_offset as i64;
+
+    let mut active: Vec<usize> = entities
+        .iter()
+        .enumerate()
+        .filter_map(|(i, entity)| {
+            let start = entity.offset.max(0) as i64;
+            let end = start + entity.length.max(0) as i64;
+            (pos >= start && pos < end).then_some(i)
+        })
+        .collect();
+
+    active.sort_by(|&a, &b| {
+        let (a, b) = (&entities[a], &entities[b]);
+        a.offset
+            .cmp(&b.offset)
+            .then_with(|| b.length.cmp(&a.length))
+    });
+
+    active
 }
 
 pub(crate) fn human_friendly_duration(mut seconds: i32) -> String {
@@ -174,6 +206,44 @@ mod tests {
                 "😀 plain 𝄞bold<&",
                 vec![entity(11, 6, Bold)],
                 "😀 plain 𝄞<b>bold&lt;&amp;</b>",
+            ),
+        ];
+
+        for (text, entities, expected) in cases {
+            let formatted_text = tdlib::types::FormattedText {
+                text: text.to_owned(),
+                entities,
+            };
+
+            assert_eq!(parse_formatted_text(formatted_text), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn nested_and_overlapping_entities() {
+        use tdlib::enums::TextEntityType::Bold;
+        use tdlib::enums::TextEntityType::Italic;
+
+        let cases = [
+            // Italic word nested inside a bold phrase (differing offsets). The outer
+            // bold is closed and reopened at the inner boundary; verbose but valid and
+            // rendered identically.
+            (
+                "bold italic",
+                vec![entity(0, 11, Bold), entity(5, 6, Italic)],
+                "<b>bold </b><b><i>italic</i></b>",
+            ),
+            // Same-offset nesting.
+            (
+                "x",
+                vec![entity(0, 1, Bold), entity(0, 1, Italic)],
+                "<b><i>x</i></b>",
+            ),
+            // Partial overlap: bold [0,5), italic [3,8).
+            (
+                "abcdefgh",
+                vec![entity(0, 5, Bold), entity(3, 5, Italic)],
+                "<b>abc</b><b><i>de</i></b><i>fgh</i>",
             ),
         ];
 
