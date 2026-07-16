@@ -1,8 +1,8 @@
+use adw::prelude::*;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
-use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
 use crate::model;
@@ -25,6 +25,8 @@ mod imp {
         pub(super) items_changed_handler: RefCell<Option<(gio::ListStore, glib::SignalHandlerId)>>,
         #[template_child]
         pub(super) flow_box: TemplateChild<gtk::FlowBox>,
+        #[template_child]
+        pub(super) indicators_bin: TemplateChild<adw::Bin>,
     }
 
     #[glib::object_subclass]
@@ -56,6 +58,7 @@ mod imp {
         fn dispose(&self) {
             self.disconnect_items_changed_handler();
             self.flow_box.unparent();
+            self.indicators_bin.unparent();
         }
     }
 
@@ -100,6 +103,11 @@ mod imp {
                     obj,
                     move |store, _, _, _| {
                         obj.set_visible(store.n_items() > 0);
+                        // Reactions appearing/disappearing moves the timestamp on/off the
+                        // reaction row, so let the bubble re-place its indicators.
+                        if let Some(bubble) = utils::ancestor::<_, ui::MessageBubble>(&obj) {
+                            bubble.update_indicators_position();
+                        }
                     }
                 ));
                 obj.set_visible(reactions.n_items() > 0);
@@ -161,6 +169,16 @@ glib::wrapper! {
     pub(crate) struct MessageReactions(ObjectSubclass<imp::MessageReactions>)
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+impl MessageReactions {
+    /// Hosts (or clears) the message indicators in the trailing slot of the reaction
+    /// row, so the timestamp lands in the bottom-right corner alongside the reactions.
+    pub(crate) fn set_indicators(&self, indicators: Option<&ui::MessageIndicators>) {
+        let bin = &self.imp().indicators_bin;
+        bin.set_child(indicators.map(|indicators| indicators.upcast_ref::<gtk::Widget>()));
+        bin.set_visible(indicators.is_some());
+    }
 }
 
 /// Builds the visual for a single reaction: an animated custom-emoji sticker for

@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::Hash;
@@ -5,14 +6,36 @@ use std::hash::Hasher;
 use std::sync::OnceLock;
 
 use adw::prelude::*;
+use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::glib;
+use gtk::graphene;
 use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
+use crate::utils;
 
 const MAX_WIDTH: i32 = 400;
+
+/// Where the message indicators (timestamp etc.) currently live. The template starts
+/// them overlaid on the content (see `bubble.blp`), and they migrate as the message
+/// gains a text label or reactions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IndicatorPlacement {
+    /// Overlaid bottom-right on media / an empty-caption bubble.
+    Overlay,
+    /// Trailing the text inside the message label.
+    Label,
+    /// Bottom-right of the reaction row.
+    Reactions,
+}
+
+impl Default for IndicatorPlacement {
+    fn default() -> Self {
+        Self::Overlay
+    }
+}
 const SENDER_COLOR_CLASSES: &[&str] = &[
     "sender-text-red",
     "sender-text-orange",
@@ -31,6 +54,10 @@ mod imp {
     pub(crate) struct MessageBubble {
         pub(super) sender_color_class: RefCell<Option<String>>,
         pub(super) sender_binding: RefCell<Option<gtk::ExpressionWatch>>,
+        pub(super) indicator_placement: Cell<IndicatorPlacement>,
+        pub(super) message: glib::WeakRef<model::Message>,
+        pub(super) hover_pill: RefCell<Option<gtk::Box>>,
+        pub(super) hover_reaction_button: RefCell<Option<gtk::Button>>,
         #[template_child]
         pub(super) box_: TemplateChild<gtk::Box>,
         #[template_child]
@@ -94,6 +121,11 @@ mod imp {
             }
         }
 
+        fn constructed(&self) {
+            self.parent_constructed();
+            self.obj().setup_hover_actions();
+        }
+
         fn dispose(&self) {
             self.dispose_template();
         }
@@ -125,6 +157,62 @@ mod imp {
         fn request_mode(&self) -> gtk::SizeRequestMode {
             gtk::SizeRequestMode::HeightForWidth
         }
+
+        fn snapshot(&self, snapshot: &gtk::Snapshot) {
+            // Draw the tail behind the bubble so its inner edge tucks seamlessly under the
+            // rounded bottom corner; the protruding tip is all that shows past the body.
+            // Skipped for media bubbles, whose picture fills the whole rounded rectangle.
+            let obj = self.obj();
+            if obj.has_css_class("with-tail") && !obj.has_css_class("media") {
+                self.snapshot_tail(snapshot);
+            }
+            self.parent_snapshot(snapshot);
+        }
+    }
+
+    impl MessageBubble {
+        /// Paints a small bubble tail at the bottom corner facing the sender: bottom-left
+        /// for incoming, bottom-right for outgoing, in the bubble's own background color.
+        fn snapshot_tail(&self, snapshot: &gtk::Snapshot) {
+            let obj = self.obj();
+            let w = obj.width() as f64;
+            let h = obj.height() as f64;
+            if w <= 0.0 || h <= 0.0 {
+                return;
+            }
+
+            let outgoing = obj.has_css_class("outgoing");
+            #[allow(deprecated)]
+            let color = obj
+                .style_context()
+                .lookup_color(if outgoing {
+                    "accent_bg_color"
+                } else {
+                    "message_bubble_bg"
+                })
+                .unwrap_or_else(|| gtk::gdk::RGBA::new(1.0, 1.0, 1.0, 1.0));
+
+            let bounds = graphene::Rect::new(-8.0, 0.0, (w + 16.0) as f32, h as f32);
+            let ctx = snapshot.append_cairo(&bounds);
+            ctx.set_source_rgba(
+                color.red() as f64,
+                color.green() as f64,
+                color.blue() as f64,
+                color.alpha() as f64,
+            );
+
+            if outgoing {
+                ctx.move_to(w - 2.0, h - 16.0);
+                ctx.curve_to(w - 2.0, h - 4.0, w - 2.0, h, w + 6.0, h);
+                ctx.curve_to(w, h, w - 3.0, h - 2.0, w - 9.0, h - 4.0);
+            } else {
+                ctx.move_to(2.0, h - 16.0);
+                ctx.curve_to(2.0, h - 4.0, 2.0, h, -6.0, h);
+                ctx.curve_to(0.0, h, 3.0, h - 2.0, 9.0, h - 4.0);
+            }
+            ctx.close_path();
+            let _ = ctx.fill();
+        }
     }
 }
 
@@ -135,8 +223,115 @@ glib::wrapper! {
 }
 
 impl MessageBubble {
+    /// Builds the hover-actions island (Reply + the favorite reaction) overlaid at the
+    /// bubble's top-trailing corner, revealed only while the pointer is over the bubble
+    /// and never in multi-select mode.
+    fn setup_hover_actions(&self) {
+        let imp = self.imp();
+
+        let reply_button = hover_icon_button("mail-reply-sender-symbolic");
+        reply_button.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.hover_reply()
+        ));
+
+        let reaction_button = hover_icon_button("");
+        reaction_button.set_visible(false);
+        reaction_button.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.hover_react()
+        ));
+
+        let pill = gtk::Box::builder()
+            .css_classes(["hover-actions"])
+            .halign(gtk::Align::End)
+            .valign(gtk::Align::Start)
+            .visible(false)
+            .build();
+        pill.append(&reply_button);
+        pill.append(&reaction_button);
+
+        imp.overlay.add_overlay(&pill);
+        imp.hover_pill.replace(Some(pill));
+        imp.hover_reaction_button.replace(Some(reaction_button));
+
+        let motion = gtk::EventControllerMotion::new();
+        motion.connect_enter(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_, _, _| obj.set_hover_actions_revealed(true)
+        ));
+        motion.connect_leave(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.set_hover_actions_revealed(false)
+        ));
+        self.add_controller(motion);
+    }
+
+    fn set_hover_actions_revealed(&self, revealed: bool) {
+        let imp = self.imp();
+        // Never while selecting: the pill would fight the selection click/drag.
+        let in_selection = utils::ancestor::<_, ui::ChatHistory>(self)
+            .is_some_and(|history| history.is_selection_mode());
+        if let Some(pill) = imp.hover_pill.borrow().as_ref() {
+            pill.set_visible(revealed && !in_selection && imp.message.upgrade().is_some());
+        }
+    }
+
+    fn hover_reply(&self) {
+        if let Some(message) = self.imp().message.upgrade() {
+            let _ = self.activate_action("chat-history.reply", Some(&message.id().to_variant()));
+        }
+    }
+
+    fn hover_react(&self) {
+        let Some(message) = self.imp().message.upgrade() else {
+            return;
+        };
+        let chat = message.chat_();
+        let session = chat.session_();
+        let Some(reaction) = session.default_reaction_type() else {
+            return;
+        };
+        let client_id = session.client_().id();
+        let chat_id = chat.id();
+        let message_id = message.id();
+        utils::spawn(async move {
+            if let Err(e) = tdlib::functions::add_message_reaction(
+                chat_id, message_id, reaction.0, false, true, client_id,
+            )
+            .await
+            {
+                log::warn!("Failed to add the favorite reaction: {e:?}");
+            }
+        });
+    }
+
+    /// Refreshes the hover reaction button's glyph for `message`'s session default.
+    fn update_hover_reaction(&self, message: &model::Message) {
+        let imp = self.imp();
+        let Some(button) = imp.hover_reaction_button.borrow().clone() else {
+            return;
+        };
+        let session = message.chat_().session_();
+        match session.default_reaction_type() {
+            Some(reaction) => {
+                let icon = super::reactions::reaction_icon_widget(reaction.0, &session, 16);
+                button.set_child(Some(&icon));
+                button.set_visible(true);
+            }
+            None => button.set_visible(false),
+        }
+    }
+
     pub(crate) fn update_from_message(&self, message: &model::Message, force_hide_sender: bool) {
         let imp = self.imp();
+
+        imp.message.set(Some(message));
+        self.update_hover_reaction(message);
 
         imp.indicators.set_message(message.upcast_ref());
         imp.reactions.set_message(Some(message.clone()));
@@ -212,6 +407,11 @@ impl MessageBubble {
             imp.sender_label.set_label("");
             imp.sender_label.set_visible(false);
         }
+
+        // Reactions were (re)bound above; place the indicators accordingly. Message types
+        // that don't drive the bubble's `label` (polls, location, audio…) rely on this
+        // call, while caption types re-run it from `set_label`.
+        self.update_indicators_position();
     }
 
     pub(crate) fn update_from_sponsored_message(
@@ -219,6 +419,12 @@ impl MessageBubble {
         sponsored_message: &model::SponsoredMessage,
     ) {
         let imp = self.imp();
+
+        // Sponsored messages have no reply/reaction affordances; keep the hover pill dormant.
+        imp.message.set(None);
+        if let Some(button) = imp.hover_reaction_button.borrow().as_ref() {
+            button.set_visible(false);
+        }
 
         imp.indicators.set_message(sponsored_message.upcast_ref());
 
@@ -248,6 +454,19 @@ impl MessageBubble {
     /// same sender (only the first message of a run keeps the name).
     pub(crate) fn hide_sender(&self) {
         self.imp().sender_label.set_visible(false);
+    }
+
+    /// Toggles the bubble tail, drawn on the last message of a same-sender run.
+    pub(crate) fn set_tail(&self, tail: bool) {
+        if tail == self.has_css_class("with-tail") {
+            return;
+        }
+        if tail {
+            self.add_css_class("with-tail");
+        } else {
+            self.remove_css_class("with-tail");
+        }
+        self.queue_draw();
     }
 
     pub(crate) fn set_prefix(&self, prefix: Option<&gtk::Widget>) {
@@ -296,19 +515,57 @@ impl MessageBubble {
         imp.sender_color_class.replace(Some(color_class.into()));
     }
 
-    fn update_indicators_position(&self) {
+    /// Places the message indicators in whichever slot suits the message's current
+    /// content: on the reaction row when it has reactions (so the time sits bottom-right
+    /// beside them), trailing the text when it has a caption/text, or overlaid on media
+    /// otherwise. Idempotent — only reparents when the target slot actually changes.
+    pub(crate) fn update_indicators_position(&self) {
         let imp = self.imp();
 
-        if imp.message_label.label().is_empty() && imp.message_label.indicators().is_some() {
-            imp.message_label.set_indicators(None);
-            imp.overlay.add_overlay(&*imp.indicators);
-        } else if !imp.message_label.label().is_empty() && imp.message_label.indicators().is_none()
-        {
-            imp.overlay.remove_overlay(&*imp.indicators);
-            imp.message_label
-                .set_indicators(Some(imp.indicators.clone()));
+        // The reactions widget's own `visible` flag (set from its reaction count) — not the
+        // ancestor-aware `is_visible()`, which is false while the row is still unmapped at
+        // bind time and would misplace the indicators.
+        let has_reactions = imp.reactions.get_visible();
+        let target = if has_reactions {
+            IndicatorPlacement::Reactions
+        } else if imp.message_label.label().is_empty() {
+            IndicatorPlacement::Overlay
+        } else {
+            IndicatorPlacement::Label
+        };
+
+        if imp.indicator_placement.get() == target {
+            return;
         }
+
+        match imp.indicator_placement.get() {
+            IndicatorPlacement::Overlay => imp.overlay.remove_overlay(&*imp.indicators),
+            IndicatorPlacement::Label => imp.message_label.set_indicators(None),
+            IndicatorPlacement::Reactions => imp.reactions.set_indicators(None),
+        }
+
+        match target {
+            IndicatorPlacement::Overlay => imp.overlay.add_overlay(&*imp.indicators),
+            IndicatorPlacement::Label => imp
+                .message_label
+                .set_indicators(Some(imp.indicators.clone())),
+            IndicatorPlacement::Reactions => imp.reactions.set_indicators(Some(&imp.indicators)),
+        }
+
+        imp.indicator_placement.set(target);
     }
+}
+
+/// A small flat, circular icon button for the hover-actions island.
+fn hover_icon_button(icon_name: &str) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .css_classes(["flat", "circular", "hover-action-button"])
+        .valign(gtk::Align::Center)
+        .build();
+    if !icon_name.is_empty() {
+        button.set_icon_name(icon_name);
+    }
+    button
 }
 
 fn hash_label(label: &str) -> i64 {

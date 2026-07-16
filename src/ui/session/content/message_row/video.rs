@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
+use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -24,11 +25,6 @@ mod imp {
         #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
         pub(super) is_animation: Cell<bool>,
-        // File id of a not-yet-downloaded video to be fetched on click; 0 when
-        // there is nothing pending (animation, or already downloaded). Full
-        // videos are only downloaded on demand to avoid flooding the download
-        // queue (see issue #410).
-        pub(super) pending_file_id: Cell<i32>,
         pub(super) generation: Cell<u64>,
         pub(super) demand: Cell<bool>,
         pub(super) media: RefCell<Option<gtk::MediaFile>>,
@@ -73,14 +69,19 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            // Download and play the full video only when the user clicks it, to
-            // avoid eagerly downloading every video in view (see issue #410).
+            // Clicking a video or GIF opens it in the fullscreen viewer. Full videos are
+            // still only downloaded there, on demand, to avoid eagerly fetching every
+            // video in view (see issue #410).
             let gesture = gtk::GestureClick::new();
             gesture.connect_released(clone!(
                 #[weak(rename_to = obj)]
                 self,
                 move |_, _, _, _| {
-                    obj.obj().play_pending_video();
+                    if let Some(message) = obj.message.upgrade()
+                        && let Some(window) = utils::ancestor::<_, ui::Window>(&*obj.obj())
+                    {
+                        window.open_media_viewer(&message);
+                    }
                 }
             ));
             self.picture.add_controller(gesture);
@@ -165,63 +166,29 @@ impl MessageVideo {
             media.pause();
         }
 
-        let (caption, file, aspect_ratio, minithumbnail) =
-            if let tdlib::enums::MessageContent::MessageAnimation(data) = content {
+        match content {
+            tdlib::enums::MessageContent::MessageAnimation(data) => {
                 imp.indicator.set_label("GIF");
                 imp.is_animation.set(true);
-                (
-                    data.caption,
-                    data.animation.animation,
-                    data.animation.width as f64 / data.animation.height as f64,
-                    data.animation.minithumbnail,
-                )
-            } else if let tdlib::enums::MessageContent::MessageVideo(data) = content {
-                self.update_remaining_time(data.video.duration as i64);
-                imp.is_animation.set(false);
-                (
-                    data.caption,
-                    data.video.video,
-                    data.video.width as f64 / data.video.height as f64,
-                    data.video.minithumbnail,
-                )
-            } else {
-                // Content can change in place (e.g. a TTL video becoming
-                // `MessageExpiredVideo`); the row is rebound elsewhere, so just skip.
-                return;
-            };
-
-        let caption = utils::parse_formatted_text(caption);
-        imp.message_bubble.set_label(caption);
-
-        imp.picture.set_aspect_ratio(aspect_ratio);
-
-        let is_animation = imp.is_animation.get();
-
-        if file.local.is_downloading_completed {
-            imp.pending_file_id.set(0);
-            imp.play_button.set_visible(false);
-            if imp.demand.get() {
-                self.load_video(&file.local.path, file.id, generation);
-            }
-        } else {
-            if imp.demand.get() {
-                imp.picture.set_paintable(
-                    minithumbnail
-                        .and_then(|m| {
-                            gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
-                                &m.data,
-                            )))
-                            .ok()
-                        })
-                        .as_ref(),
-                );
-            }
-
-            if is_animation {
-                // Animations (GIFs) are small; keep auto-downloading and playing.
-                imp.pending_file_id.set(0);
                 imp.play_button.set_visible(false);
-                if imp.demand.get() {
+                imp.message_bubble
+                    .set_label(utils::parse_formatted_text(data.caption));
+                imp.picture
+                    .set_aspect_ratio(data.animation.width as f64 / data.animation.height as f64);
+
+                if !imp.demand.get() {
+                    return;
+                }
+
+                // GIFs are small; keep auto-playing them inline (muted, looping).
+                let file = data.animation.animation;
+                if file.local.is_downloading_completed {
+                    self.load_animation(&file.local.path, file.id, generation);
+                } else {
+                    imp.picture.set_paintable(
+                        minithumbnail_texture(data.animation.minithumbnail).as_ref(),
+                    );
+
                     let file_id = file.id;
                     utils::spawn(clone!(
                         #[weak(rename_to = obj)]
@@ -229,62 +196,44 @@ impl MessageVideo {
                         #[weak]
                         session,
                         async move {
-                            obj.download_and_play(file_id, generation, &session).await;
+                            match session.download_file(file_id).await {
+                                Ok(file) => {
+                                    obj.load_animation(&file.local.path, file_id, generation)
+                                }
+                                Err(e) => log::warn!("Failed to download a GIF: {e:?}"),
+                            }
                         }
                     ));
                 }
-            } else {
-                // Full videos are only fetched when the user clicks the preview.
-                imp.pending_file_id.set(file.id);
+            }
+            tdlib::enums::MessageContent::MessageVideo(data) => {
+                imp.is_animation.set(false);
                 imp.play_button.set_visible(true);
+                self.update_remaining_time(data.video.duration as i64);
+                imp.message_bubble
+                    .set_label(utils::parse_formatted_text(data.caption));
+                imp.picture
+                    .set_aspect_ratio(data.video.width as f64 / data.video.height as f64);
+
+                if !imp.demand.get() {
+                    return;
+                }
+
+                // Videos are never played inline — a click opens the fullscreen viewer.
+                // Show the blurred minithumbnail instantly, then the crisp thumbnail.
+                imp.picture
+                    .set_paintable(minithumbnail_texture(data.video.minithumbnail).as_ref());
+                if let Some(thumbnail) = data.video.thumbnail {
+                    self.load_thumbnail(thumbnail.file, generation, session);
+                }
             }
+            // Content can change in place (e.g. a TTL video becoming
+            // `MessageExpiredVideo`); the row is rebound elsewhere, so just skip.
+            _ => {}
         }
     }
 
-    fn play_pending_video(&self) {
-        let imp = self.imp();
-        if !imp.demand.get() || !self.is_mapped() {
-            return;
-        }
-        let file_id = imp.pending_file_id.get();
-        if file_id == 0 {
-            return;
-        }
-        // Prevent repeated clicks from queuing multiple downloads.
-        imp.pending_file_id.set(0);
-        imp.play_button.set_visible(false);
-
-        let Some(message) = imp.message.upgrade() else {
-            return;
-        };
-        let session = message.chat_().session_();
-        let generation = imp.generation.get();
-        utils::spawn(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            async move {
-                obj.download_and_play(file_id, generation, &session).await;
-            }
-        ));
-    }
-
-    async fn download_and_play(
-        &self,
-        file_id: i32,
-        generation: u64,
-        session: &model::ClientStateSession,
-    ) {
-        match session.download_file(file_id).await {
-            Ok(file) => {
-                self.load_video(&file.local.path, file_id, generation);
-            }
-            Err(e) => {
-                log::warn!("Failed to download a video: {e:?}");
-            }
-        }
-    }
-
-    fn load_video(&self, path: &str, file_id: i32, generation: u64) {
+    fn load_animation(&self, path: &str, file_id: i32, generation: u64) {
         let imp = self.imp();
         if !self.is_current(file_id, generation) {
             return;
@@ -295,27 +244,72 @@ impl MessageVideo {
         media.set_loop(true);
         media.play();
 
-        if !imp.is_animation.get() {
-            media.connect_timestamp_notify(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                move |media| {
-                    let time = (media.duration() - media.timestamp()) / i64::pow(10, 6);
-                    obj.update_remaining_time(time);
-                }
-            ));
-        }
-
         imp.picture.set_paintable(Some(&media));
         imp.media.replace(Some(media));
     }
 
-    fn is_current(&self, file_id: i32, generation: u64) -> bool {
+    /// Downloads (if needed) and decodes a video's static thumbnail, replacing the
+    /// blurred minithumbnail with a crisp still. Videos no longer play inline, so this
+    /// is what the bubble shows.
+    fn load_thumbnail(
+        &self,
+        file: tdlib::types::File,
+        generation: u64,
+        session: &model::ClientStateSession,
+    ) {
+        if file.local.is_downloading_completed {
+            self.decode_thumbnail(file.local.path, generation);
+        } else {
+            let file_id = file.id;
+            utils::spawn(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[weak]
+                session,
+                async move {
+                    match session.download_file(file_id).await {
+                        Ok(file) => obj.decode_thumbnail(file.local.path, generation),
+                        Err(e) => log::warn!("Failed to download a video thumbnail: {e:?}"),
+                    }
+                }
+            ));
+        }
+    }
+
+    fn decode_thumbnail(&self, path: String, generation: u64) {
+        if !self.is_generation_current(generation) {
+            return;
+        }
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                match gio::spawn_blocking(move || utils::decode_image_from_path(&path)).await {
+                    Ok(Ok(texture)) => {
+                        if obj.is_generation_current(generation) {
+                            obj.imp().picture.set_paintable(Some(&texture));
+                        }
+                    }
+                    Ok(Err(e)) => log::warn!("Failed to decode a video thumbnail: {e:?}"),
+                    Err(e) => log::warn!("Video thumbnail decoder task failed: {e:?}"),
+                }
+            }
+        ));
+    }
+
+    /// Whether an in-flight load still applies: the row is mapped, on-demand, and its
+    /// content has not been rebound (generation unchanged) since the load started.
+    fn is_generation_current(&self, generation: u64) -> bool {
         let imp = self.imp();
-        if !imp.demand.get() || !self.is_mapped() || imp.generation.get() != generation {
+        imp.demand.get() && self.is_mapped() && imp.generation.get() == generation
+    }
+
+    fn is_current(&self, file_id: i32, generation: u64) -> bool {
+        if !self.is_generation_current(generation) {
             return false;
         }
-        imp.message
+        self.imp()
+            .message
             .upgrade()
             .is_some_and(|message| match message.content().0 {
                 tdlib::enums::MessageContent::MessageAnimation(data) => {
@@ -339,4 +333,12 @@ impl MessageVideo {
             imp.indicator.set_label(&format!("{minutes}:{seconds:02}"));
         }
     }
+}
+
+fn minithumbnail_texture(
+    minithumbnail: Option<tdlib::types::Minithumbnail>,
+) -> Option<gdk::Texture> {
+    minithumbnail.and_then(|m| {
+        gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(&m.data))).ok()
+    })
 }

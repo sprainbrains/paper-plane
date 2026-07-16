@@ -26,6 +26,7 @@ use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
+use gtk::graphene;
 use gtk::glib;
 use gtk::subclass::prelude::*;
 
@@ -464,12 +465,16 @@ impl Row {
                     .contains(gdk::ModifierType::SHIFT_MASK);
 
                 if chat_history.is_selection_mode() {
-                    // Shift-click extends the range from the anchor; a plain click selects,
-                    // or — on an already-selected message — offers the selection actions.
+                    // Blank space beside the bubble is inert; only a click that actually
+                    // lands on the bubble (or the trailing checkbox) affects selection.
+                    if !obj.click_hits_message(x, y) {
+                        return;
+                    }
+                    // Shift-click extends the range from the anchor; a plain click toggles
+                    // this message (so clicking a checked message — or its checkbox —
+                    // deselects it). The selection actions live on the right-click menu.
                     if shift {
                         chat_history.extend_selection_to(message.id());
-                    } else if chat_history.is_message_selected(message.id()) {
-                        obj.show_selection_menu(x, y);
                     } else {
                         chat_history.toggle_message_selection(message.id());
                     }
@@ -482,6 +487,35 @@ impl Row {
             }
         ));
         self.add_controller(click);
+
+        // Drag a selected media message out to the file manager / another app to export its
+        // file(s). Armed only over an already-selected message with downloaded media (the
+        // list's sweep-select stands down for exactly this case, see `ChatHistory`), so it
+        // never competes with drag-to-select.
+        let drag_source = gtk::DragSource::new();
+        drag_source.set_actions(gdk::DragAction::COPY);
+        drag_source.connect_prepare(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[upgrade_or]
+            None,
+            move |_, _, _| {
+                let chat_history = utils::ancestor::<_, ui::ChatHistory>(&obj)?;
+                let message = obj.message().downcast::<model::Message>().ok()?;
+                if !chat_history.is_selection_mode()
+                    || !chat_history.is_message_selected(message.id())
+                {
+                    return None;
+                }
+                let files = chat_history.selected_media_files();
+                if files.is_empty() {
+                    return None;
+                }
+                let file_list = gdk::FileList::from_array(&files);
+                Some(gdk::ContentProvider::for_value(&file_list.to_value()))
+            }
+        ));
+        self.add_controller(drag_source);
 
         // The trailing selection checkbox: a passive indicator (clicks fall through to
         // the row's gesture). Hidden until selection mode; repositioned to the end after
@@ -497,9 +531,31 @@ impl Row {
         self.imp().selection_check.replace(Some(check));
     }
 
-    /// Pops a menu with the selection actions at the click point — clicking a message
-    /// that is already selected offers what the selection bar does, right at hand.
-    fn show_selection_menu(&self, x: f64, y: f64) {
+    /// Whether a click at `(x, y)` (in this row's coordinates) landed on the message
+    /// bubble or the trailing selection checkbox, as opposed to the blank space that
+    /// flanks the bubble (which must not affect selection).
+    fn click_hits_message(&self, x: f64, y: f64) -> bool {
+        let point = graphene::Point::new(x as f32, y as f32);
+        let imp = self.imp();
+        [
+            imp.content.borrow().clone(),
+            imp.selection_check
+                .borrow()
+                .clone()
+                .map(|check| check.upcast::<gtk::Widget>()),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|widget| {
+            widget
+                .compute_bounds(self)
+                .is_some_and(|bounds| bounds.contains_point(&point))
+        })
+    }
+
+    /// Pops a menu with the selection actions at the click point — a right-click while in
+    /// multi-select mode offers what the selection bar does, right at hand.
+    pub(crate) fn show_selection_menu(&self, x: f64, y: f64) {
         let menu = gio::Menu::new();
         menu.append(
             Some(&gettext("Forward")),
@@ -581,11 +637,14 @@ impl Row {
             });
         }
 
-        if !is_group_start
-            && let Some(content) = self.imp().content.borrow().as_ref()
+        if let Some(content) = self.imp().content.borrow().as_ref()
             && let Some(bubble) = utils::descendant::<_, ui::MessageBubble>(content)
         {
-            bubble.hide_sender();
+            if !is_group_start {
+                bubble.hide_sender();
+            }
+            // The last message of a run (and standalone messages) gets a bubble tail.
+            bubble.set_tail(is_group_end);
         }
     }
 

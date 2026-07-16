@@ -1,18 +1,31 @@
 using Gtk 4.0;
+using Adw 1;
 
 template $PaplMessageReactions: Widget {
-  layout-manager: BinLayout {};
+  layout-manager: BoxLayout {
+    spacing: 6;
+  };
 
   visible: false;
 
   FlowBox flow_box {
+    hexpand: true;
+    valign: end;
     selection-mode: none;
-    column-spacing: 4;
-    row-spacing: 4;
+    column-spacing: 2;
+    row-spacing: 2;
     max-children-per-line: 20;
 
     styles [
       "message-reactions",
     ]
+  }
+
+  // Trailing slot for the message indicators (timestamp etc.) so, when a message has
+  // reactions, the time sits in the bottom-right corner of the reaction row.
+  Adw.Bin indicators_bin {
+    halign: end;
+    valign: end;
+    visible: false;
   }
 }

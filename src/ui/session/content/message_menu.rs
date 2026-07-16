@@ -6,6 +6,7 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::ui;
+use crate::utils;
 
 /// One icon+label row of the context menu, bound to a `message-row.*` action.
 struct MenuEntry {
@@ -160,6 +161,15 @@ mod imp {
 
             container.append(&card);
             obj.set_child(Some(&container));
+
+            // Undo the spotlight dimming applied when the menu was popped (see
+            // `ChatHistory::highlight_message_for_menu`). The menu is still parented under
+            // the history at close time, so its ancestor is reachable here.
+            obj.connect_closed(|menu| {
+                if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(menu) {
+                    chat_history.clear_menu_highlight();
+                }
+            });
         }
     }
 

@@ -72,6 +72,30 @@ mod imp {
                     obj.update_photo(&message);
                 }
             });
+
+            // A single primary click opens the photo in the fullscreen viewer. The row's
+            // capture-phase selection gesture runs first and only claims in selection
+            // mode, so a normal click reaches this bubble-phase gesture; the `n_press`
+            // guard leaves double-click free for the row's reply gesture.
+            let gesture = gtk::GestureClick::new();
+            gesture.set_button(1);
+            gesture.connect_released(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |gesture, n_press, _, _| {
+                    if n_press != 1 {
+                        return;
+                    }
+                    let Some(message) = obj.message.upgrade() else {
+                        return;
+                    };
+                    if let Some(window) = utils::ancestor::<_, ui::Window>(&*obj.obj()) {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        window.open_media_viewer(&message);
+                    }
+                }
+            ));
+            self.picture.add_controller(gesture);
         }
     }
 

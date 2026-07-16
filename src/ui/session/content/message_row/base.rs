@@ -4,6 +4,7 @@ use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
+use gtk::graphene;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
@@ -80,9 +81,25 @@ mod imp {
             };
             menu.rebind(&row);
 
-            menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));
+            // Point at the whole bubble rather than the click point so GTK places the menu
+            // beside/above the message instead of on top of it. Fall back to the click point
+            // if the bubble's bounds can't be resolved in this widget's coordinates.
+            let pointing = obj
+                .compute_bounds(obj)
+                .map(|bounds| {
+                    gdk::Rectangle::new(
+                        bounds.x() as i32,
+                        bounds.y() as i32,
+                        bounds.width() as i32,
+                        bounds.height() as i32,
+                    )
+                })
+                .unwrap_or_else(|| gdk::Rectangle::new(x, y, 0, 0));
+            menu.set_pointing_to(Some(&pointing));
             menu.unparent();
             menu.set_parent(obj);
+
+            chat_history.highlight_message_for_menu(&row);
             menu.popup();
         }
 
@@ -121,7 +138,21 @@ mod imp {
                         return;
                     }
                     gesture.set_state(gtk::EventSequenceState::Claimed);
-                    imp.show_message_menu(x as i32, y as i32);
+                    // In multi-select mode the right-click offers the selection actions
+                    // (Forward/Copy/Delete/Clear); otherwise the full message menu.
+                    let obj = imp.obj();
+                    let selecting = utils::ancestor::<_, ui::ChatHistory>(&*obj)
+                        .is_some_and(|history| history.is_selection_mode());
+                    if selecting {
+                        if let Some(row) = utils::ancestor::<_, ui::MessageRow>(&*obj) {
+                            let point = obj
+                                .compute_point(&row, &graphene::Point::new(x as f32, y as f32))
+                                .unwrap_or_else(|| graphene::Point::new(x as f32, y as f32));
+                            row.show_selection_menu(point.x() as f64, point.y() as f64);
+                        }
+                    } else {
+                        imp.show_message_menu(x as i32, y as i32);
+                    }
                 }
             ));
             self.obj().add_controller(click);

@@ -64,6 +64,24 @@ fn is_touch(gesture: &gtk::GestureDrag) -> bool {
         .is_some_and(|device| device.source() == gdk::InputSource::Touchscreen)
 }
 
+/// The on-disk path of a message's primary media file, but only once it is fully
+/// downloaded — the file that can be exported by dragging the message out.
+fn message_media_local_path(content: &tdlib::enums::MessageContent) -> Option<String> {
+    use tdlib::enums::MessageContent::*;
+    let file = match content {
+        MessagePhoto(data) => data.photo.sizes.last()?.photo.clone(),
+        MessageVideo(data) => data.video.video.clone(),
+        MessageDocument(data) => data.document.document.clone(),
+        MessageAudio(data) => data.audio.audio.clone(),
+        MessageVoiceNote(data) => data.voice_note.voice.clone(),
+        MessageAnimation(data) => data.animation.animation.clone(),
+        MessageVideoNote(data) => data.video_note.video.clone(),
+        _ => return None,
+    };
+    (file.local.is_downloading_completed && !file.local.path.is_empty())
+        .then_some(file.local.path)
+}
+
 mod imp {
     use super::*;
 
@@ -78,6 +96,10 @@ mod imp {
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
         pub(super) sticky: Cell<bool>,
+        /// Collapsed (mobile) layout: the header avatar is shown only here, standing in
+        /// for the identity the (hidden) sidebar would otherwise convey. On the expanded
+        /// layout the sidebar already shows it, so the header avatar is hidden.
+        pub(super) compact: Cell<bool>,
         pub(super) viewed_message_ids: RefCell<HashSet<i64>>,
         pub(super) viewed_message_ids_changed: Cell<bool>,
         pub(super) selection_mode: Cell<bool>,
@@ -254,6 +276,7 @@ mod imp {
                     glib::ParamSpecBoolean::builder("sticky")
                         .read_only()
                         .build(),
+                    glib::ParamSpecBoolean::builder("compact").build(),
                 ]
             })
         }
@@ -267,6 +290,11 @@ mod imp {
                     obj.set_chat(chat);
                 }
                 "sticky" => obj.set_sticky(value.get().unwrap()),
+                "compact" => {
+                    let compact = value.get().unwrap();
+                    self.compact.set(compact);
+                    self.header_avatar.set_visible(compact);
+                }
                 _ => unimplemented!(),
             }
         }
@@ -277,6 +305,7 @@ mod imp {
             match pspec.name() {
                 "chat" => obj.chat().to_value(),
                 "sticky" => obj.sticky().to_value(),
+                "compact" => self.compact.get().to_value(),
                 _ => unimplemented!(),
             }
         }
@@ -463,8 +492,12 @@ mod imp {
                     }
                     // Outside selection mode, a drag starting on selectable bubble text is
                     // a text selection — leave it to the label rather than sweeping rows.
-                    let skip = !obj.is_selection_mode()
-                        && obj.point_over_selectable_text(&list_view, start_x, start_y);
+                    // Inside selection mode, a drag starting on an already-selected media
+                    // message is a drag-out — leave it to that row's DragSource. Either way,
+                    // don't begin a sweep so the other gesture can claim the sequence.
+                    let skip = (!obj.is_selection_mode()
+                        && obj.point_over_selectable_text(&list_view, start_x, start_y))
+                        || obj.point_over_selected_media(&list_view, start_x, start_y);
                     obj.imp().drag_skip_for_text.set(skip);
                     if !skip {
                         obj.begin_selection_drag();
@@ -1078,6 +1111,46 @@ impl ChatHistory {
             widget = w.parent();
         }
         false
+    }
+
+    /// Whether the point (in `list_view` coordinates) lands on an already-selected message
+    /// carrying a downloaded media file — where a drag should export the file to the OS
+    /// (handled by the row's `DragSource`) rather than sweep-select rows.
+    fn point_over_selected_media(&self, list_view: &gtk::ListView, x: f64, y: f64) -> bool {
+        if !self.is_selection_mode() {
+            return false;
+        }
+        let mut widget = list_view.pick(x, y, gtk::PickFlags::DEFAULT);
+        while let Some(w) = widget {
+            if let Some(row) = w.downcast_ref::<ui::MessageRow>() {
+                return row
+                    .message()
+                    .downcast::<model::Message>()
+                    .ok()
+                    .filter(|message| self.is_message_selected(message.id()))
+                    .and_then(|message| message_media_local_path(&message.content().0))
+                    .is_some();
+            }
+            widget = w.parent();
+        }
+        false
+    }
+
+    /// The `gio::File`s of every selected message whose media is fully downloaded — the
+    /// payload for dragging the selection out to the file manager / another app.
+    pub(crate) fn selected_media_files(&self) -> Vec<gio::File> {
+        let model = match self.imp().list_view.model() {
+            Some(model) => model,
+            None => return Vec::new(),
+        };
+        let selected = self.imp().selected_message_ids.borrow();
+        (0..model.n_items())
+            .filter_map(|pos| model.item(pos).and_downcast::<model::ChatHistoryItem>())
+            .filter_map(|item| item.message().cloned())
+            .filter(|message| selected.contains(&message.id()))
+            .filter_map(|message| message_media_local_path(&message.content().0))
+            .map(|path| gio::File::for_path(path))
+            .collect()
     }
 
     /// Ends an in-progress selection drag (releases the edge auto-scroll).
@@ -1974,6 +2047,27 @@ impl ChatHistory {
             glib::ControlFlow::Continue
         });
         self.imp().focus_tick.replace(Some(id));
+    }
+
+    /// Dims the whole history except `row`'s list entry, spotlighting the message whose
+    /// context menu is open. Paired with `clear_menu_highlight` on menu close.
+    pub(crate) fn highlight_message_for_menu(&self, row: &ui::MessageRow) {
+        let list_view = self.imp().list_view.get();
+        list_view.add_css_class("menu-dimmed");
+        // MessageRow -> ChatHistoryRow -> list item wrapper (where selection classes live).
+        if let Some(wrapper) = row.parent().and_then(|parent| parent.parent()) {
+            wrapper.add_css_class("menu-active");
+        }
+    }
+
+    pub(crate) fn clear_menu_highlight(&self) {
+        let list_view = self.imp().list_view.get();
+        list_view.remove_css_class("menu-dimmed");
+        let mut child = list_view.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            widget.remove_css_class("menu-active");
+        }
     }
 
     fn flash_message(&self, message_id: i64) {
