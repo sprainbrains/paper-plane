@@ -78,6 +78,9 @@ mod imp {
             klass.install_action("sidebar-row.mark-as-read", None, move |widget, _, _| {
                 widget.toggle_chat_marked_as_unread()
             });
+            klass.install_action("sidebar-row.open-in-window", None, move |widget, _, _| {
+                widget.open_in_separate_window()
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -148,6 +151,29 @@ mod imp {
 
             obj.setup_expressions();
             obj.create_signal_groups();
+
+            // Ctrl+click opens the chat in a separate window. Handled in the capture phase
+            // so it beats the chat list's single-click-activate; a plain click is denied
+            // here and falls through to normal activation.
+            let ctrl_click = gtk::GestureClick::new();
+            ctrl_click.set_button(gdk::BUTTON_PRIMARY);
+            ctrl_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+            ctrl_click.connect_pressed(clone!(
+                #[weak]
+                obj,
+                move |gesture, _, _, _| {
+                    if gesture
+                        .current_event_state()
+                        .contains(gdk::ModifierType::CONTROL_MASK)
+                    {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        obj.open_in_separate_window();
+                    } else {
+                        gesture.set_state(gtk::EventSequenceState::Denied);
+                    }
+                }
+            ));
+            obj.add_controller(ctrl_click);
         }
 
         fn dispose(&self) {
@@ -181,6 +207,24 @@ impl Default for Row {
 impl Row {
     pub(crate) fn new() -> Self {
         glib::Object::new()
+    }
+
+    /// Opens this row's chat in a separate window (or, if it is already shown in another
+    /// window, raises that window and shows a toast).
+    fn open_in_separate_window(&self) {
+        let Some(item) = self.item() else {
+            return;
+        };
+        let chat = item.chat_();
+        let client = chat.session_().client_();
+
+        let Some(window) = utils::ancestor::<_, ui::Window>(self) else {
+            return;
+        };
+        let Some(app) = window.application().and_downcast::<crate::Application>() else {
+            return;
+        };
+        app.open_chat_in_window(&client, chat.id(), &window);
     }
 
     pub(crate) fn toggle_chat_is_archived(&self) {

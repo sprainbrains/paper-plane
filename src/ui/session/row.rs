@@ -1,9 +1,13 @@
+use std::cell::OnceCell;
+
 use adw::prelude::*;
 use gettextrs::gettext;
 use glib::Properties;
+use glib::clone;
 use glib::closure;
 use glib::subclass::InitializingObject;
 use gtk::CompositeTemplate;
+use gtk::gdk;
 use gtk::glib;
 use gtk::subclass::prelude::*;
 
@@ -23,6 +27,7 @@ mod imp {
     pub(crate) struct Row {
         #[property(get, set)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
+        pub(super) menu: OnceCell<gtk::PopoverMenu>,
         #[template_child]
         pub(super) display_name_label: TemplateChild<gtk::Label>,
         #[template_child]
@@ -51,6 +56,9 @@ mod imp {
                     widget.log_out().await;
                 },
             );
+            klass.install_action("session-row.open-in-window", None, |widget, _, _| {
+                widget.open_account_in_window();
+            });
         }
 
         fn instance_init(obj: &InitializingObject<Self>) {
@@ -71,15 +79,79 @@ mod imp {
 
         fn constructed(&self) {
             self.parent_constructed();
-            self.obj().setup_expressions();
+
+            let obj = &*self.obj();
+            obj.setup_expressions();
+
+            // Right-click opens the account context menu.
+            let right_click = gtk::GestureClick::new();
+            right_click.set_button(gdk::BUTTON_SECONDARY);
+            right_click.connect_released(clone!(
+                #[weak(rename_to = imp)]
+                self,
+                move |_, _, x, y| {
+                    imp.show_menu(x as i32, y as i32);
+                }
+            ));
+            obj.add_controller(right_click);
+
+            // Ctrl+click opens the account in a separate window. Capture phase so it beats
+            // the list view's single-click activation; a plain click is denied and falls
+            // through to normal account switching.
+            let ctrl_click = gtk::GestureClick::new();
+            ctrl_click.set_button(gdk::BUTTON_PRIMARY);
+            ctrl_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+            ctrl_click.connect_pressed(clone!(
+                #[weak]
+                obj,
+                move |gesture, _, _, _| {
+                    if gesture
+                        .current_event_state()
+                        .contains(gdk::ModifierType::CONTROL_MASK)
+                    {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        obj.open_account_in_window();
+                    } else {
+                        gesture.set_state(gtk::EventSequenceState::Denied);
+                    }
+                }
+            ));
+            obj.add_controller(ctrl_click);
         }
 
         fn dispose(&self) {
+            if let Some(menu) = self.menu.get() {
+                menu.unparent();
+            }
             self.dispose_template();
+            // `dispose_template` leaves the template's root box parented on this widget
+            // subclass; unparent whatever remains so list recycling doesn't finalize the
+            // row with live children.
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
         }
     }
 
     impl WidgetImpl for Row {}
+
+    impl Row {
+        fn menu(&self) -> &gtk::PopoverMenu {
+            self.menu.get_or_init(|| {
+                gtk::Builder::from_resource("/app/drey/paper-plane/ui/session/row_menu.ui")
+                    .object::<gtk::PopoverMenu>("menu")
+                    .unwrap()
+            })
+        }
+
+        fn show_menu(&self, x: i32, y: i32) {
+            let menu = self.menu();
+            menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));
+            menu.unparent();
+            menu.set_parent(&*self.obj());
+            menu.popup();
+        }
+    }
 }
 
 glib::wrapper! {
@@ -90,6 +162,23 @@ glib::wrapper! {
 impl Row {
     pub(crate) fn new(session: &model::ClientStateSession) -> Self {
         glib::Object::builder().property("session", session).build()
+    }
+
+    /// Opens this account in a new separate window. Accounts may be shown in several
+    /// windows at once, so there is no duplicate check.
+    fn open_account_in_window(&self) {
+        let Some(session) = self.session() else {
+            return;
+        };
+        let client = session.client_();
+
+        let Some(window) = utils::ancestor::<_, ui::Window>(self) else {
+            return;
+        };
+        let Some(app) = window.application().and_downcast::<crate::Application>() else {
+            return;
+        };
+        app.present_window_for_account(&client);
     }
 
     pub(crate) async fn log_out(&self) {

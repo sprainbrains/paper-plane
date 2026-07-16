@@ -146,17 +146,20 @@ mod imp {
             self.selection.set_selected_position(pos);
 
             obj.set_selected_chat(self.selection.selected_chat());
-            obj.activate_action("navigation.push", Some(&"content".to_variant()))
-                .unwrap();
 
+            // Reveal the chat. On a collapsed (mobile) layout this navigates away from
+            // the sidebar; the chat rows live inside the sidebar's own AdwNavigationView,
+            // so a bubbled "navigation.push" action would be swallowed by it instead of
+            // reaching the outer split view — drive the split view through Session instead.
+            //
             // Re-activating the chat that is already open drops the view to its newest
             // message (the set_selected_chat above is a no-op in that case).
             let newly_selected = obj.selected_chat();
-            if newly_selected.is_some()
-                && newly_selected == previously_selected
-                && let Some(session) = utils::ancestor::<_, ui::Session>(obj)
-            {
-                session.scroll_content_to_latest();
+            if let Some(session) = utils::ancestor::<_, ui::Session>(obj) {
+                session.show_chat_content();
+                if newly_selected.is_some() && newly_selected == previously_selected {
+                    session.scroll_content_to_latest();
+                }
             }
         }
     }

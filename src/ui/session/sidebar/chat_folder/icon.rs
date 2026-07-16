@@ -1,6 +1,8 @@
 use std::cell::Cell;
+use std::cell::RefCell;
 
 use glib::Properties;
+use glib::clone;
 use glib::closure;
 use gtk::CompositeTemplate;
 use gtk::gdk;
@@ -20,6 +22,9 @@ mod imp {
     pub(crate) struct Icon {
         pub(super) unread_label_width: Cell<i32>,
         pub(super) unread_label_height: Cell<i32>,
+        /// The model + its `unread-chat-count` notify handler, live only while the icon is
+        /// mapped so it can never fire `set_label` on a detached (being-torn-down) widget.
+        pub(super) unread_handler: RefCell<Option<(model::ChatList, glib::SignalHandlerId)>>,
         #[property(get, set)]
         pub(super) chat_list: glib::WeakRef<model::ChatList>,
         #[template_child]
@@ -65,8 +70,6 @@ mod imp {
             let obj = &*self.obj();
 
             let chat_list_expr = Self::Type::this_expression("chat-list");
-            let unread_count_expr =
-                chat_list_expr.chain_property::<model::ChatList>("unread-chat-count");
 
             gtk::ClosureExpression::new::<String>(
                 [
@@ -80,51 +83,63 @@ mod imp {
                         match list_type.0 {
                             ChatList::Main => "all-chats-symbolic",
                             ChatList::Archive => "",
-                            _ => match icon {
-                                "Airplane" => "airplane-mode-symbolic",
-                                "All" => "all-chats-symbolic",
-                                // "Book" => "",
-                                // "Bots" => "",
-                                // "Cat" => "",
-                                // "Channels" => "",
-                                // "Crown" => "",
-                                "Custom" => "folder-symbolic",
-                                // "Favorite" => "",
-                                // "Flower" => "",
-                                "Game" => "applications-games-symbolic",
-                                // "Groups" => "",
-                                "Home" => "user-home-symbolic",
-                                // "Light" => "",
-                                // "Like" => "",
-                                "Love" => "emote-love-symbolic",
-                                // "Mask" => "",
-                                // "Money" => "",
-                                // "Note" => "",
-                                // "Palette" => "",
-                                // "Party" => "",
-                                // "Private" => "",
-                                // "Setup" => "",
-                                // "Sport" => "",
-                                // "Study" => "",
-                                // "Trade" => "",
-                                "Travel" => "emoji-travel-symbolic",
-                                // "Unmuted" => "",
-                                "Unread" => "mail-unread-symbolic",
-                                // "Work" => "",
-                                _ => "folder-symbolic",
-                            },
+                            _ => super::super::folder_icon_symbolic(icon),
                         }
                     }
                 ),
             )
             .bind(&self.icon.get(), "icon-name", Some(obj));
 
-            unread_count_expr.bind(&self.unread_label.get(), "visible", Some(obj));
-            unread_count_expr.bind(&self.unread_label.get(), "label", Some(obj));
+            // Drive the unread badge through a manual notify handler that is connected
+            // only while the icon is mapped (see `refresh_unread_binding`). A
+            // `GtkExpression` bind here keeps firing `set_label` — and thus
+            // `queue_resize` up the ancestor chain — during folder-row teardown, after an
+            // ancestor has been freed, which is a use-after-free crash.
+            obj.connect_map(|obj| obj.imp().refresh_unread_binding());
+            obj.connect_unmap(|obj| obj.imp().refresh_unread_binding());
+            obj.connect_chat_list_notify(|obj| obj.imp().refresh_unread_binding());
         }
 
         fn dispose(&self) {
+            if let Some((model, handler)) = self.unread_handler.borrow_mut().take() {
+                model.disconnect(handler);
+            }
             self.dispose_template();
+        }
+    }
+
+    impl Icon {
+        /// Reconnects the `unread-chat-count` notify handler to the current chat list,
+        /// but only while the icon is mapped. Called on map, unmap, and whenever the
+        /// `chat-list` changes, so the handler exists exactly when the icon is in a live
+        /// widget tree — never during teardown.
+        pub(super) fn refresh_unread_binding(&self) {
+            if let Some((model, handler)) = self.unread_handler.borrow_mut().take() {
+                model.disconnect(handler);
+            }
+
+            let obj = self.obj();
+            if !obj.is_mapped() {
+                return;
+            }
+            self.update_unread();
+
+            if let Some(chat_list) = obj.chat_list() {
+                let handler = chat_list.connect_unread_chat_count_notify(clone!(
+                    #[weak]
+                    obj,
+                    move |_| obj.imp().update_unread()
+                ));
+                *self.unread_handler.borrow_mut() = Some((chat_list, handler));
+            }
+        }
+
+        fn update_unread(&self) {
+            let count = self.obj().chat_list().map_or(0, |list| list.unread_chat_count());
+            self.unread_label.set_label(&count.to_string());
+            self.unread_label.set_visible(count > 0);
+            // The badge mask/label in `snapshot` reads the count live.
+            self.obj().queue_draw();
         }
     }
 

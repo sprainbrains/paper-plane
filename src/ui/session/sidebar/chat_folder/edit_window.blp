@@ -4,8 +4,8 @@ using Adw 1;
 template $PaplSidebarChatFolderEditWindow: Adw.Window {
   title: _("Edit Folder");
   modal: true;
-  default-width: 380;
-  default-height: 640;
+  default-width: 400;
+  default-height: 680;
 
   content: Adw.ToolbarView {
     [top]
@@ -19,6 +19,11 @@ template $PaplSidebarChatFolderEditWindow: Adw.Window {
 
         clicked => $on_cancel() swapped;
       }
+
+      title-widget: Adw.ViewSwitcher {
+        stack: view_stack;
+        policy: wide;
+      };
 
       [end]
       Button save_button {
@@ -34,33 +39,138 @@ template $PaplSidebarChatFolderEditWindow: Adw.Window {
       orientation: vertical;
       spacing: 6;
 
-      Entry name_entry {
-        placeholder-text: _("Folder Name");
+      Box {
+        spacing: 6;
         margin-start: 12;
         margin-end: 12;
         margin-top: 12;
+
+        MenuButton icon_button {
+          valign: center;
+          tooltip-text: _("Folder Icon");
+
+          styles ["flat"]
+        }
+
+        Entry name_entry {
+          hexpand: true;
+          placeholder-text: _("Folder Name");
+        }
       }
 
-      SearchEntry search_entry {
-        placeholder-text: _("Search Chats");
-        margin-start: 12;
-        margin-end: 12;
-
-        search-changed => $on_search_changed() swapped;
-      }
-
-      ScrolledWindow {
+      Adw.ViewStack view_stack {
         vexpand: true;
-        hscrollbar-policy: never;
 
-        ListView list_view {
-          model: NoSelection {
-            model: FilterListModel filter_model {
-              filter: CustomFilter custom_filter {};
-            };
+        Adw.ViewStackPage {
+          name: "include";
+          title: _("Include");
+          icon-name: "list-add-symbolic";
+
+          child: Box {
+            orientation: vertical;
+            spacing: 12;
+            margin-start: 12;
+            margin-end: 12;
+            margin-top: 12;
+            margin-bottom: 12;
+
+            Adw.PreferencesGroup {
+              title: _("Chat Types");
+
+              Adw.SwitchRow include_contacts_row {
+                title: _("Contacts");
+              }
+
+              Adw.SwitchRow include_non_contacts_row {
+                title: _("Non-Contacts");
+              }
+
+              Adw.SwitchRow include_groups_row {
+                title: _("Groups");
+              }
+
+              Adw.SwitchRow include_channels_row {
+                title: _("Channels");
+              }
+
+              Adw.SwitchRow include_bots_row {
+                title: _("Bots");
+              }
+            }
+
+            SearchEntry search_entry {
+              placeholder-text: _("Search Chats");
+
+              search-changed => $on_search_changed() swapped;
+            }
+
+            ScrolledWindow {
+              vexpand: true;
+              hscrollbar-policy: never;
+
+              ListView list_view {
+                model: NoSelection {
+                  model: FilterListModel filter_model {
+                    filter: CustomFilter custom_filter {};
+                  };
+                };
+
+                styles ["navigation-sidebar"]
+              }
+            }
           };
+        }
 
-          styles ["navigation-sidebar"]
+        Adw.ViewStackPage {
+          name: "exclude";
+          title: _("Exclude");
+          icon-name: "list-remove-symbolic";
+
+          child: Box {
+            orientation: vertical;
+            spacing: 12;
+            margin-start: 12;
+            margin-end: 12;
+            margin-top: 12;
+            margin-bottom: 12;
+
+            Adw.PreferencesGroup {
+              title: _("Chat Types");
+
+              Adw.SwitchRow exclude_muted_row {
+                title: _("Muted");
+              }
+
+              Adw.SwitchRow exclude_read_row {
+                title: _("Read");
+              }
+
+              Adw.SwitchRow exclude_archived_row {
+                title: _("Archived");
+              }
+            }
+
+            SearchEntry exclude_search_entry {
+              placeholder-text: _("Search Chats");
+
+              search-changed => $on_exclude_search_changed() swapped;
+            }
+
+            ScrolledWindow {
+              vexpand: true;
+              hscrollbar-policy: never;
+
+              ListView exclude_list_view {
+                model: NoSelection {
+                  model: FilterListModel exclude_filter_model {
+                    filter: CustomFilter exclude_custom_filter {};
+                  };
+                };
+
+                styles ["navigation-sidebar"]
+              }
+            }
+          };
         }
       }
     };

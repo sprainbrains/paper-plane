@@ -340,6 +340,11 @@ impl Sidebar {
                 gtk::Align::Start
             });
 
+            // The menu is shared and re-parented onto whichever row was clicked. Detach it
+            // when it closes so it is never left parented to a row that is later destroyed
+            // (e.g. list recycling or window close), which would dangle its parent pointer.
+            menu.connect_closed(|menu| menu.unparent());
+
             menu
         })
     }

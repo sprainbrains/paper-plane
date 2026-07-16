@@ -105,6 +105,14 @@ mod imp {
 
         fn dispose(&self) {
             self.dispose_template();
+            // `dispose_template` leaves the template's root box parented on this widget
+            // subclass, and the context menu is a single popover owned by the bar and
+            // re-parented onto whichever row is right-clicked (see `show_menu`) — neither
+            // is cleared. Unparent whatever remains so list recycling doesn't finalize the
+            // row with live children (and take the bar's shared popover down with it).
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
         }
     }
 

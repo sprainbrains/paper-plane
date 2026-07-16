@@ -1,0 +1,22 @@
+using Gtk 4.0;
+
+menu model {
+  section {
+    item {
+      label: _("Open in Separate _Window");
+      action: "session-row.open-in-window";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Log out");
+      action: "session-row.log-out-client";
+    }
+  }
+}
+
+PopoverMenu menu {
+  menu-model: model;
+  has-arrow: false;
+}

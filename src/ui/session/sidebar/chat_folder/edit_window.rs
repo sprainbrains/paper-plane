@@ -2,11 +2,11 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
 
+use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::glib;
-use gtk::prelude::*;
 
 use crate::i18n::gettext_f;
 use crate::model;
@@ -17,6 +17,13 @@ use crate::utils;
 /// disconnected when the row is recycled for another chat.
 const TOGGLED_HANDLER_KEY: &str = "papl-toggled-handler";
 
+/// Which membership set a chat list edits: the included chats or the excluded chats.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Membership {
+    Include,
+    Exclude,
+}
+
 mod imp {
     use super::*;
 
@@ -25,13 +32,19 @@ mod imp {
     pub(crate) struct EditWindow {
         pub(super) session: RefCell<Option<ui::Session>>,
         pub(super) chat_folder_id: Cell<i32>,
-        /// The folder as fetched, kept so its icon/color/flags/exclusions survive a save.
+        /// The folder as fetched, kept so any fields the editor doesn't surface survive a save.
         pub(super) folder: RefCell<Option<tdlib::types::ChatFolder>>,
-        /// The chats currently in the folder (pinned + included), edited via the checkboxes.
+        /// The chats explicitly included (pinned + included) and explicitly excluded.
         pub(super) included: RefCell<HashSet<i64>>,
+        pub(super) excluded: RefCell<HashSet<i64>>,
+        /// The selected TDLib icon name (empty when the folder has no icon).
+        pub(super) icon_name: RefCell<String>,
         pub(super) search_text: RefCell<String>,
+        pub(super) exclude_search_text: RefCell<String>,
         #[template_child]
         pub(super) name_entry: TemplateChild<gtk::Entry>,
+        #[template_child]
+        pub(super) icon_button: TemplateChild<gtk::MenuButton>,
         #[template_child]
         pub(super) search_entry: TemplateChild<gtk::SearchEntry>,
         #[template_child]
@@ -40,6 +53,30 @@ mod imp {
         pub(super) filter_model: TemplateChild<gtk::FilterListModel>,
         #[template_child]
         pub(super) custom_filter: TemplateChild<gtk::CustomFilter>,
+        #[template_child]
+        pub(super) exclude_search_entry: TemplateChild<gtk::SearchEntry>,
+        #[template_child]
+        pub(super) exclude_list_view: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub(super) exclude_filter_model: TemplateChild<gtk::FilterListModel>,
+        #[template_child]
+        pub(super) exclude_custom_filter: TemplateChild<gtk::CustomFilter>,
+        #[template_child]
+        pub(super) include_contacts_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) include_non_contacts_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) include_groups_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) include_channels_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) include_bots_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) exclude_muted_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) exclude_read_row: TemplateChild<adw::SwitchRow>,
+        #[template_child]
+        pub(super) exclude_archived_row: TemplateChild<adw::SwitchRow>,
     }
 
     #[glib::object_subclass]
@@ -61,25 +98,14 @@ mod imp {
     impl ObjectImpl for EditWindow {
         fn constructed(&self) {
             self.parent_constructed();
+            let obj = self.obj();
 
-            // Match chats whose title contains the current search text.
-            self.custom_filter.set_filter_func(clone!(
-                #[weak(rename_to = obj)]
-                self,
-                #[upgrade_or]
-                false,
-                move |item| {
-                    let search = obj.search_text.borrow().to_lowercase();
-                    if search.is_empty() {
-                        return true;
-                    }
-                    item.downcast_ref::<model::ChatListItem>()
-                        .map(|item| item.chat_().title().to_lowercase().contains(&search))
-                        .unwrap_or(false)
-                }
-            ));
+            obj.setup_search_filter(&self.custom_filter, Membership::Include);
+            obj.setup_search_filter(&self.exclude_custom_filter, Membership::Exclude);
 
-            self.obj().setup_factory();
+            obj.setup_factory(Membership::Include);
+            obj.setup_factory(Membership::Exclude);
+            obj.setup_icon_picker();
         }
     }
 
@@ -94,6 +120,14 @@ mod imp {
             self.search_text
                 .replace(self.search_entry.text().to_string());
             self.custom_filter.changed(gtk::FilterChange::Different);
+        }
+
+        #[template_callback]
+        fn on_exclude_search_changed(&self) {
+            self.exclude_search_text
+                .replace(self.exclude_search_entry.text().to_string());
+            self.exclude_custom_filter
+                .changed(gtk::FilterChange::Different);
         }
 
         #[template_callback]
@@ -130,13 +164,80 @@ impl EditWindow {
 
         if let Some(model) = session.model() {
             imp.filter_model.set_model(Some(&model.main_chat_list()));
+            imp.exclude_filter_model
+                .set_model(Some(&model.main_chat_list()));
         }
 
         obj.load_folder();
         obj
     }
 
-    /// Fetches the folder and fills in the name and the set of member chats.
+    /// Filters a chat list to titles containing that tab's search text (case-insensitive).
+    fn setup_search_filter(&self, filter: &gtk::CustomFilter, membership: Membership) {
+        filter.set_filter_func(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            #[upgrade_or]
+            false,
+            move |item| {
+                let imp = obj.imp();
+                let search = match membership {
+                    Membership::Include => imp.search_text.borrow(),
+                    Membership::Exclude => imp.exclude_search_text.borrow(),
+                }
+                .to_lowercase();
+                if search.is_empty() {
+                    return true;
+                }
+                item.downcast_ref::<model::ChatListItem>()
+                    .map(|item| item.chat_().title().to_lowercase().contains(&search))
+                    .unwrap_or(false)
+            }
+        ));
+    }
+
+    fn setup_icon_picker(&self) {
+        let imp = self.imp();
+        let flow = gtk::FlowBox::builder()
+            .max_children_per_line(6)
+            .min_children_per_line(6)
+            .selection_mode(gtk::SelectionMode::None)
+            .row_spacing(4)
+            .column_spacing(4)
+            .margin_top(6)
+            .margin_bottom(6)
+            .margin_start(6)
+            .margin_end(6)
+            .build();
+
+        for (name, symbolic) in super::FOLDER_ICONS {
+            let button = gtk::Button::from_icon_name(symbolic);
+            button.add_css_class("flat");
+            button.connect_clicked(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_| {
+                    obj.set_selected_icon(name);
+                    obj.imp().icon_button.popdown();
+                }
+            ));
+            flow.append(&button);
+        }
+
+        let popover = gtk::Popover::builder().child(&flow).build();
+        imp.icon_button.set_popover(Some(&popover));
+        self.set_selected_icon("");
+    }
+
+    /// Reflects `name` as the chosen folder icon, updating the picker button's glyph.
+    fn set_selected_icon(&self, name: &str) {
+        self.imp()
+            .icon_button
+            .set_icon_name(super::folder_icon_symbolic(name));
+        self.imp().icon_name.replace(name.to_string());
+    }
+
+    /// Fetches the folder and fills in the name, icon, chat-type flags, and memberships.
     fn load_folder(&self) {
         let Some(session) = self.imp().session.borrow().clone() else {
             return;
@@ -160,6 +261,24 @@ impl EditWindow {
                 let imp = obj.imp();
                 imp.name_entry.set_text(&folder.name.text.text);
 
+                obj.set_selected_icon(
+                    folder
+                        .icon
+                        .as_ref()
+                        .map(|icon| icon.name.as_str())
+                        .unwrap_or(""),
+                );
+
+                imp.include_contacts_row.set_active(folder.include_contacts);
+                imp.include_non_contacts_row
+                    .set_active(folder.include_non_contacts);
+                imp.include_groups_row.set_active(folder.include_groups);
+                imp.include_channels_row.set_active(folder.include_channels);
+                imp.include_bots_row.set_active(folder.include_bots);
+                imp.exclude_muted_row.set_active(folder.exclude_muted);
+                imp.exclude_read_row.set_active(folder.exclude_read);
+                imp.exclude_archived_row.set_active(folder.exclude_archived);
+
                 let included: HashSet<i64> = folder
                     .pinned_chat_ids
                     .iter()
@@ -167,17 +286,20 @@ impl EditWindow {
                     .copied()
                     .collect();
                 imp.included.replace(included);
+                imp.excluded
+                    .replace(folder.excluded_chat_ids.iter().copied().collect());
                 imp.folder.replace(Some(folder));
 
                 // Rows may have been bound (all unchecked) before this async load finished;
-                // re-set the factory so every visible row rebinds against the loaded
+                // re-set the factories so every visible row rebinds against the loaded
                 // membership and shows the right checkbox state.
-                obj.setup_factory();
+                obj.setup_factory(Membership::Include);
+                obj.setup_factory(Membership::Exclude);
             }
         ));
     }
 
-    fn setup_factory(&self) {
+    fn setup_factory(&self, membership: Membership) {
         let factory = gtk::SignalListItemFactory::new();
 
         factory.connect_setup(|_, item| {
@@ -224,16 +346,17 @@ impl EditWindow {
 
                 // No handler is connected here (unbind removed any previous one), so
                 // seeding the checkbox state can't feed back into the membership set.
-                check.set_active(obj.imp().included.borrow().contains(&chat_id));
+                check.set_active(obj.membership_set(membership).borrow().contains(&chat_id));
 
                 let handler = check.connect_toggled(clone!(
                     #[weak]
                     obj,
                     move |check| {
+                        let mut set = obj.membership_set(membership).borrow_mut();
                         if check.is_active() {
-                            obj.imp().included.borrow_mut().insert(chat_id);
+                            set.insert(chat_id);
                         } else {
-                            obj.imp().included.borrow_mut().remove(&chat_id);
+                            set.remove(&chat_id);
                         }
                     }
                 ));
@@ -256,7 +379,17 @@ impl EditWindow {
             }
         });
 
-        self.imp().list_view.set_factory(Some(&factory));
+        match membership {
+            Membership::Include => self.imp().list_view.set_factory(Some(&factory)),
+            Membership::Exclude => self.imp().exclude_list_view.set_factory(Some(&factory)),
+        }
+    }
+
+    fn membership_set(&self, membership: Membership) -> &RefCell<HashSet<i64>> {
+        match membership {
+            Membership::Include => &self.imp().included,
+            Membership::Exclude => &self.imp().excluded,
+        }
     }
 
     fn save(&self) {
@@ -272,22 +405,46 @@ impl EditWindow {
         };
         let client_id = model.client_().id();
         let chat_folder_id = imp.chat_folder_id.get();
-        let included = imp.included.borrow();
 
         // Keep the entities-free title from the entry; changing the text invalidates any
         // old entity offsets, so drop them.
         folder.name.text.text = imp.name_entry.text().trim().to_string();
         folder.name.text.entities = Vec::new();
 
+        folder.icon = {
+            let name = imp.icon_name.borrow();
+            (!name.is_empty()).then(|| tdlib::types::ChatFolderIcon {
+                name: name.clone(),
+            })
+        };
+
+        folder.include_contacts = imp.include_contacts_row.is_active();
+        folder.include_non_contacts = imp.include_non_contacts_row.is_active();
+        folder.include_groups = imp.include_groups_row.is_active();
+        folder.include_channels = imp.include_channels_row.is_active();
+        folder.include_bots = imp.include_bots_row.is_active();
+        folder.exclude_muted = imp.exclude_muted_row.is_active();
+        folder.exclude_read = imp.exclude_read_row.is_active();
+        folder.exclude_archived = imp.exclude_archived_row.is_active();
+
+        let included = imp.included.borrow();
+        // A chat can't be both included and excluded; included wins.
+        let excluded: HashSet<i64> = imp
+            .excluded
+            .borrow()
+            .difference(&included)
+            .copied()
+            .collect();
+
         // Pinned chats stay pinned only while still included; everything else included goes
-        // into included_chat_ids; and no chat is both included and excluded.
+        // into included_chat_ids.
         folder.pinned_chat_ids.retain(|id| included.contains(id));
         folder.included_chat_ids = included
             .iter()
             .copied()
             .filter(|id| !folder.pinned_chat_ids.contains(id))
             .collect();
-        folder.excluded_chat_ids.retain(|id| !included.contains(id));
+        folder.excluded_chat_ids = excluded.into_iter().collect();
         drop(included);
 
         utils::spawn(clone!(
