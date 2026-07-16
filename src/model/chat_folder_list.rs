@@ -248,6 +248,11 @@ impl ChatFolderList {
                 order.push(chat_list);
             }
 
+            // The main list is inserted among the folders at this position, so an
+            // out-of-range value from TDLib would make `item()` return `None` below
+            // `n_items()`, violating the `ListModel` contract. Clamp it.
+            let main_chat_list_position = main_chat_list_position.clamp(0, order.len() as i32);
+
             if old_order == order {
                 imp.set_main_chat_list_position(main_chat_list_position);
                 return;

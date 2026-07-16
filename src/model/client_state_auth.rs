@@ -67,7 +67,7 @@ impl ClientStateAuth {
     pub(crate) fn handle_update(&self, update: tdlib::types::UpdateAuthorizationState) {
         use tdlib::enums::AuthorizationState::*;
 
-        self.set_state(Some(match update.authorization_state {
+        let state = match update.authorization_state {
             WaitPhoneNumber => model::ClientStateAuthPhoneNumber::from(self).upcast(),
             WaitCode(data) => match self
                 .state()
@@ -99,7 +99,12 @@ impl ClientStateAuth {
             WaitRegistration(registration) => {
                 model::ClientStateAuthRegistration::new(self, registration).upcast()
             }
-            other => unreachable!("Unsupported state during auth: {other:?}"),
-        }));
+            other => {
+                log::warn!("Unsupported authorization state, ignoring: {other:?}");
+                return;
+            }
+        };
+
+        self.set_state(Some(state));
     }
 }

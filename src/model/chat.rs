@@ -32,7 +32,7 @@ impl ChatType {
 
         match _type {
             Private(data) => {
-                let user = session.user(data.user_id);
+                let user = session.user_or_fetch(data.user_id);
                 Self::Private(user)
             }
             BasicGroup(data) => {

@@ -301,7 +301,7 @@ impl Message {
                         gtk::ConstantExpression::new(sender_name).upcast()
                     }
                 })
-                .unwrap_or_else(|| self.sender_display_name_expression())
+                .unwrap_or_else(|| self.sender_name_expression())
         } else {
             self.sender_name_expression()
         }

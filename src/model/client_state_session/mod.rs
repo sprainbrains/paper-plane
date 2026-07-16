@@ -181,17 +181,8 @@ impl ClientStateSession {
         }
     }
 
-    /// Returns the `model::User` of the specified id. Panics if the user is not present.
-    ///
-    /// Note that TDLib guarantees that types are always returned before their ids,
-    /// so if you use an id returned by TDLib, it should be expected that the
-    /// relative `model::User` exists in the list.
-    pub(crate) fn user(&self, user_id: UserId) -> model::User {
-        self.imp().users.borrow().get(&user_id).unwrap().clone()
-    }
-
-    /// Like [`Self::user`], but returns `None` instead of panicking when the user
-    /// has not been loaded yet.
+    /// Returns the `model::User` of the specified id, or `None` if it has not been
+    /// loaded yet.
     pub(crate) fn try_user(&self, user_id: UserId) -> Option<model::User> {
         self.imp().users.borrow().get(&user_id).cloned()
     }
@@ -203,7 +194,7 @@ impl ClientStateSession {
     /// The "types are returned before their ids" guarantee holds for the update
     /// stream, but not always for results of direct requests such as
     /// `getChatHistory`, which can reference a sender that has not been pushed to
-    /// the client yet. Using this instead of [`Self::user`] there keeps message
+    /// the client yet. Using this instead of [`Self::try_user`] there keeps message
     /// construction from panicking on a not-yet-known sender.
     pub(crate) fn user_or_fetch(&self, user_id: UserId) -> model::User {
         if let Some(user) = self.try_user(user_id) {
@@ -288,7 +279,11 @@ impl ClientStateSession {
 
         result.map(|data| {
             let tdlib::enums::Users::Users(users) = data;
-            users.user_ids.into_iter().map(|id| self.user(id)).collect()
+            users
+                .user_ids
+                .into_iter()
+                .map(|id| self.user_or_fetch(id))
+                .collect()
         })
     }
 
@@ -440,7 +435,7 @@ impl ClientStateSession {
                     Entry::Occupied(entry) => entry.get().update(data.secret_chat),
                     Entry::Vacant(entry) => {
                         entry.insert(model::SecretChat::new(
-                            self.user(data.secret_chat.user_id),
+                            self.user_or_fetch(data.secret_chat.user_id),
                             data.secret_chat,
                         ));
                     }
@@ -467,7 +462,11 @@ impl ClientStateSession {
                 self.upsert_user(data.user);
             }
             UserStatus(data) => {
-                self.user(data.user_id).update_status(data.status);
+                // The user may not be cached yet; a later `updateUser` carries the
+                // status, so it is safe to skip here rather than panic.
+                if let Some(user) = self.try_user(data.user_id) {
+                    user.update_status(data.status);
+                }
             }
             DefaultReactionType(data) => {
                 self.imp()
