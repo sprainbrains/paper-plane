@@ -227,18 +227,29 @@ mod imp {
             );
             let ctx = snapshot.append_cairo(&bounds);
 
-            // Drop shadow: the outline filled in translucent black, once straight down and,
-            // for a tail bubble, once offset toward the tail side, so the tail casts a
-            // shadow on its outer edge and reads against a same-colored background.
-            let tail_dx = if outgoing { 1.5 } else { -1.5 };
-            let offsets: &[(f64, f64)] = if tail {
-                &[(0.0, 1.0), (tail_dx, 1.0)]
-            } else {
-                &[(0.0, 1.0)]
-            };
-            for &(dx, dy) in offsets {
+            // Drop shadow: the outline filled 1px down in translucent black.
+            let _ = ctx.save();
+            ctx.translate(0.0, 1.0);
+            append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
+            ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
+            let _ = ctx.fill();
+            let _ = ctx.restore();
+
+            // A second shadow offset toward the tail, so the tail casts a shadow on its
+            // outer edge and reads against a same-colored background. Clipped to the tail's
+            // band so it doesn't shade the whole sender-side edge (which showed as a
+            // discolored rim along the corners on a vivid dark wallpaper).
+            if tail {
+                let tail_dx = if outgoing { 1.5 } else { -1.5 };
+                let (cx0, cx1) = if outgoing {
+                    (w - TAIL_START - 2.0, w + TAIL_OVERHANG + 2.0)
+                } else {
+                    (-TAIL_OVERHANG - 2.0, TAIL_START + 2.0)
+                };
                 let _ = ctx.save();
-                ctx.translate(dx, dy);
+                ctx.rectangle(cx0, h - TAIL_HEIGHT - 2.0, cx1 - cx0, TAIL_HEIGHT + 4.0);
+                ctx.clip();
+                ctx.translate(tail_dx, 1.0);
                 append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
                 ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
                 let _ = ctx.fill();
