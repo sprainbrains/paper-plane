@@ -185,7 +185,9 @@ impl MessageVideo {
                     data.video.minithumbnail,
                 )
             } else {
-                unreachable!();
+                // Content can change in place (e.g. a TTL video becoming
+                // `MessageExpiredVideo`); the row is rebound elsewhere, so just skip.
+                return;
             };
 
         let caption = utils::parse_formatted_text(caption);

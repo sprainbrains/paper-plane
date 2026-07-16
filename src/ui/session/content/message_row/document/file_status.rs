@@ -24,11 +24,11 @@ impl From<&File> for FileStatus {
             Uploading(progress)
         } else if local.is_downloading_completed {
             Downloaded
-        } else if local.can_be_downloaded {
-            CanBeDownloaded
         } else {
-            dbg!(file);
-            unimplemented!("unknown file status");
+            // Includes `can_be_downloaded`, and unavailable/expired/restricted remote
+            // files that report none of the above flags (treated as not-yet-downloaded
+            // rather than crashing).
+            CanBeDownloaded
         }
     }
 }

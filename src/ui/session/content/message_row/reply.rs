@@ -143,12 +143,11 @@ impl MessageReply {
 
                 match chat.fetch_message(reply_to.message_id).await {
                     Ok(message) => self.update_from_message(&message, is_outgoing),
-                    Err(_) => imp.message_label.set_label("Deleted message"),
+                    Err(_) => imp.message_label.set_label(&gettext("Deleted message")),
                 };
             }
             tdlib::enums::MessageReplyTo::Story(_) => {
-                // TODO: Implement story replies
-                unimplemented!()
+                imp.message_label.set_label(&gettext("Story"));
             }
         };
     }

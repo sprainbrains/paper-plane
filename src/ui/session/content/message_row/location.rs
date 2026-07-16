@@ -175,9 +175,10 @@ impl MessageLocation {
             }
 
             if message_.live_period > 0 {
-                imp.map.set_custom_marker(Some(
-                    ui::AvatarMapMarker::from(message.sender().as_user().unwrap()).upcast(),
-                ));
+                if let Some(user) = message.sender().as_user() {
+                    imp.map
+                        .set_custom_marker(Some(ui::AvatarMapMarker::from(user).upcast()));
+                }
 
                 let message_date = message.date();
                 if let Some(last_update_date) = self.update_time(message_date, message_.live_period)
@@ -263,10 +264,10 @@ impl MessageLocation {
         {
             let map = map_window.map();
 
-            if message_.live_period > 0 {
-                map.set_custom_marker(Some(
-                    ui::AvatarMapMarker::from(message.sender().as_user().unwrap()).upcast(),
-                ));
+            if message_.live_period > 0
+                && let Some(user) = message.sender().as_user()
+            {
+                map.set_custom_marker(Some(ui::AvatarMapMarker::from(user).upcast()));
             }
             map.set_marker_position(message_.location.latitude, message_.location.longitude);
         }

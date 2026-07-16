@@ -130,10 +130,12 @@ impl ui::MessageBaseExt for MessagePhoto {
         let caption_binding = model::Message::this_expression("content")
             .chain_closure::<String>(closure!(
                 |_: model::Message, content: model::BoxedMessageContent| {
+                    // Content can change in place (e.g. a TTL photo becoming
+                    // `MessageExpiredPhoto`), so tolerate a non-photo variant.
                     if let tdlib::enums::MessageContent::MessagePhoto(data) = content.0 {
                         utils::parse_formatted_text(data.caption)
                     } else {
-                        unreachable!();
+                        String::new()
                     }
                 }
             ))

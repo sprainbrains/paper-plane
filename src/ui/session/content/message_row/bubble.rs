@@ -180,13 +180,8 @@ impl MessageBubble {
             None
         };
 
-        // Handle MessageReply
-        if matches!(
-            message.reply_to(),
-            Some(model::BoxedMessageReplyTo(
-                tdlib::enums::MessageReplyTo::Message(_)
-            ))
-        ) {
+        // Handle MessageReply (both message and story replies)
+        if message.reply_to().is_some() {
             let reply = ui::MessageReply::new(message);
 
             // FIXME: Do not show message reply when message is being deleted
@@ -226,6 +221,12 @@ impl MessageBubble {
         let imp = self.imp();
 
         imp.indicators.set_message(sponsored_message.upcast_ref());
+
+        // Bubbles are recycled between real and sponsored messages, so clear any
+        // reactions/reply left over from a previously bound real message.
+        imp.reactions.set_message(None::<model::Message>);
+        imp.message_reply_bin.set_child(gtk::Widget::NONE);
+        self.remove_css_class("with-reply");
 
         self.remove_css_class("outgoing");
 

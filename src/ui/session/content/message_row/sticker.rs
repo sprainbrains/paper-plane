@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use adw::prelude::*;
 use gtk::CompositeTemplate;
 use gtk::glib;
@@ -29,6 +31,7 @@ mod imp {
         pub(super) sticker: TemplateChild<ui::Sticker>,
         #[template_child]
         pub(super) indicators: TemplateChild<ui::MessageIndicators>,
+        pub(super) reply: RefCell<Option<ui::MessageReply>>,
     }
 
     #[glib::object_subclass]
@@ -119,12 +122,13 @@ impl ui::MessageBaseExt for MessageSticker {
 
         imp.indicators.set_message(message.upcast_ref());
 
-        if matches!(
-            message.reply_to(),
-            Some(model::BoxedMessageReplyTo(
-                tdlib::enums::MessageReplyTo::Message(_)
-            ))
-        ) {
+        // Rows are recycled by the `ListView`, so drop any reply left over from a
+        // previously bound message before (maybe) building a new one.
+        if let Some(old_reply) = imp.reply.take() {
+            old_reply.unparent();
+        }
+
+        if message.reply_to().is_some() {
             let reply = ui::MessageReply::new(message);
             reply.set_valign(gtk::Align::Start);
             reply.set_max_char_width(MAX_REPLY_CHAR_WIDTH);
@@ -136,6 +140,8 @@ impl ui::MessageBaseExt for MessageSticker {
             } else {
                 reply.insert_after(self, Some(&imp.overlay.get()));
             }
+
+            imp.reply.replace(Some(reply));
         }
 
         let (sticker, looped, is_emoji) = match message.content().0 {

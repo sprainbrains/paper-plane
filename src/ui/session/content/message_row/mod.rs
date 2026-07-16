@@ -378,10 +378,19 @@ impl Row {
                         | tdlib::enums::MessageContent::MessageVenue(_)
                 )
             ),
-            // Forward, select and pin are always offered for real messages.
-            "message-row.forward" | "message-row.select" | "message-row.pin" => {
+            // Forward and select are always offered for real messages.
+            "message-row.forward" | "message-row.select" => {
                 self.message().downcast_ref::<model::Message>().is_some()
             }
+            // Pin and Unpin are mutually exclusive, following the message's live state.
+            "message-row.pin" => self
+                .message()
+                .downcast_ref::<model::Message>()
+                .is_some_and(|message| !message.is_pinned()),
+            "message-row.unpin" => self
+                .message()
+                .downcast_ref::<model::Message>()
+                .is_some_and(|message| message.is_pinned()),
             _ => true,
         }
     }
