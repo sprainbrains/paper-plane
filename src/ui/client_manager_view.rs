@@ -110,7 +110,9 @@ mod imp {
         fn on_notify_active_client(&self) {
             let obj = &*self.obj();
 
-            let client = obj.active_client().unwrap();
+            let Some(client) = obj.active_client() else {
+                return;
+            };
 
             client.set_active(true);
             obj.set_active_client_online();
@@ -163,15 +165,10 @@ impl ClientManagerView {
             #[weak(rename_to = obj)]
             self,
             async move {
-                if let Some(client) = obj.active_client() {
-                    client
-                        .set_online(
-                            obj.root()
-                                .and_downcast::<gtk::Window>()
-                                .unwrap()
-                                .is_active(),
-                        )
-                        .await;
+                if let Some(client) = obj.active_client()
+                    && let Some(window) = obj.root().and_downcast::<gtk::Window>()
+                {
+                    client.set_online(window.is_active()).await;
                 }
             }
         ));

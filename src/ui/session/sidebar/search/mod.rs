@@ -300,7 +300,7 @@ impl Search {
                             None
                         } else {
                             found_chat_ids.push(id);
-                            Some(session.user(id))
+                            Some(session.user_or_fetch(id))
                         }
                     })
                     .collect();

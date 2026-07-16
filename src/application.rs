@@ -33,8 +33,8 @@ mod imp {
 
             let obj = self.obj();
 
-            if let Some(window) = self.window.get() {
-                window.upgrade().unwrap().present();
+            if let Some(window) = self.window.get().and_then(glib::WeakRef::upgrade) {
+                window.present();
                 return;
             }
 

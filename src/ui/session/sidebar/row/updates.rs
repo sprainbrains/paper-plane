@@ -299,11 +299,11 @@ fn message_thumbnail_texture(message: model::Message) -> Option<gdk::Texture> {
         MessageVideo(data) => data.video.minithumbnail,
         _ => None,
     }
-    .map(|thumbnail| {
+    .and_then(|thumbnail| {
         gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
             &thumbnail.data,
         )))
-        .unwrap()
+        .ok()
     })
 }
 

@@ -72,14 +72,14 @@ pub(crate) fn message_content(message: &model::Message) -> String {
             let added_users = data
                 .member_user_ids
                 .into_iter()
-                .map(|id| chat.session_().user(id))
+                .map(|id| chat.session_().user_or_fetch(id))
                 .collect::<Vec<_>>();
             message_chat_add_members(&sender, &added_users)
         }
         MessageChatJoinByLink => message_chat_join_by_link(&sender),
         MessageChatJoinByRequest => message_chat_join_by_request(&sender),
         MessageChatDeleteMember(data) => {
-            let deleted_user = chat.session_().user(data.user_id);
+            let deleted_user = chat.session_().user_or_fetch(data.user_id);
             message_chat_delete_member(&deleted_user, &sender)
         }
         MessagePinMessage(data) => message_pin_message(data.message_id, &chat, &sender),
@@ -377,14 +377,16 @@ fn message_game_score(
     sender: &model::MessageSender,
 ) -> String {
     let sender_string = message_sender(sender, true);
-    let game_title = match chat.message(game.game_message_id) {
-        Some(message) => match message.content().0 {
-            tdlib::enums::MessageContent::MessageGame(tdlib::types::MessageGame { game }) => {
-                Some(game.title)
-            }
-            _ => unreachable!(),
-        },
-        None => None,
+    let game_title = match chat
+        .message(game.game_message_id)
+        .map(|message| message.content().0)
+    {
+        Some(tdlib::enums::MessageContent::MessageGame(tdlib::types::MessageGame { game })) => {
+            Some(game.title)
+        }
+        // The referenced local message may be missing or (after a cache change) no
+        // longer a game; fall back to the game-less phrasing.
+        _ => None,
     };
 
     if let Some(game_title) = game_title {

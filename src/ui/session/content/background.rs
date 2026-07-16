@@ -326,20 +326,19 @@ impl Background {
         let fill = match background.r#type {
             tdlib::enums::BackgroundType::Pattern(pattern) => pattern.fill,
             tdlib::enums::BackgroundType::Fill(fill) => fill.fill,
-            tdlib::enums::BackgroundType::Wallpaper(_) => {
-                unimplemented!("Wallpaper chat background")
-            }
-            tdlib::enums::BackgroundType::ChatTheme(_) => {
-                unimplemented!("Chat theme background")
+            // Wallpaper/chat-theme backgrounds aren't supported yet; keep the current
+            // background rather than crashing.
+            other => {
+                log::warn!("Unsupported chat background type, ignoring: {other:?}");
+                return;
             }
         };
 
         match fill {
-            tdlib::enums::BackgroundFill::FreeformGradient(gradient) => {
-                if gradient.colors.len() != 4 {
-                    unimplemented!("Unsupported gradient colors count");
-                }
-
+            // The gradient shader is built for exactly four colors.
+            tdlib::enums::BackgroundFill::FreeformGradient(gradient)
+                if gradient.colors.len() == 4 =>
+            {
                 let colors = gradient
                     .colors
                     .into_iter()
@@ -354,7 +353,10 @@ impl Background {
 
                 imp.colors.replace(colors);
             }
-            _ => unimplemented!("Background fill"),
+            other => {
+                log::warn!("Unsupported chat background fill, ignoring: {other:?}");
+                return;
+            }
         }
 
         imp.gradient_texture.take();

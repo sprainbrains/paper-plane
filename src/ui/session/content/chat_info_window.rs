@@ -305,7 +305,10 @@ impl ChatInfoWindow {
             #[weak(rename_to = obj)]
             self,
             move |action_row| {
-                action_row.clipboard().set_text(&action_row.title());
+                // The value lives in the subtitle; the title is the field label.
+                action_row
+                    .clipboard()
+                    .set_text(&action_row.subtitle().unwrap_or_default());
 
                 let toast = adw::Toast::new(&gettext("Copied to clipboard"));
                 obj.imp().toast_overlay.add_toast(toast);

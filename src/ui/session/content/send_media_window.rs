@@ -175,21 +175,20 @@ impl SendMediaWindow {
 
         let imp = self.imp();
 
+        let Some(chat) = imp.chat.upgrade() else {
+            return;
+        };
+
         let path = imp.path.get().unwrap().clone();
         let caption = imp.caption_entry.as_markdown().await;
         let file = InputFile::Local(InputFileLocal { path });
 
-        let content = if send_as_file {
-            InputMessageContent::InputMessageDocument(InputMessageDocument {
-                document: file,
-                thumbnail: None,
-                disable_content_type_detection: true,
-                caption,
-            })
-        } else {
-            let paintable = imp.picture.paintable().unwrap();
+        // Fall back to sending as a document when the file couldn't be decoded as an
+        // image (`paintable()` is `None`), even if the user chose "send as photo".
+        let paintable = (!send_as_file).then(|| imp.picture.paintable()).flatten();
 
-            InputMessageContent::InputMessagePhoto(InputMessagePhoto {
+        let content = match paintable {
+            Some(paintable) => InputMessageContent::InputMessagePhoto(InputMessagePhoto {
                 photo: file,
                 thumbnail: None,
                 added_sticker_file_ids: vec![],
@@ -199,10 +198,15 @@ impl SendMediaWindow {
                 show_caption_above_media: false,
                 self_destruct_type: None,
                 has_spoiler: false,
-            })
+            }),
+            None => InputMessageContent::InputMessageDocument(InputMessageDocument {
+                document: file,
+                thumbnail: None,
+                disable_content_type_detection: true,
+                caption,
+            }),
         };
 
-        let chat = imp.chat.upgrade().unwrap();
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
 

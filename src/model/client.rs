@@ -158,9 +158,8 @@ impl Client {
 
         let database_directory = utils::data_dir()
             .join(&database_info.directory_base_name)
-            .to_str()
-            .expect("Data directory path is not a valid unicode string")
-            .into();
+            .to_string_lossy()
+            .into_owned();
 
         let application_opts = APPLICATION_OPTS.get().unwrap();
 

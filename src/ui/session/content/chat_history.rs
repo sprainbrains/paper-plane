@@ -2370,18 +2370,28 @@ impl ChatHistory {
         let imp = self.imp();
 
         if imp.viewed_message_ids_changed.get() {
+            let Some(chat) = self.chat() else {
+                return;
+            };
             imp.viewed_message_ids_changed.set(false);
 
-            let chat = self.chat().unwrap();
             let chat_id = chat.id();
             let client_id = chat.session_().client_().id();
             let viewed_message_ids =
                 Vec::from_iter(imp.viewed_message_ids.borrow().iter().copied());
 
             utils::spawn(async move {
-                tdlib::functions::view_messages(chat_id, viewed_message_ids, None, true, client_id)
-                    .await
-                    .unwrap();
+                if let Err(e) = tdlib::functions::view_messages(
+                    chat_id,
+                    viewed_message_ids,
+                    None,
+                    true,
+                    client_id,
+                )
+                .await
+                {
+                    log::warn!("Failed to mark messages as viewed: {e:?}");
+                }
             });
         }
     }
@@ -2396,7 +2406,9 @@ where
         #[weak]
         chat,
         async move {
-            op(chat.id(), chat.session_().client_().id()).await.unwrap();
+            if let Err(e) = op(chat.id(), chat.session_().client_().id()).await {
+                log::warn!("Chat action failed: {e:?}");
+            }
         }
     ));
 }
