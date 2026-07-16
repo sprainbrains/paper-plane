@@ -3,12 +3,12 @@ use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
+use adw::prelude::*;
 use gettextrs::gettext;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gio;
 use gtk::glib;
-use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
 use crate::expressions;
@@ -146,6 +146,13 @@ mod imp {
                             log::warn!("Failed to unblock user: {e:?}");
                         }
                     }
+                },
+            );
+            klass.install_action_async(
+                "chat-action-bar.delete-chat",
+                None,
+                |widget, _, _| async move {
+                    widget.delete_chat().await;
                 },
             )
         }
@@ -375,11 +382,37 @@ impl ChatActionBar {
         self.imp().message_entry.grab_focus();
     }
 
+    async fn delete_chat(&self) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+
+        let dialog = ui::destructive_confirmation_dialog(
+            &gettext("Delete chat?"),
+            &gettext("This will permanently delete the chat for you."),
+            ("cancel", &gettext("_Cancel")),
+            ("delete", &gettext("_Delete")),
+        );
+        dialog.set_close_response("cancel");
+
+        if dialog.choose_future(Some(self)).await != "delete" {
+            return;
+        }
+
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        if let Err(e) = tdlib::functions::delete_chat(chat_id, client_id).await {
+            log::warn!("Failed to delete chat: {e:?}");
+        }
+    }
+
     async fn select_file(&self) {
         let dialog = gtk::FileDialog::new();
         let filter = gtk::FileFilter::new();
         let filters = gio::ListStore::new::<gtk::FileFilter>();
-        let parent = self.root().and_downcast::<gtk::Window>().unwrap();
+        let Some(parent) = self.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
 
         filter.set_name(Some(&gettext("Images")));
         for mime in PHOTO_MIME_TYPES {
@@ -390,8 +423,17 @@ impl ChatActionBar {
         dialog.set_filters(Some(&filters));
 
         if let Ok(file) = dialog.open_future(Some(&parent)).await {
-            let path = file.path().unwrap().to_str().unwrap().to_string();
-            let chat = self.chat().unwrap();
+            // Portal/non-local files have no path, and paths need not be UTF-8.
+            let Some(path) = file
+                .path()
+                .and_then(|path| path.to_str().map(str::to_owned))
+            else {
+                utils::show_toast(self, gettext("Could not open the selected file"));
+                return;
+            };
+            let Some(chat) = self.chat() else {
+                return;
+            };
 
             ui::SendMediaWindow::new(&parent, &chat, path, self.imp().state.get().replying())
                 .present();
@@ -418,6 +460,9 @@ impl ChatActionBar {
             } else if let Some(message) = self.compose_text_message().await {
                 tdlib::functions::edit_message_text(chat_id, message_id, message, client_id).await
             } else {
+                // Telegram rejects empty edits; keep the edit state so the user can
+                // fix it, and tell them why nothing happened.
+                utils::show_toast(self, gettext("A message can't be empty"));
                 return;
             };
 
@@ -590,8 +635,7 @@ impl ChatActionBar {
                     let is_deleted = matches!(user.user_type().0, tdlib::enums::UserType::Deleted);
                     let is_blocked = chat.is_blocked();
                     if is_deleted {
-                        // TODO: Add delete chat button
-                        imp.action_bar_stack.set_visible_child_name("entry");
+                        imp.action_bar_stack.set_visible_child_name("delete");
                     } else if is_blocked {
                         imp.action_bar_stack.set_visible_child_name("unblock");
                     } else {
@@ -602,8 +646,7 @@ impl ChatActionBar {
                     let is_closed = matches!(secret.state(), model::SecretChatState::Closed);
                     let is_blocked = chat.is_blocked();
                     if is_closed {
-                        // TODO: Add delete chat button
-                        imp.action_bar_stack.set_visible_child_name("entry");
+                        imp.action_bar_stack.set_visible_child_name("delete");
                     } else if is_blocked {
                         imp.action_bar_stack.set_visible_child_name("unblock");
                     } else {

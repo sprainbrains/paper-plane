@@ -107,6 +107,22 @@ template $PaplChatActionBar  {
       };
     }
     StackPage {
+      name: "delete";
+      child: Adw.Clamp {
+        maximum-size: 360;
+        tightening-threshold: 360;
+
+        styles ["toolbar"]
+
+        child: Button {
+          action-name: "chat-action-bar.delete-chat";
+          label: _("Delete Chat");
+
+          styles ["error", "small-pill"]
+        };
+      };
+    }
+    StackPage {
       name: "mute";
       child: Adw.Clamp {
         maximum-size: 360;
