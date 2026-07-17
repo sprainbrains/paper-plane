@@ -70,6 +70,10 @@ mod imp {
         pub(super) sending_state: RefCell<Option<model::BoxedMessageSendingState>>,
         #[property(get, set, construct_only)]
         pub(super) date: Cell<i32>,
+        /// Non-zero for messages that belong to a media album (grouped photos/videos
+        /// sent together); consecutive messages sharing it render as one mosaic.
+        #[property(get, set, construct_only)]
+        pub(super) media_album_id: Cell<i64>,
         #[property(get, set, construct_only)]
         pub(super) interaction_info: OnceCell<model::MessageInteractionInfo>,
         #[property(get, set, construct_only)]
@@ -133,6 +137,7 @@ impl Message {
                     .map(model::BoxedMessageSendingState),
             )
             .property("date", td_message.date)
+            .property("media-album-id", td_message.media_album_id)
             .property(
                 "interaction-info",
                 model::MessageInteractionInfo::from(td_message.interaction_info),
