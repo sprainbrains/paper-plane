@@ -213,7 +213,8 @@ impl Map {
 
         let license_label = self.imp().license_label.get();
 
-        let _freeze_notify = self.freeze_notify();
+        // Only the label's valign/halign notifies benefit from batching; self emits a
+        // single notify below, so there is nothing on self to freeze.
         let _freeze_notify = license_label.freeze_notify();
 
         license_label.set_valign(valign);
