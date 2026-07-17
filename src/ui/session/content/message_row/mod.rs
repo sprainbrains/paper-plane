@@ -640,11 +640,12 @@ impl Row {
             check.set_active(selected);
         }
         // In multi-select mode a click must toggle the message, so caret text selection is
-        // suspended; otherwise the bubble text stays selectable/copyable.
-        if let Some(content) = self.imp().content.borrow().as_ref()
-            && let Some(label) = utils::descendant::<_, ui::MessageLabel>(content)
-        {
-            label.set_text_selectable(!in_selection_mode);
+        // suspended on every label (a rich message has several); otherwise the bubble text
+        // stays selectable/copyable.
+        if let Some(content) = self.imp().content.borrow().as_ref() {
+            utils::for_each_descendant::<_, ui::MessageLabel>(content, &mut |label| {
+                label.set_text_selectable(!in_selection_mode);
+            });
         }
     }
 

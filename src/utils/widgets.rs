@@ -38,3 +38,18 @@ pub(crate) fn descendant<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(widget: &W) -
     }
     None
 }
+
+/// Applies `f` to every descendant of `widget` (depth-first) that is a `T`.
+pub(crate) fn for_each_descendant<W: IsA<gtk::Widget>, T: IsA<gtk::Widget>>(
+    widget: &W,
+    f: &mut impl FnMut(&T),
+) {
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = widget.downcast_ref::<T>() {
+            f(found);
+        }
+        for_each_descendant::<_, T>(&widget, f);
+        child = widget.next_sibling();
+    }
+}
