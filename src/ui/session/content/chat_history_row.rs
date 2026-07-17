@@ -147,8 +147,6 @@ impl ChatHistoryRow {
                             | MessageContactRegistered => {
                                 let event_row = self.get_or_create_event_row();
                                 event_row.set_label(&strings::message_content(message));
-                                // Clear any preview left over from a recycled row.
-                                event_row.set_minithumbnail(None);
                             }
                             _ => self.update_or_create_message_row(message.to_owned().upcast()),
                         }
@@ -272,6 +270,9 @@ impl ChatHistoryRow {
 
     fn get_or_create_event_row(&self) -> ui::EventRow {
         if let Some(Ok(child)) = self.child().map(|w| w.downcast::<ui::EventRow>()) {
+            // Reset per-reuse state so a recycled row can't keep a previous item's
+            // thumbnail (e.g. a "changed the group photo" event recycled into a divider).
+            child.set_minithumbnail(None);
             child
         } else {
             let child = ui::EventRow::new();
