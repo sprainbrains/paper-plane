@@ -415,9 +415,13 @@ impl MessageBubble {
         let Some(message) = self.imp().message.upgrade() else {
             return;
         };
-        let Some(reaction) = message.chat_().session_().default_reaction_type() else {
+        let chat = message.chat_();
+        let Some(reaction) = chat.session_().default_reaction_type() else {
             return;
         };
+        if !reaction_allowed(&chat, &reaction.0) {
+            return;
+        }
         super::reactions::toggle_reaction(&message, reaction.0);
     }
 
@@ -427,9 +431,10 @@ impl MessageBubble {
         let Some(button) = imp.hover_reaction_button.borrow().clone() else {
             return;
         };
-        let session = message.chat_().session_();
+        let chat = message.chat_();
+        let session = chat.session_();
         match session.default_reaction_type() {
-            Some(reaction) => {
+            Some(reaction) if reaction_allowed(&chat, &reaction.0) => {
                 let icon = super::reactions::reaction_icon_widget(
                     reaction.0,
                     &session,
@@ -439,7 +444,7 @@ impl MessageBubble {
                 button.set_child(Some(&icon));
                 button.set_visible(true);
             }
-            None => button.set_visible(false),
+            _ => button.set_visible(false),
         }
     }
 
@@ -774,4 +779,18 @@ fn hash_label(label: &str) -> i64 {
     let mut hasher = DefaultHasher::new();
     label.hash(&mut hasher);
     hasher.finish() as i64
+}
+
+/// Whether `reaction_type` may be used in `chat`. A chat with unrestricted (`All`) or
+/// not-yet-loaded reactions permits everything; a restricted chat permits only its set.
+fn reaction_allowed(chat: &model::Chat, reaction_type: &tdlib::enums::ReactionType) -> bool {
+    match chat.available_reactions() {
+        Some(tdlib::enums::ChatAvailableReactions::Some(some)) => {
+            let key = model::reaction_type_key(reaction_type);
+            some.reactions
+                .iter()
+                .any(|allowed| model::reaction_type_key(allowed) == key)
+        }
+        _ => true,
+    }
 }

@@ -103,10 +103,25 @@ impl MessageMenuReactions {
                     return;
                 }
 
+                // Only offer the favorite reaction when the chat actually allows it:
+                // either it is among the message's available reactions, or it is a custom
+                // emoji and the chat permits those. Otherwise clicking it would issue an
+                // addMessageReaction the server rejects.
+                let allowed: HashSet<String> = available
+                    .top_reactions
+                    .iter()
+                    .chain(available.recent_reactions.iter())
+                    .map(|ar| model::reaction_type_key(&ar.r#type))
+                    .collect();
+                let favorite = favorite.map(|b| b.0).filter(|reaction_type| {
+                    allowed.contains(&model::reaction_type_key(reaction_type))
+                        || (available.allow_custom_emoji
+                            && matches!(reaction_type, tdlib::enums::ReactionType::CustomEmoji(_)))
+                });
+
                 let mut seen: HashSet<String> = HashSet::new();
                 let mut types: Vec<tdlib::enums::ReactionType> = Vec::new();
                 let ordered = favorite
-                    .map(|b| b.0)
                     .into_iter()
                     .chain(available.top_reactions.into_iter().map(|ar| ar.r#type))
                     .chain(available.recent_reactions.into_iter().map(|ar| ar.r#type));
