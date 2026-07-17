@@ -154,16 +154,20 @@ fn slice_formatted(
     let u16_start = utf16_len(&formatted.text[..byte_start]);
     let u16_end = u16_start + utf16_len(&formatted.text[byte_start..byte_end]);
 
+    // Clamp in i64, like `active_entities`, so a malicious offset + length can't overflow
+    // i32. The results lie within [u16_start, u16_end], so the casts back to i32 are safe.
+    let (u16_start, u16_end) = (u16_start as i64, u16_end as i64);
     let entities = formatted
         .entities
         .iter()
         .filter(|entity| !is_block_entity(&entity.r#type))
         .filter_map(|entity| {
-            let start = entity.offset.max(u16_start);
-            let end = (entity.offset + entity.length).min(u16_end);
+            let entity_start = entity.offset.max(0) as i64;
+            let start = entity_start.max(u16_start);
+            let end = (entity_start + entity.length.max(0) as i64).min(u16_end);
             (start < end).then(|| tdlib::types::TextEntity {
-                offset: start - u16_start,
-                length: end - start,
+                offset: (start - u16_start) as i32,
+                length: (end - start) as i32,
                 r#type: entity.r#type.clone(),
             })
         })
