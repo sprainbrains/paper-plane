@@ -69,17 +69,24 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            // Clicking a video or GIF opens it in the fullscreen viewer. Full videos are
-            // still only downloaded there, on demand, to avoid eagerly fetching every
-            // video in view (see issue #410).
+            // A single primary click opens the video or GIF in the fullscreen viewer. Full
+            // videos are still only downloaded there, on demand, to avoid eagerly fetching
+            // every video in view (see issue #410). The `n_press` guard leaves double-click
+            // free for the row's reply gesture, matching the photo widget.
             let gesture = gtk::GestureClick::new();
+            gesture.set_button(1);
             gesture.connect_released(clone!(
                 #[weak(rename_to = obj)]
                 self,
-                move |_, _, _, _| {
-                    if let Some(message) = obj.message.upgrade()
-                        && let Some(window) = utils::ancestor::<_, ui::Window>(&*obj.obj())
-                    {
+                move |gesture, n_press, _, _| {
+                    if n_press != 1 {
+                        return;
+                    }
+                    let Some(message) = obj.message.upgrade() else {
+                        return;
+                    };
+                    if let Some(window) = utils::ancestor::<_, ui::Window>(&*obj.obj()) {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
                         window.open_media_viewer(&message);
                     }
                 }
