@@ -92,15 +92,6 @@ mod imp {
                 }
             ));
             obj.set_state(model::ClientStateAuth::from(obj).upcast());
-
-            if obj.remove_if_auth() {
-                let obj_weak = obj.downgrade();
-                utils::spawn(async move {
-                    if let Some(obj) = obj_weak.upgrade() {
-                        _ = obj.log_out().await;
-                    }
-                });
-            }
         }
     }
 }

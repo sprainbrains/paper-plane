@@ -7,6 +7,7 @@ use glib::subclass::prelude::*;
 use gtk::glib;
 
 use crate::model;
+use crate::utils;
 
 mod imp {
     use super::*;
@@ -66,6 +67,17 @@ impl ClientStateAuth {
 
     pub(crate) fn handle_update(&self, update: tdlib::types::UpdateAuthorizationState) {
         use tdlib::enums::AuthorizationState::*;
+
+        // Reached only for interactive auth states (WaitPhoneNumber/WaitCode/…); an
+        // already-authorized session goes straight to `Ready` and never lands here. So a
+        // client flagged `remove_if_auth` is logged out only when it would actually prompt
+        // for interactive login, leaving healthy stored sessions untouched.
+        let client = self.client_();
+        if client.remove_if_auth() {
+            utils::spawn(async move {
+                _ = client.log_out().await;
+            });
+        }
 
         let state = match update.authorization_state {
             WaitPhoneNumber => model::ClientStateAuthPhoneNumber::from(self).upcast(),
