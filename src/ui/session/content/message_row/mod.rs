@@ -722,6 +722,10 @@ impl Row {
                         let avatar = ui::Avatar::new();
                         avatar.set_size(AVATAR_SIZE);
                         avatar.set_valign(gtk::Align::End);
+                        // The avatar is taller than a single-line bubble; without this it
+                        // stretches short rows, making intra-group spacing uneven (see the
+                        // .message-avatar rule in style.css).
+                        avatar.add_css_class("message-avatar");
 
                         // Clicking the avatar reveals the sender's profile in a popover.
                         avatar.set_cursor_from_name(Some("pointer"));

@@ -210,13 +210,24 @@ listview.chat-history {
 
 listview.chat-history > row {
   margin: 0 4px;
+  /* 6px between consecutive bubbles of a run; .group-start below adds extra
+     separation between runs. */
+  padding-top: 3px;
+  padding-bottom: 3px;
   border-radius: 9px;
 }
 
-/* Consecutive same-sender messages sit flush; the first message of each run (and
-   standalone messages) gets a little space to separate groups. */
+/* Consecutive same-sender messages sit almost flush; the first message of each run
+   (and standalone messages) gets a little space to separate groups. */
 .group-start {
-  margin-top: 4px;
+  margin-top: 6px;
+}
+
+/* The message avatar (32px, bottom-aligned) is taller than a single-line bubble; the
+   negative margin shaves its height request so it never stretches a short row (which
+   made intra-group spacing uneven). It simply overflows a couple px upward instead. */
+.message-avatar {
+  margin-top: -6px;
 }
 
 /* Values for the cairo renderer */
