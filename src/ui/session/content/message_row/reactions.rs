@@ -205,7 +205,9 @@ pub(crate) enum ReactionPresentation {
     /// the still icon.
     AnimatedOnce,
     /// A crisp font glyph — for a small control (the hover quick-react button) that
-    /// starts hidden, where a lazily-loaded sticker would render blank then soft.
+    /// starts hidden, where a lazily-loaded sticker would render blank then soft. Only
+    /// takes effect for standard Unicode-emoji reactions; a custom-emoji default still
+    /// lazy-loads a sticker on the hover button (there is no font glyph for it).
     Glyph,
 }
 
