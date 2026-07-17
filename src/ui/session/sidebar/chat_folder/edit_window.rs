@@ -42,6 +42,8 @@ mod imp {
         pub(super) search_text: RefCell<String>,
         pub(super) exclude_search_text: RefCell<String>,
         #[template_child]
+        pub(super) save_button: TemplateChild<gtk::Button>,
+        #[template_child]
         pub(super) name_entry: TemplateChild<gtk::Entry>,
         #[template_child]
         pub(super) icon_button: TemplateChild<gtk::MenuButton>,
@@ -237,12 +239,40 @@ impl EditWindow {
         self.imp().icon_name.replace(name.to_string());
     }
 
+    /// Toggles the editable content — the save button, chat lists, and every field the
+    /// async load overwrites — so nothing can be changed until the folder has loaded.
+    fn set_content_sensitive(&self, sensitive: bool) {
+        let imp = self.imp();
+        for widget in [
+            imp.save_button.upcast_ref::<gtk::Widget>(),
+            imp.name_entry.upcast_ref(),
+            imp.icon_button.upcast_ref(),
+            imp.search_entry.upcast_ref(),
+            imp.exclude_search_entry.upcast_ref(),
+            imp.list_view.upcast_ref(),
+            imp.exclude_list_view.upcast_ref(),
+            imp.include_contacts_row.upcast_ref(),
+            imp.include_non_contacts_row.upcast_ref(),
+            imp.include_groups_row.upcast_ref(),
+            imp.include_channels_row.upcast_ref(),
+            imp.include_bots_row.upcast_ref(),
+            imp.exclude_muted_row.upcast_ref(),
+            imp.exclude_read_row.upcast_ref(),
+            imp.exclude_archived_row.upcast_ref(),
+        ] {
+            widget.set_sensitive(sensitive);
+        }
+    }
+
     /// Fetches the folder and fills in the name, icon, chat-type flags, and memberships.
     fn load_folder(&self) {
+        self.set_content_sensitive(false);
         let Some(session) = self.imp().session.borrow().clone() else {
+            self.set_content_sensitive(true);
             return;
         };
         let Some(model) = session.model() else {
+            self.set_content_sensitive(true);
             return;
         };
         let client_id = model.client_().id();
@@ -252,10 +282,15 @@ impl EditWindow {
             #[weak(rename_to = obj)]
             self,
             async move {
-                let Ok(tdlib::enums::ChatFolder::ChatFolder(folder)) =
-                    tdlib::functions::get_chat_folder(chat_folder_id, client_id).await
-                else {
-                    return;
+                let folder = match tdlib::functions::get_chat_folder(chat_folder_id, client_id)
+                    .await
+                {
+                    Ok(tdlib::enums::ChatFolder::ChatFolder(folder)) => folder,
+                    Err(e) => {
+                        log::warn!("Failed to load chat folder: {e:?}");
+                        obj.set_content_sensitive(true);
+                        return;
+                    }
                 };
 
                 let imp = obj.imp();
@@ -290,11 +325,11 @@ impl EditWindow {
                     .replace(folder.excluded_chat_ids.iter().copied().collect());
                 imp.folder.replace(Some(folder));
 
-                // Rows may have been bound (all unchecked) before this async load finished;
-                // re-set the factories so every visible row rebinds against the loaded
-                // membership and shows the right checkbox state.
+                // Re-set the factories so every visible row rebinds against the loaded
+                // membership and shows the right checkbox state, then re-enable editing.
                 obj.setup_factory(Membership::Include);
                 obj.setup_factory(Membership::Exclude);
+                obj.set_content_sensitive(true);
             }
         ));
     }
