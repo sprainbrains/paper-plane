@@ -1488,18 +1488,44 @@ impl ChatHistory {
         self.action_set_enabled("chat-history.selection-delete", count > 0);
     }
 
-    fn refresh_selection_visuals(&self) {
-        fn walk(widget: &gtk::Widget) {
+    /// Returns the first realised `ChatHistoryRow` under the list view for which `pred`
+    /// holds. Rows never nest, so the traversal does not descend into a row once matched —
+    /// it never walks the bubble internals (labels, pictures, badges) it can't contain a
+    /// row inside. Shared by every row-visiting helper.
+    fn find_row(
+        &self,
+        mut pred: impl FnMut(&ui::ChatHistoryRow) -> bool,
+    ) -> Option<ui::ChatHistoryRow> {
+        fn walk(
+            widget: &gtk::Widget,
+            pred: &mut impl FnMut(&ui::ChatHistoryRow) -> bool,
+        ) -> Option<ui::ChatHistoryRow> {
             let mut child = widget.first_child();
             while let Some(widget) = child {
-                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
-                    row.update_selection_visual();
-                }
-                walk(&widget);
                 child = widget.next_sibling();
+                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
+                    if pred(row) {
+                        return Some(row.clone());
+                    }
+                } else if let Some(found) = walk(&widget, pred) {
+                    return Some(found);
+                }
             }
+            None
         }
-        walk(self.imp().list_view.upcast_ref());
+        walk(self.imp().list_view.upcast_ref(), &mut pred)
+    }
+
+    /// Visits every realised `ChatHistoryRow` under the list view.
+    fn for_each_row(&self, mut f: impl FnMut(&ui::ChatHistoryRow)) {
+        self.find_row(|row| {
+            f(row);
+            false
+        });
+    }
+
+    fn refresh_selection_visuals(&self) {
+        self.for_each_row(|row| row.update_selection_visual());
     }
 
     /// Recomputes same-sender grouping for every visible row. Called when the model
@@ -1507,17 +1533,7 @@ impl ChatHistory {
     /// the same sender, or one is deleted) updates its avatar/name/corners immediately
     /// instead of only when it is scrolled off and rebound.
     pub(crate) fn refresh_grouping_visuals(&self) {
-        fn walk(widget: &gtk::Widget) {
-            let mut child = widget.first_child();
-            while let Some(widget) = child {
-                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>() {
-                    row.apply_message_grouping();
-                }
-                walk(&widget);
-                child = widget.next_sibling();
-            }
-        }
-        walk(self.imp().list_view.upcast_ref());
+        self.for_each_row(|row| row.apply_message_grouping());
     }
 
     /// Copies the selected messages' text to the clipboard, oldest first, each prefixed
@@ -2182,26 +2198,12 @@ impl ChatHistory {
 
     /// The realised `ChatHistoryRow` currently displaying `message_id`, if any.
     fn find_message_row(&self, message_id: i64) -> Option<ui::ChatHistoryRow> {
-        fn walk(widget: &gtk::Widget, message_id: i64) -> Option<ui::ChatHistoryRow> {
-            let mut child = widget.first_child();
-            while let Some(widget) = child {
-                if let Some(row) = widget.downcast_ref::<ui::ChatHistoryRow>()
-                    && row
-                        .item()
-                        .and_downcast::<model::ChatHistoryItem>()
-                        .and_then(|item| item.message().map(|message| message.id()))
-                        == Some(message_id)
-                {
-                    return Some(row.clone());
-                }
-                if let Some(found) = walk(&widget, message_id) {
-                    return Some(found);
-                }
-                child = widget.next_sibling();
-            }
-            None
-        }
-        walk(self.imp().list_view.upcast_ref(), message_id)
+        self.find_row(|row| {
+            row.item()
+                .and_downcast::<model::ChatHistoryItem>()
+                .and_then(|item| item.message().map(|message| message.id()))
+                == Some(message_id)
+        })
     }
 
     /// Unpins the message currently shown in the pinned-message bar.
