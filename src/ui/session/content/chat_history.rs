@@ -1218,16 +1218,7 @@ impl ChatHistory {
         }
         let chat = self.chat()?;
 
-        let mut transcript = String::new();
-        for message in messages {
-            let time = glib::DateTime::from_unix_local(message.date() as i64)
-                .and_then(|dt| dt.format("%Y-%m-%d %H:%M"))
-                .map(|time| time.to_string())
-                .unwrap_or_default();
-            let sender = strings::message_sender(&message.sender(), true);
-            let text = strings::message_content(message);
-            transcript.push_str(&format!("[{time}] {sender}:\n{text}\n\n"));
-        }
+        let transcript = Self::render_transcript(messages.iter().cloned());
 
         let name: String = chat
             .title()
@@ -1536,21 +1527,17 @@ impl ChatHistory {
         self.for_each_row(|row| row.apply_message_grouping());
     }
 
-    /// Copies the selected messages' text to the clipboard, oldest first, each prefixed
-    /// with a `[sender dd/mm/yy hh:mm]:` header line and separated by blank lines.
-    fn copy_selection(&self) {
-        let ids = self.selected_ids();
-        let Some(chat) = self.chat() else {
-            return;
-        };
-        let blocks: Vec<String> = ids
+    /// Renders `messages` as a plain-text transcript: each message a
+    /// `[sender YYYY-MM-DD HH:MM]:` header line followed by its text, blocks separated by
+    /// blank lines. Shared by clipboard copy and drag-export so the two never drift.
+    fn render_transcript(messages: impl IntoIterator<Item = model::Message>) -> String {
+        messages
             .into_iter()
-            .filter_map(|id| chat.message(id))
             .map(|message| {
                 let sender = strings::message_sender(&message.sender(), true);
                 let when = glib::DateTime::from_unix_local(message.date() as i64)
-                    .ok()
-                    .and_then(|datetime| datetime.format("%d/%m/%y %H:%M").ok())
+                    .and_then(|datetime| datetime.format("%Y-%m-%d %H:%M"))
+                    .map(|when| when.to_string())
                     .unwrap_or_default();
                 let text = match message.content().0 {
                     tdlib::enums::MessageContent::MessageText(content) => content.text.text,
@@ -1558,11 +1545,22 @@ impl ChatHistory {
                 };
                 format!("[{sender} {when}]:\n{text}")
             })
-            .collect();
-        if blocks.is_empty() {
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    /// Copies the selected messages' text to the clipboard, oldest first.
+    fn copy_selection(&self) {
+        let ids = self.selected_ids();
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let messages: Vec<model::Message> =
+            ids.into_iter().filter_map(|id| chat.message(id)).collect();
+        if messages.is_empty() {
             return;
         }
-        self.clipboard().set_text(&blocks.join("\n\n"));
+        self.clipboard().set_text(&Self::render_transcript(messages));
         self.clear_selection();
     }
 
