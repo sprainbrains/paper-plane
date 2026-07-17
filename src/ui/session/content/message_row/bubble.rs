@@ -12,7 +12,9 @@ use gtk::glib;
 use gtk::graphene;
 use gtk::subclass::prelude::*;
 
+use crate::i18n::gettext_f;
 use crate::model;
+use crate::strings;
 use crate::ui;
 use crate::utils;
 
@@ -79,6 +81,8 @@ mod imp {
         #[template_child]
         pub(super) sender_label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub(super) forward_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub(super) message_reply_bin: TemplateChild<adw::Bin>,
         #[template_child]
         pub(super) prefix_bin: TemplateChild<adw::Bin>,
@@ -139,7 +143,21 @@ mod imp {
 
         fn constructed(&self) {
             self.parent_constructed();
-            self.obj().setup_hover_actions();
+            let obj = self.obj();
+            obj.setup_hover_actions();
+
+            // Clicking "Forwarded from …" opens the origin chat/user.
+            self.forward_label.set_cursor_from_name(Some("pointer"));
+            let gesture = gtk::GestureClick::new();
+            gesture.connect_released(clone!(
+                #[weak]
+                obj,
+                move |gesture, _, _, _| {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    obj.open_forward_origin();
+                }
+            ));
+            self.forward_label.add_controller(gesture);
         }
 
         fn dispose(&self) {
@@ -338,6 +356,26 @@ glib::wrapper! {
 }
 
 impl MessageBubble {
+    /// Opens the chat/user a forwarded message originates from (hidden origins have
+    /// nothing to open).
+    fn open_forward_origin(&self) {
+        let Some(message) = self.imp().message.upgrade() else {
+            return;
+        };
+        let Some(info) = message.forward_info() else {
+            return;
+        };
+        let Some(session) = utils::ancestor::<_, ui::Session>(self) else {
+            return;
+        };
+        match info.origin() {
+            model::MessageForwardOrigin::User(user) => session.select_chat(user.id()),
+            model::MessageForwardOrigin::Chat { chat }
+            | model::MessageForwardOrigin::Channel { chat } => session.select_chat(chat.id()),
+            _ => {}
+        }
+    }
+
     /// Builds the hover-actions island (Reply + the favorite reaction) overlaid at the
     /// bubble's top-trailing corner, revealed only while the pointer is over the bubble
     /// and never in multi-select mode.
@@ -482,6 +520,34 @@ impl MessageBubble {
             None
         };
 
+        // tdesktop-style "Forwarded from …" header. The user's own chat (Saved Messages)
+        // shows the origin as the sender instead, so no header there.
+        let forward_origin = message
+            .forward_info()
+            .filter(|_| !message.chat_().is_own_chat())
+            .map(|info| info.origin());
+        if let Some(origin) = forward_origin {
+            let name = match &origin {
+                model::MessageForwardOrigin::User(user) => strings::user_display_name(user, true),
+                model::MessageForwardOrigin::Chat { chat }
+                | model::MessageForwardOrigin::Channel { chat } => chat.title(),
+                model::MessageForwardOrigin::HiddenUser { sender_name }
+                | model::MessageForwardOrigin::MessageImport { sender_name } => {
+                    sender_name.clone()
+                }
+            };
+            self.imp()
+                .forward_label
+                .set_label(&gettext_f("Forwarded from {name}", &[("name", &name)]));
+            self.imp().forward_label.set_visible(true);
+            // Media pictures overlap the bubble padding with negative margins; this class
+            // makes them yield below the header (same mechanism as `with-reply`).
+            self.add_css_class("with-forward");
+        } else {
+            self.imp().forward_label.set_visible(false);
+            self.remove_css_class("with-forward");
+        }
+
         // Handle MessageReply (both message and story replies)
         if message.reply_to().is_some() {
             let reply = ui::MessageReply::new(message);
@@ -536,10 +602,12 @@ impl MessageBubble {
         imp.indicators.set_message(sponsored_message.upcast_ref());
 
         // Bubbles are recycled between real and sponsored messages, so clear any
-        // reactions/reply left over from a previously bound real message.
+        // reactions/reply/forward header left over from a previously bound real message.
         imp.reactions.set_message(None::<model::Message>);
         imp.message_reply_bin.set_child(gtk::Widget::NONE);
         self.remove_css_class("with-reply");
+        imp.forward_label.set_visible(false);
+        self.remove_css_class("with-forward");
 
         self.remove_css_class("outgoing");
 

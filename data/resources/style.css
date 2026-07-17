@@ -375,6 +375,15 @@ messagebubble.outgoing {
   color: @accent_fg_color;
 }
 
+/* The "Forwarded from …" header, clickable like a link. */
+messagebubble .forward-header {
+  color: @accent_color;
+}
+
+messagebubble.outgoing .forward-header {
+  color: @accent_fg_color;
+}
+
 /* Code blocks (```…```): tinted rounded box with a language tag and copy button. */
 .code-block {
   background-color: alpha(@window_fg_color, 0.06);
@@ -593,8 +602,11 @@ messagebubble.media mediapicture {
 }
 
 messagebubble.media.with-reply mediapicture,
+messagebubble.media.with-forward mediapicture,
 messagebubble.location.with-reply map,
-messagebubble.venue.with-reply map {
+messagebubble.location.with-forward map,
+messagebubble.venue.with-reply map,
+messagebubble.venue.with-forward map {
   border-top-right-radius: 0;
   border-top-left-radius: 0;
   margin-top: 3px;

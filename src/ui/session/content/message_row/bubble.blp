@@ -18,6 +18,14 @@ template $PaplMessageBubble {
           visible: false;
         }
 
+        Label forward_label {
+          styles ["caption-heading", "forward-header"]
+
+          ellipsize: end;
+          xalign: 0;
+          visible: false;
+        }
+
         Adw.Bin message_reply_bin {}
 
         Adw.Bin prefix_bin {}
