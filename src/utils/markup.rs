@@ -286,6 +286,21 @@ pub(crate) fn parse_formatted_text(formatted_text: tdlib::types::FormattedText) 
     // offset in utf16 units to line up with them.
     let mut code_units_offset: usize = 0;
 
+    // The active entity set only changes at an entity's start or end offset, so recompute
+    // it only when the cursor crosses one of those boundaries instead of on every char
+    // (which reallocated and re-sorted per character).
+    let mut boundaries: Vec<i64> = entities
+        .iter()
+        .flat_map(|entity| {
+            let start = entity.offset.max(0) as i64;
+            [start, start + entity.length.max(0) as i64]
+        })
+        .collect();
+    boundaries.sort_unstable();
+    boundaries.dedup();
+    let mut next_boundary = 0;
+    let mut recompute = true;
+
     let flush = |output: &mut String, buffer: &mut String, active: &[usize]| {
         if buffer.is_empty() {
             return;
@@ -300,10 +315,18 @@ pub(crate) fn parse_formatted_text(formatted_text: tdlib::types::FormattedText) 
     };
 
     for c in formatted_text.text.chars() {
-        let active = active_entities(entities, code_units_offset);
-        if active != current {
-            flush(&mut output, &mut buffer, &current);
-            current = active;
+        while next_boundary < boundaries.len() && code_units_offset as i64 >= boundaries[next_boundary]
+        {
+            recompute = true;
+            next_boundary += 1;
+        }
+        if recompute {
+            let active = active_entities(entities, code_units_offset);
+            if active != current {
+                flush(&mut output, &mut buffer, &current);
+                current = active;
+            }
+            recompute = false;
         }
 
         buffer.push(c);
