@@ -24,7 +24,6 @@ mod imp {
         pub(super) handler: MessageHandler,
         #[property(get, set = Self::set_message, explicit_notify)]
         pub(super) message: glib::WeakRef<model::Message>,
-        pub(super) is_animation: Cell<bool>,
         pub(super) generation: Cell<u64>,
         pub(super) demand: Cell<bool>,
         pub(super) media: RefCell<Option<gtk::MediaFile>>,
@@ -176,7 +175,6 @@ impl MessageVideo {
         match content {
             tdlib::enums::MessageContent::MessageAnimation(data) => {
                 imp.indicator.set_label("GIF");
-                imp.is_animation.set(true);
                 imp.play_button.set_visible(false);
                 imp.message_bubble
                     .set_label(utils::parse_formatted_text(data.caption));
@@ -214,7 +212,6 @@ impl MessageVideo {
                 }
             }
             tdlib::enums::MessageContent::MessageVideo(data) => {
-                imp.is_animation.set(false);
                 imp.play_button.set_visible(true);
                 self.update_remaining_time(data.video.duration as i64);
                 imp.message_bubble
