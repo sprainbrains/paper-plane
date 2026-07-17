@@ -2043,14 +2043,14 @@ impl ChatHistory {
 
     /// The realised row of the just-sent message. An id match always wins; failing that
     /// (TDLib swaps the optimistic id for the final one via `updateMessageSendSucceeded`),
-    /// the *bottom-most message row overall* is accepted iff it is an outgoing message
-    /// with exactly the sent text — never an older duplicate higher up, since the fresh
-    /// message can only be the last one in the history.
+    /// the outgoing same-text row with the *greatest* message id is accepted. The fresh
+    /// message is the newest in the chat, so among identical-text duplicates it always has
+    /// the largest id — this avoids latching onto an older duplicate that merely happens
+    /// to be the bottom-most realised row once the optimistic id no longer matches.
     fn find_sent_row(&self, message_id: i64, text: &str) -> Option<ui::ChatHistoryRow> {
         let imp = self.imp();
         let mut id_match: Option<ui::ChatHistoryRow> = None;
-        // (row, y in list coordinates, whether it looks like the sent message)
-        let mut bottom: Option<(ui::ChatHistoryRow, f32, bool)> = None;
+        let mut newest_sent: Option<(ui::ChatHistoryRow, i64)> = None;
         let mut stack = vec![imp.list_view.clone().upcast::<gtk::Widget>()];
         while let Some(widget) = stack.pop() {
             let mut child = widget.first_child();
@@ -2069,20 +2069,18 @@ impl ChatHistory {
                 if message.id() == message_id {
                     id_match = Some(row.clone());
                 }
-                if let Some(bounds) = row.compute_bounds(&*imp.list_view)
-                    && bottom.as_ref().is_none_or(|(_, y, _)| bounds.y() > *y)
-                {
-                    let looks_sent = message.is_outgoing()
-                        && matches!(
-                            &message.content().0,
-                            tdlib::enums::MessageContent::MessageText(content)
-                                if content.text.text.trim() == text
-                        );
-                    bottom = Some((row.clone(), bounds.y(), looks_sent));
+                let looks_sent = message.is_outgoing()
+                    && matches!(
+                        &message.content().0,
+                        tdlib::enums::MessageContent::MessageText(content)
+                            if content.text.text.trim() == text
+                    );
+                if looks_sent && newest_sent.as_ref().is_none_or(|(_, id)| message.id() > *id) {
+                    newest_sent = Some((row.clone(), message.id()));
                 }
             }
         }
-        id_match.or_else(|| bottom.and_then(|(row, _, looks_sent)| looks_sent.then_some(row)))
+        id_match.or_else(|| newest_sent.map(|(row, _)| row))
     }
 
     /// Scrolls `message_id` (if loaded) to the viewport centre and flashes it. Centring
