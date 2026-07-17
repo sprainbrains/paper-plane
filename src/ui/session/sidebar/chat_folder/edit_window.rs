@@ -6,6 +6,7 @@ use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::clone;
 use gtk::CompositeTemplate;
+use gtk::gio;
 use gtk::glib;
 
 use crate::i18n::gettext_f;
@@ -165,9 +166,16 @@ impl EditWindow {
         imp.chat_folder_id.set(chat_folder_id);
 
         if let Some(model) = session.model() {
-            imp.filter_model.set_model(Some(&model.main_chat_list()));
-            imp.exclude_filter_model
-                .set_model(Some(&model.main_chat_list()));
+            // Feed both the main and archived chat lists so archived chats can be included
+            // or excluded, not just the ones in the main list.
+            let combined = || {
+                let lists = gio::ListStore::new::<gio::ListModel>();
+                lists.append(&model.main_chat_list());
+                lists.append(&model.archive_chat_list());
+                gtk::FlattenListModel::new(Some(lists))
+            };
+            imp.filter_model.set_model(Some(&combined()));
+            imp.exclude_filter_model.set_model(Some(&combined()));
         }
 
         obj.load_folder();
