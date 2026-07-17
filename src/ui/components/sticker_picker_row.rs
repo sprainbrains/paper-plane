@@ -15,9 +15,9 @@ use gtk::gsk;
 use crate::model;
 use crate::utils;
 
-const DEFAULT_CELL_SIZE: i32 = 68;
-const DEFAULT_STICKER_SIZE: i32 = 64;
-const DEFAULT_COLUMNS: i32 = 5;
+const DEFAULT_CELL_SIZE: i32 = 85;
+const DEFAULT_STICKER_SIZE: i32 = 80;
+const DEFAULT_COLUMNS: i32 = 4;
 type ActivateSticker = Box<dyn Fn(tdlib::types::Sticker)>;
 type RemoveSticker = Box<dyn Fn(tdlib::types::Sticker)>;
 
