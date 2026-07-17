@@ -137,18 +137,25 @@ mod imp {
                 button.add_css_class("chosen");
             }
 
-            let obj = self.obj();
-            button.connect_clicked(clone!(
-                #[weak]
-                obj,
-                #[weak]
-                reaction,
-                move |_| {
-                    if let Some(message) = obj.message() {
-                        super::toggle_reaction(&message, reaction.reaction_type_());
+            // Paid reactions use a separate star-accumulation API
+            // (addPendingPaidMessageReaction), not add/removeMessageReaction; until that is
+            // supported, leave the chip non-interactive rather than issue a doomed toggle.
+            if matches!(reaction.reaction_type_(), tdlib::enums::ReactionType::Paid) {
+                button.set_sensitive(false);
+            } else {
+                let obj = self.obj();
+                button.connect_clicked(clone!(
+                    #[weak]
+                    obj,
+                    #[weak]
+                    reaction,
+                    move |_| {
+                        if let Some(message) = obj.message() {
+                            super::toggle_reaction(&message, reaction.reaction_type_());
+                        }
                     }
-                }
-            ));
+                ));
+            }
 
             button.upcast()
         }
