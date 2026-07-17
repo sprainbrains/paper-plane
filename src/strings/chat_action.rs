@@ -18,20 +18,18 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
 
     let action_group = chat.actions().group(td_action);
 
+    // The literal templates must stay inline at each gettext_f call so xgettext extracts
+    // them; only the repeated sender lookup is factored out.
+    let sender = |i: usize| message_sender(&action_group[i].sender(), false);
+
     match td_action {
         ChoosingContact => {
             if show_sender {
                 match action_group.len() {
-                    1 => gettext_f(
-                        "{sender} is choosing a contact",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
-                    ),
+                    1 => gettext_f("{sender} is choosing a contact", &[("sender", &sender(0))]),
                     2 => gettext_f(
                         "{sender1} and {sender2} are choosing contacts",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are choosing contacts",
@@ -45,16 +43,10 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
         ChoosingLocation => {
             if show_sender {
                 match action_group.len() {
-                    1 => gettext_f(
-                        "{sender} is choosing a location",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
-                    ),
+                    1 => gettext_f("{sender} is choosing a location", &[("sender", &sender(0))]),
                     2 => gettext_f(
                         "{sender1} and {sender2} are choosing locations",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are choosing locations",
@@ -68,16 +60,10 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
         ChoosingSticker => {
             if show_sender {
                 match action_group.len() {
-                    1 => gettext_f(
-                        "{sender} is choosing a sticker",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
-                    ),
+                    1 => gettext_f("{sender} is choosing a sticker", &[("sender", &sender(0))]),
                     2 => gettext_f(
                         "{sender1} and {sender2} are choosing stickers",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are choosing stickers",
@@ -91,16 +77,10 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
         RecordingVideo => {
             if show_sender {
                 match action_group.len() {
-                    1 => gettext_f(
-                        "{sender} is recording a video",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
-                    ),
+                    1 => gettext_f("{sender} is recording a video", &[("sender", &sender(0))]),
                     2 => gettext_f(
                         "{sender1} and {sender2} are recording videos",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are recording videos",
@@ -116,14 +96,11 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                 match action_group.len() {
                     1 => gettext_f(
                         "{sender} is recording a video note",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
+                        &[("sender", &sender(0))],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are recording video notes",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are recording video notes",
@@ -139,14 +116,11 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                 match action_group.len() {
                     1 => gettext_f(
                         "{sender} is recording a voice note",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
+                        &[("sender", &sender(0))],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are recording voice notes",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are recording voice notes",
@@ -160,16 +134,10 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
         StartPlayingGame => {
             if show_sender {
                 match action_group.len() {
-                    1 => gettext_f(
-                        "{sender} is playing a game",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
-                    ),
+                    1 => gettext_f("{sender} is playing a game", &[("sender", &sender(0))]),
                     2 => gettext_f(
                         "{sender1} and {sender2} are playing games",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are playing games",
@@ -183,16 +151,10 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
         Typing => {
             if show_sender {
                 match action_group.len() {
-                    1 => gettext_f(
-                        "{sender} is typing",
-                        &[("sender", &message_sender(&action_group[0].sender(), false))],
-                    ),
+                    1 => gettext_f("{sender} is typing", &[("sender", &sender(0))]),
                     2 => gettext_f(
                         "{sender1} and {sender2} are typing",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f("{num} people are typing", &[("num", &len.to_string())]),
                 }
@@ -206,16 +168,13 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                     1 => gettext_f(
                         "{sender} is uploading a document ({progress}%)",
                         &[
-                            ("sender", &message_sender(&action_group[0].sender(), false)),
+                            ("sender", &sender(0)),
                             ("progress", &action.progress.to_string()),
                         ],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are uploading documents",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are uploading documents",
@@ -235,16 +194,13 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                     1 => gettext_f(
                         "{sender} is uploading a photo ({progress}%)",
                         &[
-                            ("sender", &message_sender(&action_group[0].sender(), false)),
+                            ("sender", &sender(0)),
                             ("progress", &action.progress.to_string()),
                         ],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are uploading photos",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are uploading photos",
@@ -264,16 +220,13 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                     1 => gettext_f(
                         "{sender} is uploading a video ({progress}%)",
                         &[
-                            ("sender", &message_sender(&action_group[0].sender(), false)),
+                            ("sender", &sender(0)),
                             ("progress", &action.progress.to_string()),
                         ],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are uploading videos",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are uploading videos",
@@ -293,16 +246,13 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                     1 => gettext_f(
                         "{sender} is uploading a video note ({progress}%)",
                         &[
-                            ("sender", &message_sender(&action_group[0].sender(), false)),
+                            ("sender", &sender(0)),
                             ("progress", &action.progress.to_string()),
                         ],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are uploading video notes",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are uploading video notes",
@@ -322,16 +272,13 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                     1 => gettext_f(
                         "{sender} is uploading a voice note ({progress}%)",
                         &[
-                            ("sender", &message_sender(&action_group[0].sender(), false)),
+                            ("sender", &sender(0)),
                             ("progress", &action.progress.to_string()),
                         ],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are uploading voice notes",
-                        &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
-                        ],
+                        &[("sender1", &sender(0)), ("sender2", &sender(1))],
                     ),
                     len => gettext_f(
                         "{num} people are uploading voice notes",
@@ -350,16 +297,13 @@ pub(crate) fn chat_action(action: &model::ChatAction) -> String {
                 match action_group.len() {
                     1 => gettext_f(
                         "{sender} is watching an animation {emoji}",
-                        &[
-                            ("sender", &message_sender(&action_group[0].sender(), false)),
-                            ("emoji", &action.emoji),
-                        ],
+                        &[("sender", &sender(0)), ("emoji", &action.emoji)],
                     ),
                     2 => gettext_f(
                         "{sender1} and {sender2} are watching animations {emoji}",
                         &[
-                            ("sender1", &message_sender(&action_group[0].sender(), false)),
-                            ("sender2", &message_sender(&action_group[1].sender(), false)),
+                            ("sender1", &sender(0)),
+                            ("sender2", &sender(1)),
                             ("emoji", &action.emoji),
                         ],
                     ),

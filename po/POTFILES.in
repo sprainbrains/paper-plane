@@ -35,7 +35,10 @@ src/model/secret_chat.rs
 src/model/sponsored_message.rs
 src/model/supergroup.rs
 src/model/user.rs
-src/strings.rs
+src/strings/chat_action.rs
+src/strings/message.rs
+src/strings/mod.rs
+src/strings/user.rs
 src/ui/client_manager_view.blp
 src/ui/client_manager_view.rs
 src/ui/client_view.blp
