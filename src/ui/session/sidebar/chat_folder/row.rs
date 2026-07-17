@@ -294,22 +294,42 @@ impl Row {
         }
     }
 
-    /// Marks every currently-loaded chat in this folder as read. TDLib has no folder-level
-    /// operation, so this iterates the folder's chat list (the loaded, visible chats).
+    /// Marks every chat in this folder as read. TDLib has no folder-level operation, so
+    /// this drives the folder's (lazily-loaded) chat list to completion, then marks each.
     pub(crate) async fn mark_all_as_read(&self) {
         let Some(chat_list) = self.chat_list() else {
             return;
         };
-        for position in 0..chat_list.n_items() {
-            if let Some(chat) = chat_list
-                .item(position)
-                .and_downcast::<model::ChatListItem>()
-                .and_then(|item| item.chat())
-                && (chat.unread_count() > 0 || chat.is_marked_as_unread())
+
+        // Drive the lazily-loaded list to completion so the whole folder is marked, not
+        // just the currently-visible subset.
+        chat_list.fetch();
+        while chat_list.loading() {
+            glib::timeout_future(std::time::Duration::from_millis(50)).await;
+        }
+
+        // Snapshot the chats before awaiting: mark_as_read() yields the main loop, during
+        // which the live model can reorder and shift indices, causing skips.
+        let chats: Vec<model::Chat> = (0..chat_list.n_items())
+            .filter_map(|position| {
+                chat_list
+                    .item(position)
+                    .and_downcast::<model::ChatListItem>()
+                    .and_then(|item| item.chat())
+            })
+            .collect();
+
+        let mut failed = false;
+        for chat in chats {
+            if (chat.unread_count() > 0 || chat.is_marked_as_unread())
                 && let Err(e) = chat.mark_as_read().await
             {
                 log::warn!("Failed to mark a chat as read: {e:?}");
+                failed = true;
             }
+        }
+        if failed {
+            utils::show_toast(self, gettext("Failed to mark some chats as read"));
         }
     }
 
