@@ -733,9 +733,13 @@ impl MessageBubble {
         // ancestor-aware `is_visible()`, which is false while the row is still unmapped at
         // bind time and would misplace the indicators.
         let has_reactions = imp.reactions.get_visible();
+        // An empty label with block widgets above it (text ending in a code block or quote)
+        // still owns the indicators — its reserved trailing gutter places the time
+        // bottom-right under the last block. Only an empty label with no blocks (bare media)
+        // overlays them on the picture instead.
         let target = if has_reactions {
             IndicatorPlacement::Reactions
-        } else if imp.message_label.label().is_empty() {
+        } else if imp.message_label.label().is_empty() && !imp.blocks_box.get_visible() {
             IndicatorPlacement::Overlay
         } else {
             IndicatorPlacement::Label
