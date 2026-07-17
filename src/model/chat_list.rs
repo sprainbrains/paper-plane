@@ -249,20 +249,22 @@ impl ChatList {
                 imp.index.borrow_mut().remove(&chat_id);
                 self.items_changed(old_pos as u32, 1, 0);
             }
-            // The chat moved to a new position. Relocate it and emit a single
-            // items_changed spanning the affected range instead of a separate
-            // remove + insert, so the item remains present throughout the update.
+            // The chat moved. Emit a minimal remove + insert (not a single items_changed
+            // spanning the whole moved range) so GtkListView only rebinds the moved row
+            // rather than every row between the old and new position on each update.
             Some(old_key) => {
-                let (start, len, item) = {
+                let (old_pos, item) = {
                     let mut list = imp.list.borrow_mut();
                     let old_pos = position_of(&list, old_key);
-                    relocate_entry(&mut list, old_pos, new_key)
+                    (old_pos, list.remove(old_pos).item)
                 };
-                imp.index.borrow_mut().insert(chat_id, new_key.0);
-                // Drop the borrow before `update()`, which notifies and could
-                // re-enter this list.
+                imp.index.borrow_mut().remove(&chat_id);
+                self.items_changed(old_pos as u32, 1, 0);
+
+                // `update()` and `insert_item()` both notify and could re-enter this list,
+                // so the borrow is already dropped by here.
                 item.update(position);
-                self.items_changed(start, len, len);
+                self.insert_item(new_key, item);
             }
             // A not-yet-tracked chat with `order == 0` is not part of this list, so
             // there is nothing to insert.
@@ -315,23 +317,6 @@ fn position_of<T>(list: &[Entry<T>], key: SortKey) -> usize {
 ///
 /// The list must already contain the entry at `old_pos` and must be sorted by
 /// key.
-fn relocate_entry<T: Clone>(
-    list: &mut Vec<Entry<T>>,
-    old_pos: usize,
-    new_key: SortKey,
-) -> (u32, u32, T) {
-    let mut entry = list.remove(old_pos);
-    entry.key = new_key;
-
-    let new_pos = list.partition_point(|entry| entry.key < new_key);
-    let item = entry.item.clone();
-    list.insert(new_pos, entry);
-
-    let start = old_pos.min(new_pos);
-    let len = old_pos.max(new_pos) - start + 1;
-    (start as u32, len as u32, item)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,36 +330,6 @@ mod tests {
 
     fn chat_ids(list: &[Entry<ChatId>]) -> Vec<ChatId> {
         list.iter().map(|entry| entry.item).collect()
-    }
-
-    #[test]
-    fn relocates_chat_toward_beginning() {
-        let mut list = vec![entry(40, 1), entry(30, 2), entry(20, 3), entry(10, 4)];
-
-        let (start, len, item) = relocate_entry(&mut list, 3, (-35, 4));
-
-        assert_eq!((start, len, item), (1, 3, 4));
-        assert_eq!(chat_ids(&list), [1, 4, 2, 3]);
-    }
-
-    #[test]
-    fn relocates_chat_toward_end() {
-        let mut list = vec![entry(40, 1), entry(30, 2), entry(20, 3), entry(10, 4)];
-
-        let (start, len, item) = relocate_entry(&mut list, 0, (-15, 1));
-
-        assert_eq!((start, len, item), (0, 3, 1));
-        assert_eq!(chat_ids(&list), [2, 3, 1, 4]);
-    }
-
-    #[test]
-    fn relocates_chat_to_adjacent_position() {
-        let mut list = vec![entry(40, 1), entry(30, 2), entry(20, 3)];
-
-        let (start, len, item) = relocate_entry(&mut list, 1, (-10, 2));
-
-        assert_eq!((start, len, item), (1, 2, 2));
-        assert_eq!(chat_ids(&list), [1, 3, 2]);
     }
 
     #[test]
