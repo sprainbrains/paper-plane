@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use glib::clone;
 use gtk::glib;
@@ -211,12 +212,21 @@ impl MessageMenuReactions {
                 menu.position(),
             )
         });
+        // Capture the history now (the picker popover detaches from the tree on close) and
+        // hand off so the menu's close keeps the message spotlight during the picker.
+        let chat_history = menu
+            .as_ref()
+            .and_then(|menu| utils::ancestor::<_, ui::ChatHistory>(menu));
         if let Some(menu) = &menu {
+            menu.begin_picker_handoff();
             menu.popdown();
         }
         let Some((Some(anchor), pointing, halign, position)) = placement else {
             return;
         };
+        // Set while returning to the menu via Back, so the picker's close keeps the
+        // spotlight for the re-shown menu instead of clearing it.
+        let going_back = Rc::new(Cell::new(false));
 
         // If the chat restricts reactions to a specific set, offer only those emoji;
         // otherwise (`All`) show the full keyboard + custom emoji.
@@ -263,7 +273,21 @@ impl MessageMenuReactions {
         if let (true, rect) = pointing {
             popover.set_pointing_to(Some(&rect));
         }
-        popover.connect_closed(|popover| popover.unparent());
+        popover.connect_closed(clone!(
+            #[strong]
+            going_back,
+            #[strong]
+            chat_history,
+            move |popover| {
+                popover.unparent();
+                // Dismissed for good (not via Back): drop the message spotlight.
+                if !going_back.replace(false)
+                    && let Some(chat_history) = &chat_history
+                {
+                    chat_history.clear_menu_highlight();
+                }
+            }
+        ));
         // Kick off the reveal once the popover is on screen.
         popover.connect_map(clone!(
             #[weak]
@@ -276,7 +300,11 @@ impl MessageMenuReactions {
             picker.add_reaction_back_button(clone!(
                 #[weak]
                 popover,
+                #[strong]
+                going_back,
                 move || {
+                    // Keep the spotlight for the menu we're returning to.
+                    going_back.set(true);
                     popover.popdown();
                     menu.popup();
                 }

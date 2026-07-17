@@ -103,6 +103,7 @@ const SECONDARY: &[MenuEntry] = &[MenuEntry {
 }];
 
 mod imp {
+    use std::cell::Cell;
     use std::cell::OnceCell;
     use std::cell::RefCell;
 
@@ -115,6 +116,9 @@ mod imp {
         /// Each menu row, keyed by its action, so visibility can be recomputed per
         /// message at popup time.
         pub(super) rows: RefCell<Vec<(&'static str, gtk::Button)>>,
+        /// Set while the menu closes to hand off to the full reaction picker, so its
+        /// close handler keeps the message spotlight instead of clearing it.
+        pub(super) handoff: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -166,6 +170,10 @@ mod imp {
             // `ChatHistory::highlight_message_for_menu`). The menu is still parented under
             // the history at close time, so its ancestor is reachable here.
             obj.connect_closed(|menu| {
+                // A handoff to the reaction picker keeps the spotlight on the message.
+                if menu.imp().handoff.replace(false) {
+                    return;
+                }
                 if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(menu) {
                     chat_history.clear_menu_highlight();
                 }
@@ -192,6 +200,12 @@ impl Default for MessageMenu {
 impl MessageMenu {
     pub(crate) fn new() -> Self {
         glib::Object::new()
+    }
+
+    /// Marks the next close as a handoff to the full reaction picker, so the message
+    /// spotlight is kept rather than cleared.
+    pub(crate) fn begin_picker_handoff(&self) {
+        self.imp().handoff.set(true);
     }
 
     fn build_row(&self, entry: &MenuEntry) -> gtk::Button {
