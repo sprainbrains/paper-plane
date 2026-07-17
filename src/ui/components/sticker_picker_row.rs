@@ -588,6 +588,12 @@ impl StickerPickerRow {
             ) {
                 continue;
             }
+            // Skip cells whose animation is already loaded (re-demand after a remap),
+            // mirroring load_previews — otherwise the loaded cell is torn down and
+            // re-downloaded, flashing back to its static frame each time.
+            if self.imp().previews.borrow()[index].anim.is_some() {
+                continue;
+            }
             let file = self.imp().previews.borrow()[index].sticker.sticker.clone();
             let weak_obj = self.downgrade();
             let session_weak = session.downgrade();
