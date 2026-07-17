@@ -601,6 +601,20 @@ messagebubble.media mediapicture {
   border-radius: 15px;
 }
 
+/* Grouped media follows the code-drawn bubble outline, which tightens the corners
+   shared with a same-sender neighbour (6px, see MessageBubble::snapshot). */
+.grouped-middle messagebubble.media mediapicture,
+.grouped-bottom messagebubble.media mediapicture {
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+.grouped-top messagebubble.media mediapicture,
+.grouped-middle messagebubble.media mediapicture {
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
 messagebubble.media.with-reply mediapicture,
 messagebubble.media.with-forward mediapicture,
 messagebubble.location.with-reply map,

@@ -9,7 +9,7 @@ use adw::prelude::*;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::glib;
-use gtk::graphene;
+use gtk::gsk;
 use gtk::subclass::prelude::*;
 
 use crate::i18n::gettext_f;
@@ -21,16 +21,16 @@ use crate::utils;
 const MAX_WIDTH: i32 = 400;
 
 /// Bubble corner radii: full for a standalone/outer corner, tight where a bubble abuts
-/// its same-sender neighbour in a run. Keep in sync with the `.grouped-*` CSS radii.
-const RADIUS: f64 = 15.0;
-const RADIUS_TIGHT: f64 = 6.0;
+/// its same-sender neighbour in a run.
+const RADIUS: f32 = 15.0;
+const RADIUS_TIGHT: f32 = 6.0;
 
-/// Tail geometry (tunable), for the code-drawn outline of a group's last bubble.
-/// `START` is how far along the bottom edge the tail begins, `OVERHANG` how far past the
-/// bubble edge the tip reaches, `HEIGHT` how far up the side it blends back in.
-const TAIL_START: f64 = 9.0;
-const TAIL_OVERHANG: f64 = 4.0;
-const TAIL_HEIGHT: f64 = 12.0;
+/// Tail geometry (tunable). `START` is where on the bottom edge the tail begins,
+/// `OVERHANG` how far past the bubble edge the tip reaches, `HEIGHT` how far up the
+/// side it blends back in.
+const TAIL_START: f32 = 9.0;
+const TAIL_OVERHANG: f32 = 4.0;
+const TAIL_HEIGHT: f32 = 12.0;
 
 /// Where the message indicators (timestamp etc.) currently live. The template starts
 /// them overlaid on the content (see `bubble.blp`), and they migrate as the message
@@ -204,29 +204,28 @@ mod imp {
 
     impl MessageBubble {
         /// Paints the bubble outline (rounded rect + tail) as a single filled path, with a
-        /// drop shadow (below and toward the tail, so a light bubble's tail stays visible on
-        /// a light background) and, in high-contrast, a hairline border.
+        /// uniform 1px rim shadow on every side (so a light bubble — tail included — reads
+        /// against a light background) and, in high-contrast, a hairline border.
         fn snapshot_shape(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
-            let w = obj.width() as f64;
-            let h = obj.height() as f64;
+            let w = obj.width() as f32;
+            let h = obj.height() as f32;
             if w <= 0.0 || h <= 0.0 {
                 return;
             }
 
             let outgoing = obj.has_css_class("outgoing");
             let tail = self.group_end.get();
-            // Corners tighten where a bubble abuts its same-sender neighbour; media / map
-            // bubbles keep full corners to match their self-clipping picture/map.
-            let media = obj.has_css_class("media")
-                || obj.has_css_class("location")
-                || obj.has_css_class("venue");
-            let top = if media || self.group_start.get() {
+            // Corners tighten where a bubble abuts its same-sender neighbour. Media
+            // pictures follow along via the row's `grouped-*` CSS classes (see style.css);
+            // map bubbles keep full corners to match their self-clipping map child.
+            let map = obj.has_css_class("location") || obj.has_css_class("venue");
+            let top = if map || self.group_start.get() {
                 RADIUS
             } else {
                 RADIUS_TIGHT
             };
-            let bottom = if media || tail { RADIUS } else { RADIUS_TIGHT };
+            let bottom = if map || tail { RADIUS } else { RADIUS_TIGHT };
 
             #[allow(deprecated)]
             let style = obj.style_context();
@@ -239,114 +238,86 @@ mod imp {
                 })
                 .unwrap_or_else(|| gtk::gdk::RGBA::new(1.0, 1.0, 1.0, 1.0));
 
-            let bounds = graphene::Rect::new(
-                (-TAIL_OVERHANG - 2.0) as f32,
-                -1.0,
-                (w + 2.0 * (TAIL_OVERHANG + 2.0)) as f32,
-                (h + 2.0) as f32,
-            );
-            let ctx = snapshot.append_cairo(&bounds);
+            // Native GSK path nodes (analytic anti-aliasing, like the theme's own rounded
+            // rectangles) rather than a cairo texture — the latter fringes at the corners
+            // when resampled on a fractional display scale.
+            let path = bubble_path(w, h, top, bottom, outgoing, tail);
+            let shadow = gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.1);
 
-            // Drop shadow: the outline filled 1px down in translucent black.
-            let _ = ctx.save();
-            ctx.translate(0.0, 1.0);
-            append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
-            ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
-            let _ = ctx.fill();
-            let _ = ctx.restore();
-
-            // A second shadow offset toward the tail, so the tail casts a shadow on its
-            // outer edge and reads against a same-colored background. Clipped to the tail's
-            // band so it doesn't shade the whole sender-side edge (which showed as a
-            // discolored rim along the corners on a vivid dark wallpaper).
-            if tail {
-                let tail_dx = if outgoing { 1.5 } else { -1.5 };
-                let (cx0, cx1) = if outgoing {
-                    (w - TAIL_START - 2.0, w + TAIL_OVERHANG + 2.0)
-                } else {
-                    (-TAIL_OVERHANG - 2.0, TAIL_START + 2.0)
-                };
-                let _ = ctx.save();
-                ctx.rectangle(cx0, h - TAIL_HEIGHT - 2.0, cx1 - cx0, TAIL_HEIGHT + 4.0);
-                ctx.clip();
-                ctx.translate(tail_dx, 1.0);
-                append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
-                ctx.set_source_rgba(0.0, 0.0, 0.0, 0.1);
-                let _ = ctx.fill();
-                let _ = ctx.restore();
-            }
-
-            append_bubble_path(&ctx, w, h, top, bottom, outgoing, tail);
-            ctx.set_source_rgba(
-                color.red() as f64,
-                color.green() as f64,
-                color.blue() as f64,
-                color.alpha() as f64,
-            );
-            ctx.fill_preserve().ok();
+            // A 2px stroke centered on the outline; the fill covers its inner half, leaving
+            // a uniform 1px rim on every side (tail included).
+            snapshot.append_stroke(&path, &gsk::Stroke::new(2.0), &shadow);
+            snapshot.append_fill(&path, gsk::FillRule::Winding, &color);
 
             if adw::StyleManager::default().is_high_contrast() {
                 #[allow(deprecated)]
                 let border = style
                     .lookup_color("borders")
                     .unwrap_or_else(|| gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.15));
-                ctx.set_source_rgba(
-                    border.red() as f64,
-                    border.green() as f64,
-                    border.blue() as f64,
-                    border.alpha() as f64,
-                );
-                ctx.set_line_width(1.0);
-                let _ = ctx.stroke();
-            } else {
-                ctx.new_path();
+                snapshot.append_stroke(&path, &gsk::Stroke::new(1.0), &border);
             }
         }
     }
 }
 
-/// Appends the bubble outline to `ctx`: a rounded rectangle with `top`/`bottom` corner
+/// Builds the bubble outline as a GSK path: a rounded rectangle with `top`/`bottom` corner
 /// radii, except the sender-side bottom corner, which is replaced by a tail when `tail`
-/// (bottom-left for incoming, bottom-right for outgoing).
-fn append_bubble_path(
-    ctx: &gtk::cairo::Context,
-    w: f64,
-    h: f64,
-    top: f64,
-    bottom: f64,
-    outgoing: bool,
-    tail: bool,
-) {
-    use std::f64::consts::FRAC_PI_2;
-    use std::f64::consts::PI;
-
-    ctx.new_path();
-    ctx.move_to(top, 0.0);
-    ctx.line_to(w - top, 0.0);
-    ctx.arc(w - top, top, top, -FRAC_PI_2, 0.0); // top-right
+/// (bottom-left for incoming, bottom-right for outgoing). The tail is a smooth sweep
+/// from ~`TAIL_HEIGHT` up the side down to a tip that overhangs the edge by
+/// ~`TAIL_OVERHANG`, rejoining the bottom edge at `TAIL_START`.
+fn bubble_path(w: f32, h: f32, top: f32, bottom: f32, outgoing: bool, tail: bool) -> gsk::Path {
+    let b = gsk::PathBuilder::new();
+    b.move_to(top, 0.0);
+    b.line_to(w - top, 0.0);
+    b.html_arc_to(w, 0.0, w, top, top); // top-right
 
     if outgoing && tail {
-        // Right edge down to the tail blend, then out to the tip and back to the bottom edge.
-        ctx.line_to(w, h - TAIL_HEIGHT);
-        ctx.curve_to(w, h - 8.0, w + TAIL_OVERHANG * 0.2, h - 5.0, w + TAIL_OVERHANG, h - 1.5);
-        ctx.curve_to(w + TAIL_OVERHANG * 0.4, h, w - TAIL_START + 4.0, h, w - TAIL_START, h);
+        // Right edge down to where the tail attaches, a smooth sweep out to the tip,
+        // then back along the bottom edge — the mirror of the incoming sweep below.
+        b.line_to(w, h - TAIL_HEIGHT);
+        b.cubic_to(
+            w,
+            h - 8.0,
+            w + TAIL_OVERHANG * 0.2,
+            h - 5.0,
+            w + TAIL_OVERHANG,
+            h - 1.5,
+        );
+        b.cubic_to(
+            w + TAIL_OVERHANG * 0.4,
+            h,
+            w - TAIL_START + 4.0,
+            h,
+            w - TAIL_START,
+            h,
+        );
     } else {
-        ctx.line_to(w, h - bottom);
-        ctx.arc(w - bottom, h - bottom, bottom, 0.0, FRAC_PI_2); // bottom-right
+        b.line_to(w, h - bottom);
+        b.html_arc_to(w, h, w - bottom, h, bottom); // bottom-right
     }
 
     if !outgoing && tail {
-        ctx.line_to(TAIL_START, h);
-        ctx.curve_to(TAIL_START - 4.0, h, -TAIL_OVERHANG * 0.4, h, -TAIL_OVERHANG, h - 1.5);
-        ctx.curve_to(-TAIL_OVERHANG * 0.2, h - 5.0, 0.0, h - 8.0, 0.0, h - TAIL_HEIGHT);
+        // Bottom edge to the tail root, a smooth sweep out past the corner to the tip,
+        // then back up to rejoin the left edge.
+        b.line_to(TAIL_START, h);
+        b.cubic_to(
+            TAIL_START - 4.0,
+            h,
+            -TAIL_OVERHANG * 0.4,
+            h,
+            -TAIL_OVERHANG,
+            h - 1.5,
+        );
+        b.cubic_to(-TAIL_OVERHANG * 0.2, h - 5.0, 0.0, h - 8.0, 0.0, h - TAIL_HEIGHT);
     } else {
-        ctx.line_to(bottom, h);
-        ctx.arc(bottom, h - bottom, bottom, FRAC_PI_2, PI); // bottom-left
+        b.line_to(bottom, h);
+        b.html_arc_to(0.0, h, 0.0, h - bottom, bottom); // bottom-left
     }
 
-    ctx.line_to(0.0, top);
-    ctx.arc(top, top, top, PI, 1.5 * PI); // top-left
-    ctx.close_path();
+    b.line_to(0.0, top);
+    b.html_arc_to(0.0, 0.0, top, 0.0, top); // top-left
+    b.close();
+    b.to_path()
 }
 
 glib::wrapper! {

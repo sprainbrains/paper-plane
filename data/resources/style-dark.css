@@ -61,9 +61,3 @@ messagebubble.document.outgoing .file > overlay > statusindicator {
 .sender-text-pink {
   color: #ff5694;
 }
-
-/* Values for the cairo renderer */
-.fallback messagebubble:not(.outgoing) {
-  background: #303030;
-}
-/* End of values for cairo renderer */
