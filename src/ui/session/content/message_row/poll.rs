@@ -138,7 +138,9 @@ impl MessagePoll {
         });
 
         // Show results once the user has voted or the poll is closed.
-        let show_results = poll.is_closed || poll.options.iter().any(|option| option.is_chosen);
+        let has_voted = poll.options.iter().any(|option| option.is_chosen);
+        let is_closed = poll.is_closed;
+        let show_results = is_closed || has_voted;
 
         let (allow_multiple, correct_option_id) = match &poll.r#type {
             tdlib::enums::PollType::Regular(regular) => (regular.allow_multiple_answers, None),
@@ -189,6 +191,24 @@ impl MessagePoll {
                 }
             ));
             imp.options_box.append(&vote_button);
+        }
+
+        // A regular (non-quiz) poll the user has voted on but that isn't closed can be
+        // un-voted by submitting an empty answer.
+        if correct_option_id.is_none() && !is_closed && has_voted {
+            let retract_button = gtk::Button::builder()
+                .label(gettext("Retract Vote"))
+                .halign(gtk::Align::Center)
+                .build();
+            retract_button.add_css_class("poll-vote");
+            retract_button.connect_clicked(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                #[weak]
+                message,
+                move |_| obj.submit_answer(&message, vec![])
+            ));
+            imp.options_box.append(&retract_button);
         }
     }
 
