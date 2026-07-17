@@ -11,7 +11,6 @@ use gtk::graphene;
 use gtk::subclass::prelude::*;
 
 use crate::model;
-use crate::types::MessageId;
 use crate::utils;
 
 // Peak-memory fallback cap for decoding a full-resolution photo. Telegram caps
@@ -231,13 +230,13 @@ impl MediaViewer {
             return;
         };
         let file = size.photo.clone();
-        let message_id = message.id();
 
         if file.local.is_downloading_completed {
-            self.decode_and_show(file.local.path, message_id);
+            self.decode_and_show(file.local.path, message.clone());
         } else {
             let session = message.chat_().session_();
             let file_id = file.id;
+            let message = message.clone();
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -245,7 +244,7 @@ impl MediaViewer {
                 session,
                 async move {
                     match session.download_file(file_id).await {
-                        Ok(file) => obj.decode_and_show(file.local.path, message_id),
+                        Ok(file) => obj.decode_and_show(file.local.path, message),
                         Err(e) => log::warn!("Failed to download a photo for the viewer: {e:?}"),
                     }
                 }
@@ -253,8 +252,8 @@ impl MediaViewer {
         }
     }
 
-    fn decode_and_show(&self, path: String, message_id: MessageId) {
-        if !self.is_current(message_id) {
+    fn decode_and_show(&self, path: String, message: model::Message) {
+        if !self.is_current(&message) {
             return;
         }
         utils::spawn(clone!(
@@ -270,7 +269,7 @@ impl MediaViewer {
 
                 match result {
                     Ok(Ok(texture)) => {
-                        if obj.is_current(message_id) {
+                        if obj.is_current(&message) {
                             obj.imp().picture.set_paintable(Some(&texture));
                         }
                     }
@@ -290,13 +289,13 @@ impl MediaViewer {
     ) {
         let imp = self.imp();
         imp.stack.set_visible_child_name("video");
-        let message_id = message.id();
 
         if file.local.is_downloading_completed {
-            self.play_file(&file.local.path, message_id, muted, loop_);
+            self.play_file(&file.local.path, message, muted, loop_);
         } else {
             let session = message.chat_().session_();
             let file_id = file.id;
+            let message = message.clone();
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -304,7 +303,7 @@ impl MediaViewer {
                 session,
                 async move {
                     match session.download_file(file_id).await {
-                        Ok(file) => obj.play_file(&file.local.path, message_id, muted, loop_),
+                        Ok(file) => obj.play_file(&file.local.path, &message, muted, loop_),
                         Err(e) => log::warn!("Failed to download a video for the viewer: {e:?}"),
                     }
                 }
@@ -312,8 +311,8 @@ impl MediaViewer {
         }
     }
 
-    fn play_file(&self, path: &str, message_id: MessageId, muted: bool, loop_: bool) {
-        if !self.is_current(message_id) {
+    fn play_file(&self, path: &str, message: &model::Message, muted: bool, loop_: bool) {
+        if !self.is_current(message) {
             return;
         }
         let imp = self.imp();
@@ -328,16 +327,12 @@ impl MediaViewer {
         imp.media.replace(Some(media));
     }
 
-    /// Whether the viewer is still showing `message_id` — false once it has been closed
-    /// or reopened on a different message while a download/decode was in flight.
-    fn is_current(&self, message_id: MessageId) -> bool {
-        self.is_visible()
-            && self
-                .imp()
-                .message
-                .borrow()
-                .as_ref()
-                .is_some_and(|message| message.id() == message_id)
+    /// Whether the viewer is still showing `message` — false once it has been closed or
+    /// reopened on a different message while a download/decode was in flight. Compares by
+    /// object identity, not id: TDLib message ids are unique only within a chat, so ids
+    /// can collide across chats.
+    fn is_current(&self, message: &model::Message) -> bool {
+        self.is_visible() && self.imp().message.borrow().as_ref() == Some(message)
     }
 }
 
