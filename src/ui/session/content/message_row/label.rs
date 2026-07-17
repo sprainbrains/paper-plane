@@ -20,7 +20,10 @@ use crate::model;
 use crate::ui;
 use crate::utils;
 
-const OBJECT_REPLACEMENT_CHARACTER: char = '\u{FFFC}';
+/// A trailing space appended to the display label whose glyph is replaced by a shaped
+/// box reserving room for the overlaid indicators. A plain space (not U+FFFC) so a
+/// select-all + copy of the selectable label yields clean text without a garbage char.
+const INDICATOR_GUTTER_CHAR: char = ' ';
 const INDICATORS_SPACING: i32 = 6;
 
 /// Pixel size custom-emoji textures are decoded at (drawn at ~1.3 em).
@@ -44,6 +47,9 @@ mod imp {
         pub(super) text: RefCell<String>,
         pub(super) indicators: RefCell<Option<ui::MessageIndicators>>,
         pub(super) indicators_size: RefCell<Option<(i32, i32)>>,
+        /// Byte index in the display label of the trailing gutter char reserving space for
+        /// the overlaid indicators, or `None` when no gutter is reserved.
+        pub(super) gutter_index: Cell<Option<u32>>,
         /// Extra rich-text data (spoilers, inline code, custom emoji) when set via
         /// [`MessageLabel::set_rich`]; `None` on the plain markup path.
         pub(super) rich: RefCell<Option<utils::RichInline>>,
@@ -255,8 +261,8 @@ impl MessageLabel {
         let imp = self.imp();
         let attrs = pango::AttrList::new();
 
-        // Reserved box for the overlaid indicators, keyed by the trailing U+FFFC.
-        if let Some(start_index) = imp.label.text().find(OBJECT_REPLACEMENT_CHARACTER) {
+        // Reserved box for the overlaid indicators at the trailing gutter char.
+        if let Some(start_index) = imp.gutter_index.get() {
             let width = indicators_size.width() + INDICATORS_SPACING;
             let height = indicators_size.height();
             let logical_rect = pango::Rectangle::new(
@@ -267,8 +273,8 @@ impl MessageLabel {
             );
             let mut shape = pango::AttrShape::new(&logical_rect, &logical_rect);
 
-            shape.set_start_index(start_index as u32);
-            shape.set_end_index((start_index + OBJECT_REPLACEMENT_CHARACTER.len_utf8()) as u32);
+            shape.set_start_index(start_index);
+            shape.set_end_index(start_index + INDICATOR_GUTTER_CHAR.len_utf8() as u32);
             attrs.insert(shape);
         }
 
@@ -305,15 +311,18 @@ impl MessageLabel {
         let text = imp.text.borrow();
         if let Some(indicators) = imp.indicators.borrow().as_ref() {
             if !self.is_opposite_text_direction() {
+                imp.gutter_index.set(Some(text.len() as u32));
                 imp.label
-                    .set_label(&format!("{text}{OBJECT_REPLACEMENT_CHARACTER}"));
+                    .set_label(&format!("{text}{INDICATOR_GUTTER_CHAR}"));
             } else {
+                imp.gutter_index.set(None);
                 imp.label.set_label(&text);
             }
 
             let (_, indicators_size) = indicators.preferred_size();
             self.update_label_attributes(&indicators_size);
         } else {
+            imp.gutter_index.set(None);
             imp.label.set_label(&text);
             self.update_label_attributes(&gtk::Requisition::default());
         }
