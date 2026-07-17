@@ -734,6 +734,14 @@ messagesticker {
   margin: 3px;
   border-radius: 9999px;
   background-color: @popover_bg_color;
+  /* Reset the foreground to the popover's own, so the reply icon and emoji don't
+     inherit an outgoing bubble's white-on-accent text colour and vanish against the
+     pill's (light) background. */
+  color: @popover_fg_color;
+  /* An outline so the island stays distinct on incoming bubbles, whose background
+     matches @popover_bg_color in the light theme (both white) and would otherwise
+     make the pill look transparent. */
+  border: 1px solid alpha(@window_fg_color, 0.12);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 2px 6px 1px rgba(0, 0, 0, 0.12);
 }
 
