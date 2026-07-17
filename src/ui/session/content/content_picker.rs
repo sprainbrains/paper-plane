@@ -555,7 +555,9 @@ impl ContentPicker {
         stickers: &[tdlib::types::Sticker],
         removal: StickerRemoval,
     ) -> gtk::Box {
-        let session = self.imp().session.upgrade().unwrap();
+        let Some(session) = self.imp().session.upgrade() else {
+            return gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        };
         let preview = ui::StickerPickerRow::new_sized(
             stickers,
             &session,
