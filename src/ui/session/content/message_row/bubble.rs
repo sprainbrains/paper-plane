@@ -83,6 +83,8 @@ mod imp {
         #[template_child]
         pub(super) prefix_bin: TemplateChild<adw::Bin>,
         #[template_child]
+        pub(super) blocks_box: TemplateChild<gtk::Box>,
+        #[template_child]
         pub(super) message_label: TemplateChild<ui::MessageLabel>,
         #[template_child]
         pub(super) indicators: TemplateChild<ui::MessageIndicators>,
@@ -578,6 +580,11 @@ impl MessageBubble {
     pub(crate) fn set_label(&self, label: String) {
         let imp = self.imp();
 
+        // The plain markup path (captions, sponsored/unsupported content) renders no
+        // block widgets; clear any left over from a recycled rich text message.
+        self.clear_blocks();
+        imp.message_label.set_halign(gtk::Align::Fill);
+
         if label.is_empty() {
             imp.message_label.set_label(String::new());
             imp.message_label.set_visible(false);
@@ -591,6 +598,60 @@ impl MessageBubble {
         }
 
         self.update_indicators_position();
+    }
+
+    /// Renders a message's full rich text: paragraphs, code blocks, and quotes as block
+    /// widgets, with the trailing paragraph in the main label so the time indicators
+    /// nest into its last line (as with plain text).
+    pub(crate) fn set_formatted_text(
+        &self,
+        formatted: &tdlib::types::FormattedText,
+        message: &model::Message,
+    ) {
+        let imp = self.imp();
+        let session = message.chat_().session_();
+        let spoiler_key = (message.chat_().id(), message.id());
+
+        let mut blocks = utils::parse_rich_text(formatted);
+        let tail = match blocks.last() {
+            Some(utils::RichBlock::Paragraph(_)) => match blocks.pop() {
+                Some(utils::RichBlock::Paragraph(inline)) => inline,
+                _ => unreachable!(),
+            },
+            // Text ends in a code block / quote: the main label carries only the
+            // indicators, right-aligned under the block.
+            _ => utils::RichInline::default(),
+        };
+
+        self.clear_blocks();
+        for block in blocks {
+            imp.blocks_box
+                .append(&super::blocks::block_widget(block, &session, spoiler_key));
+        }
+        imp.blocks_box
+            .set_visible(imp.blocks_box.first_child().is_some());
+
+        // With no trailing paragraph the label carries only the time indicators; align
+        // it to the trailing edge so the date sits bottom-right under the last block.
+        imp.message_label.set_halign(if tail.plain.is_empty() {
+            gtk::Align::End
+        } else {
+            gtk::Align::Fill
+        });
+        imp.message_label
+            .set_rich(tail, Some(session), Some(spoiler_key));
+        imp.message_label.set_visible(true);
+        self.add_css_class("with-label");
+
+        self.update_indicators_position();
+    }
+
+    fn clear_blocks(&self) {
+        let blocks_box = &self.imp().blocks_box;
+        while let Some(child) = blocks_box.first_child() {
+            blocks_box.remove(&child);
+        }
+        blocks_box.set_visible(false);
     }
 
     pub(crate) fn add_message_label_class(&self, class: &str) {

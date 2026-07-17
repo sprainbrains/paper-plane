@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 
 use gettextrs::gettext;
+use glib::clone;
 use glib::closure;
 use gtk::CompositeTemplate;
 use gtk::glib;
@@ -89,14 +90,20 @@ impl ui::MessageBaseExt for MessageText {
         if let Some(message) = message.downcast_ref::<model::Message>() {
             imp.message_bubble.update_from_message(message, false);
 
-            // Set content label expression
-            let text_binding = model::Message::this_expression("content")
-                .chain_closure::<String>(closure!(
-                    |_: model::Message, content: model::BoxedMessageContent| {
-                        format_message_content_text(content.0)
-                    }
-                ))
-                .bind(&*imp.message_bubble, "label", Some(message));
+            // Render the content as rich text (blocks, spoilers, custom emoji) rather
+            // than a flat markup string: once now, and again whenever it changes (a
+            // watch, unlike a bind, does not fire at creation).
+            apply_rich_text(&imp.message_bubble, message);
+            let text_binding = model::Message::this_expression("content").watch(
+                Some(message),
+                clone!(
+                    #[weak(rename_to = bubble)]
+                    imp.message_bubble,
+                    #[weak]
+                    message,
+                    move || apply_rich_text(&bubble, &message)
+                ),
+            );
             bindings.push(text_binding);
         } else if let Some(sponsored_message) = message.downcast_ref::<model::SponsoredMessage>() {
             imp.message_bubble
@@ -120,11 +127,29 @@ impl ui::MessageBaseExt for MessageText {
     }
 }
 
+fn apply_rich_text(bubble: &ui::MessageBubble, message: &model::Message) {
+    match message.content().0 {
+        tdlib::enums::MessageContent::MessageText(content) => {
+            bubble.set_formatted_text(&content.text, message);
+        }
+        _ => bubble.set_label(unsupported_notice()),
+    }
+}
+
 fn format_message_content_text(content: tdlib::enums::MessageContent) -> String {
     match content {
         tdlib::enums::MessageContent::MessageText(content) => {
             utils::parse_formatted_text(content.text)
         }
-        _ => format!("<i>{}</i>", gettext("This message is unsupported")),
+        _ => unsupported_notice(),
     }
+}
+
+/// TDLib reports content newer than the TDLib version this build links against as
+/// `MessageUnsupported`; the client cannot render what TDLib does not decode.
+fn unsupported_notice() -> String {
+    format!(
+        "<i>{}</i>",
+        gettext("This message is not supported by your version of Paper Plane. Please update.")
+    )
 }

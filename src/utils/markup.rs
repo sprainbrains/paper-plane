@@ -76,8 +76,198 @@ pub(crate) fn convert_to_markup(text: String, entity: &tdlib::enums::TextEntityT
         Strikethrough => format!("<s>{text}</s>"),
         Code | Pre | PreCode(_) => format!("<tt>{text}</tt>"),
         TextUrl(data) => format!("<a href='{}'>{}</a>", escape(&data.url), text),
+        // In-app schemes, resolved by MessageLabel's activate-link handler.
+        Mention => format!("<a href='mention:{text}'>{text}</a>"),
+        MentionName(data) => format!("<a href='mention-id:{}'>{text}</a>", data.user_id),
+        Hashtag | Cashtag => format!("<a href='tag:{text}'>{text}</a>"),
+        BotCommand => format!("<a href='command:{text}'>{text}</a>"),
         _ => text,
     }
+}
+
+/// One inline-formatted run of message text: Pango markup for a label, plus the byte
+/// ranges (into `plain`) of the entities that need treatment beyond markup — spoilers
+/// (hidden behind an animated overlay), inline code (click to copy), and custom emoji
+/// (drawn from their sticker files).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RichInline {
+    pub(crate) plain: String,
+    pub(crate) markup: String,
+    pub(crate) spoilers: Vec<(usize, usize)>,
+    pub(crate) codes: Vec<(usize, usize)>,
+    pub(crate) custom_emoji: Vec<(usize, usize, i64)>,
+}
+
+/// A block of message text: plain paragraphs interleaved with code blocks and quotes,
+/// in text order.
+#[derive(Debug, Clone)]
+pub(crate) enum RichBlock {
+    Paragraph(RichInline),
+    Code { code: String, language: String },
+    Quote { inline: RichInline, expandable: bool },
+}
+
+/// Converts a TDLib utf16 code-unit range into a byte range of `text`, `None` if the
+/// range is out of bounds.
+fn utf16_range_to_bytes(text: &str, offset: i32, length: i32) -> Option<(usize, usize)> {
+    let start_u16 = offset.max(0) as usize;
+    let end_u16 = start_u16 + length.max(0) as usize;
+
+    let mut u16_pos = 0;
+    let mut start = None;
+    for (byte_idx, c) in text.char_indices() {
+        if start.is_none() && u16_pos >= start_u16 {
+            start = Some(byte_idx);
+        }
+        if u16_pos >= end_u16 {
+            return start.map(|s| (s, byte_idx));
+        }
+        u16_pos += c.len_utf16();
+    }
+    if start.is_none() && u16_pos >= start_u16 {
+        start = Some(text.len());
+    }
+    (u16_pos >= end_u16)
+        .then_some(start)
+        .flatten()
+        .map(|s| (s, text.len()))
+}
+
+fn utf16_len(text: &str) -> i32 {
+    text.chars().map(|c| c.len_utf16() as i32).sum()
+}
+
+/// Whether an entity is block-level (rendered as its own widget, not inline markup).
+fn is_block_entity(entity: &tdlib::enums::TextEntityType) -> bool {
+    use tdlib::enums::TextEntityType::*;
+    matches!(entity, Pre | PreCode(_) | BlockQuote | ExpandableBlockQuote)
+}
+
+/// The sub-`FormattedText` covering `byte_start..byte_end`, with the intersecting
+/// inline entities clamped and re-based (block-level entities are dropped — the caller
+/// renders those as separate widgets).
+fn slice_formatted(
+    formatted: &tdlib::types::FormattedText,
+    byte_start: usize,
+    byte_end: usize,
+) -> tdlib::types::FormattedText {
+    let u16_start = utf16_len(&formatted.text[..byte_start]);
+    let u16_end = u16_start + utf16_len(&formatted.text[byte_start..byte_end]);
+
+    let entities = formatted
+        .entities
+        .iter()
+        .filter(|entity| !is_block_entity(&entity.r#type))
+        .filter_map(|entity| {
+            let start = entity.offset.max(u16_start);
+            let end = (entity.offset + entity.length).min(u16_end);
+            (start < end).then(|| tdlib::types::TextEntity {
+                offset: start - u16_start,
+                length: end - start,
+                r#type: entity.r#type.clone(),
+            })
+        })
+        .collect();
+
+    tdlib::types::FormattedText {
+        text: formatted.text[byte_start..byte_end].to_string(),
+        entities,
+    }
+}
+
+/// Renders a `FormattedText` into a [`RichInline`]: Pango markup plus the byte ranges
+/// of spoilers, inline code, and custom emoji.
+pub(crate) fn parse_inline(formatted: &tdlib::types::FormattedText) -> RichInline {
+    use tdlib::enums::TextEntityType::*;
+
+    let mut inline = RichInline {
+        plain: formatted.text.clone(),
+        markup: parse_formatted_text(formatted.clone()),
+        ..Default::default()
+    };
+
+    for entity in &formatted.entities {
+        let Some(range) = utf16_range_to_bytes(&formatted.text, entity.offset, entity.length)
+        else {
+            continue;
+        };
+        match &entity.r#type {
+            Spoiler => inline.spoilers.push(range),
+            Code => inline.codes.push(range),
+            CustomEmoji(data) => {
+                inline
+                    .custom_emoji
+                    .push((range.0, range.1, data.custom_emoji_id))
+            }
+            _ => {}
+        }
+    }
+
+    inline
+}
+
+/// Splits a message's `FormattedText` into ordered blocks: paragraphs, code blocks
+/// (`Pre`/`PreCode`), and block quotes. Telegram never nests or overlaps block-level
+/// entities; overlapping ones (malformed input) are dropped defensively.
+pub(crate) fn parse_rich_text(formatted: &tdlib::types::FormattedText) -> Vec<RichBlock> {
+    use tdlib::enums::TextEntityType::*;
+
+    let mut block_entities: Vec<(usize, usize, &tdlib::types::TextEntity)> = formatted
+        .entities
+        .iter()
+        .filter(|entity| is_block_entity(&entity.r#type))
+        .filter_map(|entity| {
+            utf16_range_to_bytes(&formatted.text, entity.offset, entity.length)
+                .map(|(start, end)| (start, end, entity))
+        })
+        .collect();
+    block_entities.sort_by_key(|&(start, ..)| start);
+
+    let mut blocks = Vec::new();
+    let mut cursor = 0;
+
+    // The plain text between blocks, with the single newline that delimits it from an
+    // adjacent block trimmed away (it is layout, not content).
+    let push_paragraph = |blocks: &mut Vec<RichBlock>, mut start: usize, mut end: usize| {
+        if start > 0 && formatted.text[start..end].starts_with('\n') {
+            start += 1;
+        }
+        if end < formatted.text.len() && formatted.text[start..end].ends_with('\n') {
+            end -= 1;
+        }
+        if start < end {
+            blocks.push(RichBlock::Paragraph(parse_inline(&slice_formatted(
+                formatted, start, end,
+            ))));
+        }
+    };
+
+    for (start, end, entity) in block_entities {
+        if start < cursor {
+            continue; // overlapping block entity, malformed
+        }
+        push_paragraph(&mut blocks, cursor, start);
+        let block = match &entity.r#type {
+            Pre => RichBlock::Code {
+                code: formatted.text[start..end].to_string(),
+                language: String::new(),
+            },
+            PreCode(data) => RichBlock::Code {
+                code: formatted.text[start..end].to_string(),
+                language: data.language.clone(),
+            },
+            BlockQuote | ExpandableBlockQuote => RichBlock::Quote {
+                inline: parse_inline(&slice_formatted(formatted, start, end)),
+                expandable: matches!(&entity.r#type, ExpandableBlockQuote),
+            },
+            _ => unreachable!(),
+        };
+        blocks.push(block);
+        cursor = end;
+    }
+    push_paragraph(&mut blocks, cursor, formatted.text.len());
+
+    blocks
 }
 
 pub(crate) fn parse_formatted_text(formatted_text: tdlib::types::FormattedText) -> String {
@@ -255,6 +445,72 @@ mod tests {
 
             assert_eq!(parse_formatted_text(formatted_text), expected, "{text:?}");
         }
+    }
+
+    #[test]
+    fn rich_blocks_split_and_trim_boundary_newlines() {
+        use tdlib::enums::TextEntityType::BlockQuote;
+        use tdlib::enums::TextEntityType::Pre;
+
+        let formatted = tdlib::types::FormattedText {
+            text: "intro\ncode here\noutro".to_owned(),
+            entities: vec![entity(6, 9, Pre)],
+        };
+        match &parse_rich_text(&formatted)[..] {
+            [
+                RichBlock::Paragraph(a),
+                RichBlock::Code { code, language },
+                RichBlock::Paragraph(b),
+            ] => {
+                assert_eq!(a.plain, "intro");
+                assert_eq!(code, "code here");
+                assert!(language.is_empty());
+                assert_eq!(b.plain, "outro");
+            }
+            other => panic!("unexpected blocks: {other:?}"),
+        }
+
+        // A quote at the very start, no surrounding paragraphs.
+        let formatted = tdlib::types::FormattedText {
+            text: "quoted".to_owned(),
+            entities: vec![entity(0, 6, BlockQuote)],
+        };
+        match &parse_rich_text(&formatted)[..] {
+            [RichBlock::Quote { inline, expandable }] => {
+                assert_eq!(inline.plain, "quoted");
+                assert!(!expandable);
+            }
+            other => panic!("unexpected blocks: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rich_inline_byte_ranges_from_utf16_offsets() {
+        use tdlib::enums::TextEntityType::Code;
+        use tdlib::enums::TextEntityType::CustomEmoji;
+        use tdlib::enums::TextEntityType::Spoiler;
+
+        let formatted = tdlib::types::FormattedText {
+            // "😀" is 2 utf16 units / 4 bytes.
+            text: "😀 secret x".to_owned(),
+            entities: vec![
+                entity(
+                    0,
+                    2,
+                    CustomEmoji(tdlib::types::TextEntityTypeCustomEmoji {
+                        custom_emoji_id: 7,
+                    }),
+                ),
+                entity(3, 6, Spoiler),
+                entity(10, 1, Code),
+            ],
+        };
+        let inline = parse_inline(&formatted);
+        assert_eq!(inline.custom_emoji, vec![(0, 4, 7)]);
+        assert_eq!(inline.spoilers, vec![(5, 11)]);
+        assert_eq!(&inline.plain[5..11], "secret");
+        assert_eq!(inline.codes, vec![(12, 13)]);
+        assert_eq!(&inline.plain[12..13], "x");
     }
 
     #[test]

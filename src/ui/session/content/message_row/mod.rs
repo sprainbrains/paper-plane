@@ -1,5 +1,6 @@
 mod audio;
 mod base;
+mod blocks;
 mod bubble;
 mod document;
 mod indicators;
