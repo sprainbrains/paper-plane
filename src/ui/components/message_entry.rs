@@ -14,11 +14,23 @@ use crate::model;
 mod imp {
     use super::*;
 
+    /// A custom emoji inserted into the buffer. The two marks bracket the emoji's plain
+    /// text (start with right gravity, end with left gravity) so the range tracks the
+    /// glyph as surrounding text is edited; the entity offset/length is re-derived from
+    /// the marks on every buffer change instead of being lost.
+    #[derive(Debug)]
+    pub(crate) struct CustomEmojiAnchor {
+        pub(super) start: gtk::TextMark,
+        pub(super) end: gtk::TextMark,
+        pub(super) custom_emoji_id: i64,
+    }
+
     #[derive(Debug, Default, CompositeTemplate)]
     #[template(resource = "/app/drey/paper-plane/ui/components/message_entry.ui")]
     pub(crate) struct MessageEntry {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) formatted_text: RefCell<Option<model::BoxedFormattedText>>,
+        pub(super) custom_emojis: RefCell<Vec<CustomEmojiAnchor>>,
         #[template_child]
         pub(super) overlay: TemplateChild<gtk::Overlay>,
         #[template_child]
@@ -215,20 +227,68 @@ impl MessageEntry {
             .into();
 
         if text.is_empty() {
+            self.clear_custom_emojis();
             imp.formatted_text.replace(None);
             imp.placeholder.set_visible(true);
         } else {
-            let formatted_text = tdlib::types::FormattedText {
-                text,
-                entities: vec![],
-            };
+            let entities = self.rebuild_custom_emoji_entities();
             imp.formatted_text
-                .replace(Some(model::BoxedFormattedText(formatted_text)));
+                .replace(Some(model::BoxedFormattedText(tdlib::types::FormattedText {
+                    text,
+                    entities,
+                })));
 
             imp.placeholder.set_visible(false);
         }
 
         self.notify("formatted-text");
+    }
+
+    /// Re-derives the custom-emoji entities from the tracking marks against the buffer's
+    /// current contents, dropping any whose text has been deleted (the marks collapsed).
+    fn rebuild_custom_emoji_entities(&self) -> Vec<tdlib::types::TextEntity> {
+        let buffer = self.imp().text_view.buffer();
+        let start = buffer.start_iter();
+        let mut entities = Vec::new();
+
+        self.imp().custom_emojis.borrow_mut().retain(|anchor| {
+            let anchor_start = buffer.iter_at_mark(&anchor.start);
+            let anchor_end = buffer.iter_at_mark(&anchor.end);
+            if anchor_start.offset() >= anchor_end.offset() {
+                buffer.delete_mark(&anchor.start);
+                buffer.delete_mark(&anchor.end);
+                return false;
+            }
+
+            let offset = buffer
+                .text(&start, &anchor_start, true)
+                .encode_utf16()
+                .count() as i32;
+            let length = buffer
+                .text(&anchor_start, &anchor_end, true)
+                .encode_utf16()
+                .count() as i32;
+            entities.push(tdlib::types::TextEntity {
+                offset,
+                length,
+                r#type: tdlib::enums::TextEntityType::CustomEmoji(
+                    tdlib::types::TextEntityTypeCustomEmoji {
+                        custom_emoji_id: anchor.custom_emoji_id,
+                    },
+                ),
+            });
+            true
+        });
+
+        entities
+    }
+
+    fn clear_custom_emojis(&self) {
+        let buffer = self.imp().text_view.buffer();
+        for anchor in self.imp().custom_emojis.borrow_mut().drain(..) {
+            buffer.delete_mark(&anchor.start);
+            buffer.delete_mark(&anchor.end);
+        }
     }
 
     /// Insert text inside the message entry at the cursor position,
@@ -243,25 +303,28 @@ impl MessageEntry {
 
     pub(crate) fn insert_custom_emoji(&self, emoji: &str, custom_emoji_id: i64) {
         let buffer = self.imp().text_view.buffer();
-        let cursor = buffer.cursor_position();
-        let prefix = buffer.text(&buffer.start_iter(), &buffer.iter_at_offset(cursor), true);
-        let offset = prefix.encode_utf16().count() as i32;
 
-        self.insert_at_cursor(emoji);
+        buffer.begin_user_action();
+        buffer.delete_selection(true, true);
+        let start_offset = buffer.cursor_position();
+        buffer.insert_at_cursor(emoji);
+        buffer.end_user_action();
 
-        if let Some(mut formatted) = self.formatted_text().map(|text| text.0) {
-            formatted.entities.push(tdlib::types::TextEntity {
-                offset,
-                length: emoji.encode_utf16().count() as i32,
-                r#type: tdlib::enums::TextEntityType::CustomEmoji(
-                    tdlib::types::TextEntityTypeCustomEmoji { custom_emoji_id },
-                ),
+        let start_iter = buffer.iter_at_offset(start_offset);
+        let end_iter = buffer.iter_at_offset(start_offset + emoji.chars().count() as i32);
+        // Right gravity on start, left gravity on end: boundary edits land outside the glyph.
+        let start = buffer.create_mark(None, &start_iter, false);
+        let end = buffer.create_mark(None, &end_iter, true);
+        self.imp()
+            .custom_emojis
+            .borrow_mut()
+            .push(imp::CustomEmojiAnchor {
+                start,
+                end,
+                custom_emoji_id,
             });
-            self.imp()
-                .formatted_text
-                .replace(Some(model::BoxedFormattedText(formatted)));
-            self.notify("formatted-text");
-        }
+
+        self.text_buffer_changed();
     }
 
     pub(crate) fn formatted_text(&self) -> Option<model::BoxedFormattedText> {
@@ -273,6 +336,7 @@ impl MessageEntry {
             return;
         }
 
+        self.clear_custom_emojis();
         let text = formatted_text.map(|f| f.0.text).unwrap_or_default();
         self.imp().text_view.buffer().set_text(&text);
     }
