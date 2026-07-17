@@ -491,9 +491,13 @@ impl Row {
         ));
         self.add_controller(click);
 
-        // Drag a selected media message out to the file manager / another app to export its
-        // file(s). Armed only over an already-selected message with downloaded media (the
-        // list's sweep-select stands down for exactly this case, see `ChatHistory`), so it
+        // Drag messages out of the list. In selection mode (starting on an already-
+        // selected message) the whole selection is dragged: an in-app drop on a sidebar
+        // chat row forwards it, an external drop exports a .txt transcript plus any
+        // downloaded media files. Outside selection mode, a drag starting on a message's
+        // downloaded media picture drags that media: an in-app chat drop re-sends it
+        // (copy, no forward header), an external drop saves the file. The list's
+        // sweep-select stands down for exactly these cases (see `ChatHistory`), so this
         // never competes with drag-to-select.
         let drag_source = gtk::DragSource::new();
         drag_source.set_actions(gdk::DragAction::COPY);
@@ -502,20 +506,57 @@ impl Row {
             self,
             #[upgrade_or]
             None,
-            move |_, _, _| {
+            move |_, x, y| {
                 let chat_history = utils::ancestor::<_, ui::ChatHistory>(&obj)?;
                 let message = obj.message().downcast::<model::Message>().ok()?;
-                if !chat_history.is_selection_mode()
-                    || !chat_history.is_message_selected(message.id())
-                {
+
+                if chat_history.is_selection_mode() {
+                    if !chat_history.is_message_selected(message.id()) {
+                        return None;
+                    }
+                    let payload = chat_history.message_drag_payload()?;
+                    let mut providers =
+                        vec![gdk::ContentProvider::for_value(&payload.to_value())];
+                    let files = chat_history.selected_export_files();
+                    if !files.is_empty() {
+                        let file_list = gdk::FileList::from_array(&files);
+                        providers.push(gdk::ContentProvider::for_value(&file_list.to_value()));
+                    }
+                    return Some(gdk::ContentProvider::new_union(&providers));
+                }
+
+                // Single-media drag: only when the press landed on the media picture.
+                let media = obj
+                    .imp()
+                    .content
+                    .borrow()
+                    .clone()
+                    .and_then(|content| utils::descendant::<_, ui::MediaPicture>(&content))?;
+                let bounds = media.compute_bounds(&obj)?;
+                if !bounds.contains_point(&graphene::Point::new(x as f32, y as f32)) {
                     return None;
                 }
-                let files = chat_history.selected_media_files();
-                if files.is_empty() {
-                    return None;
-                }
-                let file_list = gdk::FileList::from_array(&files);
-                Some(gdk::ContentProvider::for_value(&file_list.to_value()))
+                let path = utils::message_media_local_path(&message.content().0)?;
+                let history = glib::WeakRef::new();
+                history.set(Some(&chat_history));
+                let payload = ui::MessageDragPayload {
+                    from_chat_id: message.chat_().id(),
+                    message_ids: vec![message.id()],
+                    send_copy: true,
+                    history,
+                };
+                let file_list = gdk::FileList::from_array(&[gio::File::for_path(path)]);
+                Some(gdk::ContentProvider::new_union(&[
+                    gdk::ContentProvider::for_value(&payload.to_value()),
+                    gdk::ContentProvider::for_value(&file_list.to_value()),
+                ]))
+            }
+        ));
+        drag_source.connect_drag_begin(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |source, _| {
+                source.set_icon(Some(&gtk::WidgetPaintable::new(Some(&obj))), 0, 0);
             }
         ));
         self.add_controller(drag_source);

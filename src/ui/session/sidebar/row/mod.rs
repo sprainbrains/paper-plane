@@ -174,6 +174,57 @@ mod imp {
                 }
             ));
             obj.add_controller(ctrl_click);
+
+            // A message selection dragged from the chat history can be dropped on a chat
+            // to forward the messages there.
+            let drop_target = gtk::DropTarget::new(
+                ui::MessageDragPayload::static_type(),
+                gdk::DragAction::COPY,
+            );
+            drop_target.connect_drop(clone!(
+                #[weak]
+                obj,
+                #[upgrade_or]
+                false,
+                move |_, value, _, _| {
+                    let Ok(payload) = value.get::<ui::MessageDragPayload>() else {
+                        return false;
+                    };
+                    let Some(item) = obj.item() else {
+                        return false;
+                    };
+                    let chat = item.chat_();
+                    let to_chat_id = chat.id();
+                    let client_id = chat.session_().client_().id();
+                    if let Some(history) = payload.history.upgrade()
+                        && history.is_selection_mode()
+                    {
+                        history.clear_selection();
+                    }
+                    utils::spawn(clone!(
+                        #[weak]
+                        obj,
+                        async move {
+                            if let Err(e) = tdlib::functions::forward_messages(
+                                to_chat_id,
+                                None,
+                                payload.from_chat_id,
+                                payload.message_ids,
+                                None,
+                                payload.send_copy,
+                                false,
+                                client_id,
+                            )
+                            .await
+                            {
+                                utils::show_toast(&obj, e.message);
+                            }
+                        }
+                    ));
+                    true
+                }
+            ));
+            obj.add_controller(drop_target);
         }
 
         fn dispose(&self) {

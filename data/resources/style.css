@@ -158,6 +158,12 @@ chatlist row > widget {
   padding: 6px 0;
 }
 
+/* Highlight a chat while a dragged message selection hovers it (drop = forward). */
+chatlist row > widget:drop(active) {
+  background-color: alpha(@accent_bg_color, 0.12);
+  border-radius: 6px;
+}
+
 chatlist row minithumbnail {
   border-radius: 3px;
 }

@@ -24,6 +24,7 @@ pub(crate) use self::content::Background;
 pub(crate) use self::content::ChatActionBar;
 pub(crate) use self::content::ChatHistory;
 pub(crate) use self::content::ChatHistoryRow;
+pub(crate) use self::content::MessageDragPayload;
 pub(crate) use self::content::ChatInfoWindow;
 pub(crate) use self::content::Content;
 pub(crate) use self::content::ContentPicker;

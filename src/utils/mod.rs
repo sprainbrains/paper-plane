@@ -1,6 +1,7 @@
 mod async_runtime;
 mod image_decode;
 mod markup;
+mod media;
 mod paths;
 mod settings;
 mod widgets;
@@ -15,6 +16,7 @@ pub(crate) use markup::human_friendly_duration;
 pub(crate) use markup::parse_formatted_text;
 pub(crate) use markup::parse_rich_text;
 pub(crate) use markup::positional_replace;
+pub(crate) use media::message_media_local_path;
 pub(crate) use paths::data_dir;
 pub(crate) use paths::temp_dir;
 pub(crate) use settings::PaperPlaneSettings;

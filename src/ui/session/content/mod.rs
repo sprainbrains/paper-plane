@@ -23,6 +23,7 @@ use gtk::prelude::*;
 pub(crate) use self::background::Background;
 pub(crate) use self::chat_action_bar::ChatActionBar;
 pub(crate) use self::chat_history::ChatHistory;
+pub(crate) use self::chat_history::MessageDragPayload;
 pub(crate) use self::chat_history_row::ChatHistoryRow;
 pub(crate) use self::chat_info_window::ChatInfoWindow;
 pub(crate) use self::content_picker::ContentPicker;

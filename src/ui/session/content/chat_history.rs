@@ -64,22 +64,19 @@ fn is_touch(gesture: &gtk::GestureDrag) -> bool {
         .is_some_and(|device| device.source() == gdk::InputSource::Touchscreen)
 }
 
-/// The on-disk path of a message's primary media file, but only once it is fully
-/// downloaded — the file that can be exported by dragging the message out.
-fn message_media_local_path(content: &tdlib::enums::MessageContent) -> Option<String> {
-    use tdlib::enums::MessageContent::*;
-    let file = match content {
-        MessagePhoto(data) => data.photo.sizes.last()?.photo.clone(),
-        MessageVideo(data) => data.video.video.clone(),
-        MessageDocument(data) => data.document.document.clone(),
-        MessageAudio(data) => data.audio.audio.clone(),
-        MessageVoiceNote(data) => data.voice_note.voice.clone(),
-        MessageAnimation(data) => data.animation.animation.clone(),
-        MessageVideoNote(data) => data.video_note.video.clone(),
-        _ => return None,
-    };
-    (file.local.is_downloading_completed && !file.local.path.is_empty())
-        .then_some(file.local.path)
+/// The in-app payload of dragging messages: everything a drop site (a sidebar chat row)
+/// needs to forward the messages, plus a handle to clear the selection once the drop is
+/// handled. External drops read the sibling `gdk::FileList` instead.
+#[derive(Clone, Debug, glib::Boxed)]
+#[boxed_type(name = "PaplMessageDragPayload")]
+pub(crate) struct MessageDragPayload {
+    pub(crate) from_chat_id: i64,
+    /// Ascending, as required by TDLib's `forward_messages`.
+    pub(crate) message_ids: Vec<i64>,
+    /// Send copies instead of forwarding: a dragged photo/video re-sends as a fresh
+    /// message without the "forwarded from" header; a dragged selection forwards.
+    pub(crate) send_copy: bool,
+    pub(crate) history: glib::WeakRef<ChatHistory>,
 }
 
 mod imp {
@@ -491,13 +488,16 @@ mod imp {
                         return;
                     }
                     // Outside selection mode, a drag starting on selectable bubble text is
-                    // a text selection — leave it to the label rather than sweeping rows.
-                    // Inside selection mode, a drag starting on an already-selected media
-                    // message is a drag-out — leave it to that row's DragSource. Either way,
-                    // don't begin a sweep so the other gesture can claim the sequence.
+                    // a text selection, and one starting on a downloaded media picture
+                    // drags the media out — leave those to the label / the row's
+                    // DragSource rather than sweeping rows. Inside selection mode, a drag
+                    // starting on an already-selected message drags the selection itself
+                    // (forward / export). Either way, don't begin a sweep so the other
+                    // gesture can claim the sequence.
                     let skip = (!obj.is_selection_mode()
-                        && obj.point_over_selectable_text(&list_view, start_x, start_y))
-                        || obj.point_over_selected_media(&list_view, start_x, start_y);
+                        && (obj.point_over_selectable_text(&list_view, start_x, start_y)
+                            || obj.point_over_draggable_media(&list_view, start_x, start_y)))
+                        || obj.point_over_selected_message(&list_view, start_x, start_y);
                     obj.imp().drag_skip_for_text.set(skip);
                     if !skip {
                         obj.begin_selection_drag();
@@ -1113,10 +1113,10 @@ impl ChatHistory {
         false
     }
 
-    /// Whether the point (in `list_view` coordinates) lands on an already-selected message
-    /// carrying a downloaded media file — where a drag should export the file to the OS
-    /// (handled by the row's `DragSource`) rather than sweep-select rows.
-    fn point_over_selected_media(&self, list_view: &gtk::ListView, x: f64, y: f64) -> bool {
+    /// Whether the point (in `list_view` coordinates) lands on an already-selected
+    /// message — where a drag drags the selection itself (forward / export, handled by
+    /// the row's `DragSource`) rather than sweep-selecting rows.
+    fn point_over_selected_message(&self, list_view: &gtk::ListView, x: f64, y: f64) -> bool {
         if !self.is_selection_mode() {
             return false;
         }
@@ -1127,30 +1127,121 @@ impl ChatHistory {
                     .message()
                     .downcast::<model::Message>()
                     .ok()
-                    .filter(|message| self.is_message_selected(message.id()))
-                    .and_then(|message| message_media_local_path(&message.content().0))
-                    .is_some();
+                    .is_some_and(|message| self.is_message_selected(message.id()));
             }
             widget = w.parent();
         }
         false
     }
 
-    /// The `gio::File`s of every selected message whose media is fully downloaded — the
-    /// payload for dragging the selection out to the file manager / another app.
-    pub(crate) fn selected_media_files(&self) -> Vec<gio::File> {
-        let model = match self.imp().list_view.model() {
-            Some(model) => model,
-            None => return Vec::new(),
+    /// Whether the point (in `list_view` coordinates) lands on a message's media picture
+    /// whose file is fully downloaded — where a drag outside selection mode drags the
+    /// media itself (handled by the row's `DragSource`) rather than sweep-selecting.
+    fn point_over_draggable_media(&self, list_view: &gtk::ListView, x: f64, y: f64) -> bool {
+        let mut over_media = false;
+        let mut widget = list_view.pick(x, y, gtk::PickFlags::DEFAULT);
+        while let Some(w) = widget {
+            over_media |= w.is::<ui::MediaPicture>();
+            if let Some(row) = w.downcast_ref::<ui::MessageRow>() {
+                return over_media
+                    && row
+                        .message()
+                        .downcast::<model::Message>()
+                        .ok()
+                        .and_then(|message| {
+                            utils::message_media_local_path(&message.content().0)
+                        })
+                        .is_some();
+            }
+            widget = w.parent();
+        }
+        false
+    }
+
+    /// The selected messages, oldest first.
+    fn selected_messages(&self) -> Vec<model::Message> {
+        let Some(model) = self.imp().list_view.model() else {
+            return Vec::new();
         };
         let selected = self.imp().selected_message_ids.borrow();
-        (0..model.n_items())
+        let mut messages: Vec<_> = (0..model.n_items())
             .filter_map(|pos| model.item(pos).and_downcast::<model::ChatHistoryItem>())
             .filter_map(|item| item.message().cloned())
             .filter(|message| selected.contains(&message.id()))
-            .filter_map(|message| message_media_local_path(&message.content().0))
-            .map(|path| gio::File::for_path(path))
-            .collect()
+            .collect();
+        messages.sort_by_key(|message| message.id());
+        messages
+    }
+
+    /// The in-app drag payload for the current selection (see [`MessageDragPayload`]),
+    /// or `None` when nothing is selected.
+    pub(crate) fn message_drag_payload(&self) -> Option<MessageDragPayload> {
+        let chat = self.chat()?;
+        let message_ids: Vec<i64> = self
+            .selected_messages()
+            .iter()
+            .map(|message| message.id())
+            .collect();
+        if message_ids.is_empty() {
+            return None;
+        }
+        let history = glib::WeakRef::new();
+        history.set(Some(self));
+        Some(MessageDragPayload {
+            from_chat_id: chat.id(),
+            message_ids,
+            send_copy: false,
+            history,
+        })
+    }
+
+    /// The `gio::File`s for dragging the selection out of the app: a plain-text
+    /// transcript of the selected messages, plus the media file of every selected
+    /// message whose media is fully downloaded.
+    pub(crate) fn selected_export_files(&self) -> Vec<gio::File> {
+        let messages = self.selected_messages();
+        let mut files: Vec<gio::File> = self.write_transcript(&messages).into_iter().collect();
+        files.extend(
+            messages
+                .iter()
+                .filter_map(|message| utils::message_media_local_path(&message.content().0))
+                .map(gio::File::for_path),
+        );
+        files
+    }
+
+    /// Writes the messages as a plain-text transcript into the app cache and returns
+    /// the file — the "export as .txt" half of dragging a selection out.
+    fn write_transcript(&self, messages: &[model::Message]) -> Option<gio::File> {
+        if messages.is_empty() {
+            return None;
+        }
+        let chat = self.chat()?;
+
+        let mut transcript = String::new();
+        for message in messages {
+            let time = glib::DateTime::from_unix_local(message.date() as i64)
+                .and_then(|dt| dt.format("%Y-%m-%d %H:%M"))
+                .map(|time| time.to_string())
+                .unwrap_or_default();
+            let sender = strings::message_sender(&message.sender(), true);
+            let text = strings::message_content(message);
+            transcript.push_str(&format!("[{time}] {sender}:\n{text}\n\n"));
+        }
+
+        let name: String = chat
+            .title()
+            .chars()
+            .map(|c| if c.is_alphanumeric() || " -_".contains(c) { c } else { '_' })
+            .collect();
+        let name = name.trim();
+        let name = if name.is_empty() { "chat" } else { name };
+
+        let dir = glib::user_cache_dir().join("paper-plane").join("exports");
+        std::fs::create_dir_all(&dir).ok()?;
+        let path = dir.join(format!("{name} history.txt"));
+        std::fs::write(&path, transcript).ok()?;
+        Some(gio::File::for_path(path))
     }
 
     /// Ends an in-progress selection drag (releases the edge auto-scroll).

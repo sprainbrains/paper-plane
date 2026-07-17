@@ -40,6 +40,7 @@ pub(crate) use self::session::Background;
 pub(crate) use self::session::ChatActionBar;
 pub(crate) use self::session::ChatHistory;
 pub(crate) use self::session::ChatHistoryRow;
+pub(crate) use self::session::MessageDragPayload;
 pub(crate) use self::session::ChatInfoWindow;
 pub(crate) use self::session::ContactRow;
 pub(crate) use self::session::ContactsWindow;
