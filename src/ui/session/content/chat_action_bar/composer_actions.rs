@@ -8,47 +8,69 @@ use gtk::subclass::prelude::*;
 use super::ChatActionBarState;
 use super::PHOTO_MIME_TYPES;
 use crate::model;
+use crate::types::MessageId;
 use crate::ui;
 use crate::utils;
 
 impl super::ChatActionBar {
     pub(super) async fn save_message_as_draft(&self) {
         if let Some(chat) = self.chat() {
-            let client_id = chat.session_().client_().id();
-            let chat_id = chat.id();
             let reply_to_message_id =
                 if let ChatActionBarState::Replying(id) = self.imp().state.get() {
                     id
                 } else {
                     0
                 };
-            let draft_message =
-                self.compose_text_message()
-                    .await
-                    .map(|message| tdlib::types::DraftMessage {
-                        reply_to: if reply_to_message_id != 0 {
-                            Some(tdlib::enums::InputMessageReplyTo::Message(
-                                tdlib::types::InputMessageReplyToMessage {
-                                    message_id: reply_to_message_id,
-                                    ..Default::default()
-                                },
-                            ))
-                        } else {
-                            None
-                        },
-                        date: glib::DateTime::now_local().unwrap().to_unix() as i32,
-                        input_message_text: message,
-                        effect_id: 0,
-                        suggested_post_info: None,
-                    });
+            let formatted_text = self.imp().message_entry.formatted_text();
+            Self::save_draft_for(chat, reply_to_message_id, formatted_text).await;
+        }
+    }
 
-            // Save draft message
-            let result =
-                tdlib::functions::set_chat_draft_message(chat_id, None, draft_message, client_id)
-                    .await;
-            if let Err(e) = result {
-                log::warn!("Error setting a draft message: {e:?}");
+    /// Persists `formatted_text` as `chat`'s draft. Takes its inputs by value so `set_chat`
+    /// can capture the OUTGOING chat's state and text before the composer is swapped to the
+    /// new chat, then save them once this deferred future runs.
+    pub(super) async fn save_draft_for(
+        chat: model::Chat,
+        reply_to_message_id: MessageId,
+        formatted_text: Option<model::BoxedFormattedText>,
+    ) {
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+
+        let draft_message = match formatted_text {
+            Some(formatted_text) => {
+                let text = tdlib::functions::parse_markdown(formatted_text.0.clone(), client_id)
+                    .await
+                    .map(|tdlib::enums::FormattedText::FormattedText(text)| text)
+                    .unwrap_or(formatted_text.0);
+                Some(tdlib::types::DraftMessage {
+                    reply_to: (reply_to_message_id != 0).then(|| {
+                        tdlib::enums::InputMessageReplyTo::Message(
+                            tdlib::types::InputMessageReplyToMessage {
+                                message_id: reply_to_message_id,
+                                ..Default::default()
+                            },
+                        )
+                    }),
+                    date: glib::DateTime::now_local().unwrap().to_unix() as i32,
+                    input_message_text: tdlib::enums::InputMessageContent::InputMessageText(
+                        tdlib::types::InputMessageText {
+                            text,
+                            link_preview_options: None,
+                            clear_draft: true,
+                        },
+                    ),
+                    effect_id: 0,
+                    suggested_post_info: None,
+                })
             }
+            None => None,
+        };
+
+        if let Err(e) =
+            tdlib::functions::set_chat_draft_message(chat_id, None, draft_message, client_id).await
+        {
+            log::warn!("Error setting a draft message: {e:?}");
         }
     }
 
