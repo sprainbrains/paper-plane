@@ -231,7 +231,13 @@ impl Row {
                 let Some(list) = obj.chat_folder_bar().chat_folder_list() else {
                     return false;
                 };
-                list.reorder(from as u32, to);
+                // reorder() removes `from` before inserting at `to`. On a forward drag
+                // that shift moves the target down by one, so "before target" is `to - 1`;
+                // otherwise the item lands after the target, contradicting the leading-edge
+                // drop indicator.
+                let from = from as u32;
+                let to = if from < to { to - 1 } else { to };
+                list.reorder(from, to);
                 true
             }
         ));
