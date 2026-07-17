@@ -167,21 +167,21 @@ impl MessageLocation {
     }
 
     fn update_row(&self, message: &model::Message) {
-        if let tdlib::enums::MessageContent::MessageLocation(message_) = message.content().0 {
+        if let Some((location, live_period)) = location_info(&message.content().0) {
             let imp = self.imp();
 
             if let Some(source_id) = imp.expire_source_id.take() {
                 source_id.remove();
             }
 
-            if message_.live_period > 0 {
+            if live_period > 0 {
                 if let Some(user) = message.sender().as_user() {
                     imp.map
                         .set_custom_marker(Some(ui::AvatarMapMarker::from(user).upcast()));
                 }
 
                 let message_date = message.date();
-                if let Some(last_update_date) = self.update_time(message_date, message_.live_period)
+                if let Some(last_update_date) = self.update_time(message_date, live_period)
                 {
                     imp.last_updated_label
                         .set_label(&gettext("updated just now"));
@@ -197,7 +197,7 @@ impl MessageLocation {
                             #[upgrade_or]
                             glib::ControlFlow::Break,
                             move || {
-                                match obj.update_time(message_date, message_.live_period) {
+                                match obj.update_time(message_date, live_period) {
                                     Some(now) => {
                                         let minutes =
                                             now.difference(&last_update_date).as_minutes();
@@ -238,7 +238,7 @@ impl MessageLocation {
             }
 
             imp.map
-                .set_marker_position(message_.location.latitude, message_.location.longitude);
+                .set_marker_position(location.latitude, location.longitude);
             imp.map.center_marker(16.0);
         }
     }
@@ -260,16 +260,31 @@ impl MessageLocation {
 
     fn update_map_window(&self, message: &model::Message) {
         if let Some(map_window) = self.imp().map_window.upgrade()
-            && let tdlib::enums::MessageContent::MessageLocation(message_) = message.content().0
+            && let Some((location, live_period)) = location_info(&message.content().0)
         {
             let map = map_window.map();
 
-            if message_.live_period > 0
+            if live_period > 0
                 && let Some(user) = message.sender().as_user()
             {
                 map.set_custom_marker(Some(ui::AvatarMapMarker::from(user).upcast()));
             }
-            map.set_marker_position(message_.location.latitude, message_.location.longitude);
+            map.set_marker_position(location.latitude, location.longitude);
         }
+    }
+}
+
+/// Extracts the coordinates and live-broadcast period from a location message, handling
+/// both static (`MessageLocation`) and live (`MessageLiveLocation`) content. `live_period`
+/// is 0 for a static location.
+fn location_info(
+    content: &tdlib::enums::MessageContent,
+) -> Option<(tdlib::types::Location, i32)> {
+    match content {
+        tdlib::enums::MessageContent::MessageLocation(data) => Some((data.location.clone(), 0)),
+        tdlib::enums::MessageContent::MessageLiveLocation(data) => {
+            Some((data.location.location.clone(), data.location.live_period))
+        }
+        _ => None,
     }
 }

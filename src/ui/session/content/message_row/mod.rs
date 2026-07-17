@@ -289,7 +289,14 @@ impl Row {
 
         utils::spawn(async move {
             match tdlib::functions::get_message_link(
-                chat_id, message_id, 0, false, false, client_id,
+                chat_id,
+                message_id,
+                0,
+                0,
+                String::new(),
+                false,
+                false,
+                client_id,
             )
             .await
             {
@@ -379,6 +386,7 @@ impl Row {
                     .map(|m| m.content().0),
                 Some(
                     tdlib::enums::MessageContent::MessageLocation(_)
+                        | tdlib::enums::MessageContent::MessageLiveLocation(_)
                         | tdlib::enums::MessageContent::MessageVenue(_)
                 )
             ),
@@ -908,7 +916,7 @@ impl Row {
                 {
                     self.update_specific_content::<_, ui::MessageSticker>(message_);
                 }
-                MessageLocation(_) => {
+                MessageLocation(_) | MessageLiveLocation(_) => {
                     self.update_specific_content::<_, ui::MessageLocation>(message_);
                 }
                 MessagePhoto(_) => {

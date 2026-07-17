@@ -53,11 +53,10 @@ impl super::ChatActionBar {
                         )
                     }),
                     date: glib::DateTime::now_local().unwrap().to_unix() as i32,
-                    input_message_text: tdlib::enums::InputMessageContent::InputMessageText(
-                        tdlib::types::InputMessageText {
+                    content: tdlib::enums::DraftMessageContent::Text(
+                        tdlib::types::DraftMessageContentText {
                             text,
                             link_preview_options: None,
-                            clear_draft: true,
                         },
                     ),
                     effect_id: 0,
@@ -87,17 +86,15 @@ impl super::ChatActionBar {
             self.set_state(ChatActionBarState::Composing);
         }
 
-        if let tdlib::enums::InputMessageContent::InputMessageText(content) =
-            message.0.input_message_text
-        {
-            imp.message_entry
-                .set_formatted_text(Some(model::BoxedFormattedText(content.text)));
-        } else {
-            log::warn!(
-                "Unexpected draft message type: {:?}",
-                message.0.input_message_text
-            );
-            imp.message_entry.set_formatted_text(None);
+        match message.0.content {
+            tdlib::enums::DraftMessageContent::Text(content) => {
+                imp.message_entry
+                    .set_formatted_text(Some(model::BoxedFormattedText(content.text)));
+            }
+            other => {
+                log::warn!("Unexpected draft message content: {other:?}");
+                imp.message_entry.set_formatted_text(None);
+            }
         }
     }
 

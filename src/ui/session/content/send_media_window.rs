@@ -189,20 +189,25 @@ impl SendMediaWindow {
 
         let content = match paintable {
             Some(paintable) => InputMessageContent::InputMessagePhoto(InputMessagePhoto {
-                photo: file,
-                thumbnail: None,
-                added_sticker_file_ids: vec![],
-                width: paintable.intrinsic_width(),
-                height: paintable.intrinsic_height(),
+                photo: tdlib::types::InputPhoto {
+                    photo: file,
+                    thumbnail: None,
+                    video: None,
+                    added_sticker_file_ids: vec![],
+                    width: paintable.intrinsic_width(),
+                    height: paintable.intrinsic_height(),
+                },
                 caption,
                 show_caption_above_media: false,
                 self_destruct_type: None,
                 has_spoiler: false,
             }),
             None => InputMessageContent::InputMessageDocument(InputMessageDocument {
-                document: file,
-                thumbnail: None,
-                disable_content_type_detection: true,
+                document: tdlib::types::InputDocument {
+                    document: file,
+                    thumbnail: None,
+                    disable_content_type_detection: true,
+                },
                 caption,
             }),
         };

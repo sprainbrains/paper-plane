@@ -1901,12 +1901,14 @@ impl ContentPicker {
         };
         let content = tdlib::enums::InputMessageContent::InputMessageSticker(
             tdlib::types::InputMessageSticker {
-                sticker: tdlib::enums::InputFile::Id(tdlib::types::InputFileId {
-                    id: sticker.sticker.id,
-                }),
-                thumbnail: None,
-                width: sticker.width,
-                height: sticker.height,
+                sticker: tdlib::types::InputSticker {
+                    sticker: tdlib::enums::InputFile::Id(tdlib::types::InputFileId {
+                        id: sticker.sticker.id,
+                    }),
+                    thumbnail: None,
+                    width: sticker.width,
+                    height: sticker.height,
+                },
                 emoji: sticker.emoji,
             },
         );
@@ -1955,14 +1957,16 @@ impl ContentPicker {
         self.emit_by_name::<()>("content-picked", &[]);
         let content = tdlib::enums::InputMessageContent::InputMessageAnimation(
             tdlib::types::InputMessageAnimation {
-                animation: tdlib::enums::InputFile::Id(tdlib::types::InputFileId {
-                    id: animation.animation.id,
-                }),
-                thumbnail: None,
-                added_sticker_file_ids: vec![],
-                duration: animation.duration,
-                width: animation.width,
-                height: animation.height,
+                animation: tdlib::types::InputAnimation {
+                    animation: tdlib::enums::InputFile::Id(tdlib::types::InputFileId {
+                        id: animation.animation.id,
+                    }),
+                    thumbnail: None,
+                    added_sticker_file_ids: vec![],
+                    duration: animation.duration,
+                    width: animation.width,
+                    height: animation.height,
+                },
                 caption: None,
                 show_caption_above_media: false,
                 has_spoiler: false,

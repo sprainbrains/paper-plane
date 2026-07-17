@@ -32,3 +32,9 @@ unicode-segmentation = "1"
 [profile.release]
 lto = true
 codegen-units = 1
+
+# Vendored tdlib-rs whose bundled TL schema (tl/api.tl) is upgraded to TDLib 1.8.66.
+# The published tdlib-rs 1.4.0 only ships the 1.8.61 schema; keep this until an upstream
+# release targets 1.8.66. The native tdjson pinned in the flatpak manifest must match.
+[patch.crates-io]
+tdlib-rs = { path = "vendor/tdlib-rs" }

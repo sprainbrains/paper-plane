@@ -142,9 +142,10 @@ impl MessagePoll {
         let is_closed = poll.is_closed;
         let show_results = is_closed || has_voted;
 
-        let (allow_multiple, correct_option_id) = match &poll.r#type {
-            tdlib::enums::PollType::Regular(regular) => (regular.allow_multiple_answers, None),
-            tdlib::enums::PollType::Quiz(quiz) => (false, Some(quiz.correct_option_id)),
+        // `quiz_correct` is `None` for a regular poll, `Some(correct options)` for a quiz.
+        let (allow_multiple, quiz_correct) = match &poll.r#type {
+            tdlib::enums::PollType::Regular => (poll.allows_multiple_answers, None),
+            tdlib::enums::PollType::Quiz(quiz) => (false, Some(quiz.correct_option_ids.clone())),
         };
 
         // A stale selection can't apply once results are shown.
@@ -164,7 +165,7 @@ impl MessagePoll {
                 &option,
                 show_results,
                 allow_multiple,
-                correct_option_id,
+                quiz_correct.as_deref(),
             );
             imp.options_box.append(&row);
         }
@@ -195,7 +196,7 @@ impl MessagePoll {
 
         // A regular (non-quiz) poll the user has voted on but that isn't closed can be
         // un-voted by submitting an empty answer.
-        if correct_option_id.is_none() && !is_closed && has_voted {
+        if quiz_correct.is_none() && !is_closed && has_voted {
             let retract_button = gtk::Button::builder()
                 .label(gettext("Retract Vote"))
                 .halign(gtk::Align::Center)
@@ -219,7 +220,7 @@ impl MessagePoll {
         option: &tdlib::types::PollOption,
         show_results: bool,
         allow_multiple: bool,
-        correct_option_id: Option<i32>,
+        quiz_correct: Option<&[i32]>,
     ) -> gtk::Widget {
         let content = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -250,9 +251,9 @@ impl MessagePoll {
             bar.set_fraction(option.vote_percentage as f64 / 100.0);
             // In a quiz, mark the correct answer, and a wrong chosen answer; otherwise
             // just highlight the user's own choices.
-            if correct_option_id == Some(index) {
+            if quiz_correct.is_some_and(|correct| correct.contains(&index)) {
                 bar.add_css_class("success");
-            } else if option.is_chosen && correct_option_id.is_some() {
+            } else if option.is_chosen && quiz_correct.is_some() {
                 bar.add_css_class("error");
             } else if option.is_chosen {
                 bar.add_css_class("accent");
