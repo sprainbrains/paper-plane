@@ -80,6 +80,59 @@ impl MessageInteractionInfo {
             .clone()
     }
 
+    /// Optimistically flips the local user's reaction of `reaction_type` and returns
+    /// whether it is now chosen (`true` = added, `false` = removed). Mirrors what the
+    /// server will report, so the chip updates instantly; the next
+    /// `updateMessageInteractionInfo` splices in the authoritative state.
+    pub(crate) fn toggle_reaction_optimistic(
+        &self,
+        reaction_type: &tdlib::enums::ReactionType,
+    ) -> bool {
+        let reactions = self.reactions();
+        let key = model::reaction_type_key(reaction_type);
+        let existing = (0..reactions.n_items()).find_map(|i| {
+            let reaction = reactions.item(i)?.downcast::<model::MessageReaction>().ok()?;
+            (model::reaction_type_key(&reaction.reaction_type_()) == key).then_some((i, reaction))
+        });
+
+        // The chips bind to `items-changed`, not to per-item property notifications,
+        // so an in-place count/chosen edit wouldn't refresh a chip. Splice a fresh
+        // reaction in the slot instead, which rebuilds exactly that chip. Adds are
+        // flagged `should_animate` so the rebuilt chip plays its emoji animation.
+        match existing {
+            Some((i, reaction)) if reaction.is_chosen() => {
+                let count = reaction.total_count() - 1;
+                if count <= 0 {
+                    reactions.remove(i);
+                } else {
+                    let replacement =
+                        model::MessageReaction::new(reaction_type.clone(), count, false, false);
+                    reactions.splice(i, 1, &[replacement]);
+                }
+                false
+            }
+            Some((i, reaction)) => {
+                let replacement = model::MessageReaction::new(
+                    reaction_type.clone(),
+                    reaction.total_count() + 1,
+                    true,
+                    true,
+                );
+                reactions.splice(i, 1, &[replacement]);
+                true
+            }
+            None => {
+                reactions.append(&model::MessageReaction::new(
+                    reaction_type.clone(),
+                    1,
+                    true,
+                    true,
+                ));
+                true
+            }
+        }
+    }
+
     fn set_reactions_from(&self, interaction_info: Option<&tdlib::types::MessageInteractionInfo>) {
         let reactions = self.reactions();
         let new: Vec<model::MessageReaction> = interaction_info
@@ -92,7 +145,14 @@ impl MessageInteractionInfo {
             })
             .unwrap_or_default();
 
-        // Reactions change wholesale, so replace the contents in one splice.
+        // Skip the splice when nothing changed, so an optimistic (still-animating)
+        // chip survives an identical server confirmation instead of being rebuilt
+        // static mid-animation. Also spares a full rebuild on view-count-only updates.
+        if reactions_unchanged(&reactions, &new) {
+            return;
+        }
+
+        // Otherwise reactions changed wholesale, so replace the contents in one splice.
         reactions.splice(0, reactions.n_items(), &new);
     }
 
@@ -103,6 +163,25 @@ impl MessageInteractionInfo {
         self.imp().reply_count.set(reply_count);
         self.notify_reply_count()
     }
+}
+
+/// Whether the current reaction chips already match `new` by identity, count, and
+/// chosen state — in which case a re-splice would only churn the widgets.
+fn reactions_unchanged(store: &gio::ListStore, new: &[model::MessageReaction]) -> bool {
+    if store.n_items() as usize != new.len() {
+        return false;
+    }
+    new.iter().enumerate().all(|(i, new_reaction)| {
+        store
+            .item(i as u32)
+            .and_downcast::<model::MessageReaction>()
+            .is_some_and(|current| {
+                model::reaction_type_key(&current.reaction_type_())
+                    == model::reaction_type_key(&new_reaction.reaction_type_())
+                    && current.total_count() == new_reaction.total_count()
+                    && current.is_chosen() == new_reaction.is_chosen()
+            })
+    })
 }
 
 fn extract_reply_count(interaction_info: Option<&tdlib::types::MessageInteractionInfo>) -> u32 {

@@ -26,6 +26,10 @@ mod imp {
         pub(super) total_count: Cell<i32>,
         #[property(get, set)]
         pub(super) is_chosen: Cell<bool>,
+        /// Set on a reaction the local user just added optimistically, so the chip
+        /// built for it plays its emoji animation once. Consumed (cleared) on first
+        /// read by the chip. Not a GObject property — purely a one-shot render hint.
+        pub(super) should_animate: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -66,6 +70,33 @@ impl From<&tdlib::types::MessageReaction> for MessageReaction {
 }
 
 impl MessageReaction {
+    /// Builds a reaction not (yet) present on the server — used for optimistic local
+    /// insertion. `should_animate` marks a just-added reaction whose chip should play
+    /// its emoji animation once.
+    pub(crate) fn new(
+        reaction_type: tdlib::enums::ReactionType,
+        total_count: i32,
+        is_chosen: bool,
+        should_animate: bool,
+    ) -> Self {
+        let obj: Self = glib::Object::builder()
+            .property("label", reaction_label(&reaction_type))
+            .property("total-count", total_count)
+            .property("is-chosen", is_chosen)
+            .build();
+        obj.imp()
+            .reaction_type
+            .replace(Some(model::BoxedReactionType(reaction_type)));
+        obj.imp().should_animate.set(should_animate);
+        obj
+    }
+
+    /// Returns whether this reaction's chip should play its add animation, clearing
+    /// the flag so it fires only once.
+    pub(crate) fn take_should_animate(&self) -> bool {
+        self.imp().should_animate.replace(false)
+    }
+
     pub(crate) fn reaction_type_(&self) -> tdlib::enums::ReactionType {
         self.imp()
             .reaction_type
@@ -74,6 +105,15 @@ impl MessageReaction {
             .unwrap()
             .0
             .clone()
+    }
+}
+
+/// A stable identity for a reaction type, for matching/deduplicating reactions.
+pub(crate) fn reaction_type_key(reaction_type: &tdlib::enums::ReactionType) -> String {
+    match reaction_type {
+        tdlib::enums::ReactionType::Emoji(data) => format!("e:{}", data.emoji),
+        tdlib::enums::ReactionType::CustomEmoji(data) => format!("c:{}", data.custom_emoji_id),
+        tdlib::enums::ReactionType::Paid => "paid".to_owned(),
     }
 }
 

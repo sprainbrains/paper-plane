@@ -404,23 +404,10 @@ impl MessageBubble {
         let Some(message) = self.imp().message.upgrade() else {
             return;
         };
-        let chat = message.chat_();
-        let session = chat.session_();
-        let Some(reaction) = session.default_reaction_type() else {
+        let Some(reaction) = message.chat_().session_().default_reaction_type() else {
             return;
         };
-        let client_id = session.client_().id();
-        let chat_id = chat.id();
-        let message_id = message.id();
-        utils::spawn(async move {
-            if let Err(e) = tdlib::functions::add_message_reaction(
-                chat_id, message_id, reaction.0, false, true, client_id,
-            )
-            .await
-            {
-                log::warn!("Failed to add the favorite reaction: {e:?}");
-            }
-        });
+        super::reactions::toggle_reaction(&message, reaction.0);
     }
 
     /// Refreshes the hover reaction button's glyph for `message`'s session default.
@@ -432,7 +419,12 @@ impl MessageBubble {
         let session = message.chat_().session_();
         match session.default_reaction_type() {
             Some(reaction) => {
-                let icon = super::reactions::reaction_icon_widget(reaction.0, &session, 16);
+                let icon = super::reactions::reaction_icon_widget(
+                    reaction.0,
+                    &session,
+                    16,
+                    super::reactions::ReactionPresentation::Glyph,
+                );
                 button.set_child(Some(&icon));
                 button.set_visible(true);
             }

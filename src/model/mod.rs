@@ -91,6 +91,7 @@ pub(crate) use self::message_forward_info::MessageForwardInfo;
 pub(crate) use self::message_forward_info::MessageForwardOrigin;
 pub(crate) use self::message_interaction_info::MessageInteractionInfo;
 pub(crate) use self::message_reaction::MessageReaction;
+pub(crate) use self::message_reaction::reaction_type_key;
 pub(crate) use self::secret_chat::SecretChat;
 pub(crate) use self::secret_chat::SecretChatState;
 pub(crate) use self::sponsored_message::SponsoredMessage;

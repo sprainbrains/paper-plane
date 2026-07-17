@@ -1,9 +1,11 @@
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::sync::OnceLock;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
 use glib::clone;
+use glib::subclass::Signal;
 use gtk::gdk;
 use gtk::gio;
 use gtk::glib;
@@ -39,6 +41,12 @@ mod imp {
     }
 
     impl ObjectImpl for Sticker {
+        fn signals() -> &'static [Signal] {
+            static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
+            // Emitted when a non-looped animation plays through to its last frame.
+            SIGNALS.get_or_init(|| vec![Signal::builder("animation-finished").build()])
+        }
+
         fn properties() -> &'static [glib::ParamSpec] {
             Self::derived_properties()
         }
@@ -117,6 +125,19 @@ glib::wrapper! {
 }
 
 impl Sticker {
+    /// Connects to the one-shot completion signal, fired when a non-looped animation
+    /// reaches its last frame. Never fires for looped or static stickers.
+    pub(crate) fn connect_animation_finished<F: Fn(&Self) + 'static>(
+        &self,
+        f: F,
+    ) -> glib::SignalHandlerId {
+        self.connect_local("animation-finished", false, move |values| {
+            let obj: Self = values[0].get().unwrap();
+            f(&obj);
+            None
+        })
+    }
+
     pub(crate) fn update_sticker(
         &self,
         sticker: tdlib::types::Sticker,
@@ -192,6 +213,23 @@ impl Sticker {
                 // Only animate while on-screen; map()/unmap() drive play/pause.
                 if self.is_mapped() {
                     animation.play();
+                }
+                if !looped {
+                    // A one-shot: signal when it reaches the last frame. `rlt` pauses
+                    // there (emitting notify::playing); `progress == 1.0` distinguishes
+                    // that from a pause caused by scrolling off-screen mid-play.
+                    animation.connect_notify_local(
+                        Some("playing"),
+                        clone!(
+                            #[weak(rename_to = obj)]
+                            self,
+                            move |animation, _| {
+                                if !animation.is_playing() && animation.progress() >= 1.0 {
+                                    obj.emit_by_name::<()>("animation-finished", &[]);
+                                }
+                            }
+                        ),
+                    );
                 }
                 animation.upcast()
             }

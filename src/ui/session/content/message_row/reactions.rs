@@ -145,7 +145,7 @@ mod imp {
                 reaction,
                 move |_| {
                     if let Some(message) = obj.message() {
-                        super::toggle_reaction(&message, &reaction);
+                        super::toggle_reaction(&message, reaction.reaction_type_());
                     }
                 }
             ));
@@ -153,14 +153,20 @@ mod imp {
             button.upcast()
         }
 
-        /// The leading widget of a chip: the resolved custom-emoji sticker for
-        /// custom-emoji reactions, or a plain label (the emoji / a star) otherwise.
+        /// The badge of a chip: a static Apple-style sticker for standard emoji (or a
+        /// one-shot animation when the user just added this reaction), the animated
+        /// sticker for custom emoji, or a star for paid reactions.
         fn create_emoji_widget(&self, reaction: &model::MessageReaction) -> gtk::Widget {
             let Some(message) = self.obj().message() else {
                 return gtk::Label::new(Some(&reaction.label())).upcast();
             };
             let session = message.chat_().session_();
-            super::reaction_icon_widget(reaction.reaction_type_(), &session, 18)
+            let presentation = if reaction.take_should_animate() {
+                super::ReactionPresentation::AnimatedOnce
+            } else {
+                super::ReactionPresentation::Static
+            };
+            super::reaction_icon_widget(reaction.reaction_type_(), &session, 18, presentation)
         }
     }
 }
@@ -181,19 +187,37 @@ impl MessageReactions {
     }
 }
 
-/// Builds the visual for a single reaction: an animated custom-emoji sticker for
-/// `CustomEmoji` reactions (resolved asynchronously), or a plain label (the emoji
-/// character, or a star for paid reactions) otherwise. `size` is the longer-side
-/// size of the sticker, in pixels. Shared by the message-bubble reaction chips and
-/// the context-menu reactions bar.
+/// How a reaction's emoji is rendered.
+#[derive(Clone, Copy)]
+pub(crate) enum ReactionPresentation {
+    /// The resting badge on a message: a still icon.
+    Static,
+    /// The reaction picker: a small looping animation, like tdesktop's selector.
+    Animated,
+    /// A just-added message chip: plays the emoji animation once, then settles to
+    /// the still icon.
+    AnimatedOnce,
+    /// A crisp font glyph — for a small control (the hover quick-react button) that
+    /// starts hidden, where a lazily-loaded sticker would render blank then soft.
+    Glyph,
+}
+
+/// Builds the visual for a single reaction: the standard emoji rendered as an
+/// Apple-style sticker (still or looping per `presentation`), the animated sticker
+/// for custom emoji, or a star for paid reactions. `size` is the longer-side size of
+/// the sticker, in pixels. Shared by the message chips, hover button, and picker bar.
 pub(crate) fn reaction_icon_widget(
     reaction_type: tdlib::enums::ReactionType,
     session: &model::ClientStateSession,
     size: i32,
+    presentation: ReactionPresentation,
 ) -> gtk::Widget {
     let custom_emoji_id = match reaction_type {
         tdlib::enums::ReactionType::Emoji(data) => {
-            return gtk::Label::new(Some(&data.emoji)).upcast();
+            return match presentation {
+                ReactionPresentation::Glyph => gtk::Label::new(Some(&data.emoji)).upcast(),
+                _ => emoji_reaction_widget(data.emoji, session, size, presentation),
+            };
         }
         tdlib::enums::ReactionType::Paid => {
             return gtk::Label::new(Some("⭐")).upcast();
@@ -223,21 +247,80 @@ pub(crate) fn reaction_icon_widget(
     sticker.upcast()
 }
 
-/// Toggles the current user's reaction: removes it if already chosen, otherwise
-/// adds it.
-fn toggle_reaction(message: &model::Message, reaction: &model::MessageReaction) {
+/// Builds the visual for a standard-emoji reaction: the emoji glyph as a
+/// placeholder (shown instantly, avoiding an empty gap while resolving), swapped
+/// for the reaction's Apple-style sticker once `getEmojiReaction` resolves. Per
+/// `presentation`: the still `static_icon`, the looping `select_animation` (picker),
+/// or a one-shot animation that settles back to the still icon (a just-added chip).
+/// Falls back to the glyph if the emoji has no active reaction.
+fn emoji_reaction_widget(
+    emoji: String,
+    session: &model::ClientStateSession,
+    size: i32,
+    presentation: ReactionPresentation,
+) -> gtk::Widget {
+    let bin = adw::Bin::builder()
+        .child(&gtk::Label::new(Some(&emoji)))
+        .build();
+
+    utils::spawn(clone!(
+        #[weak]
+        bin,
+        #[weak]
+        session,
+        async move {
+            let Some(reaction) = session.resolve_emoji_reaction(emoji).await else {
+                return;
+            };
+            let sticker: ui::Sticker = glib::Object::new();
+            sticker.set_longer_side_size(size);
+
+            match presentation {
+                // `Glyph` is handled before this function (returns a plain label), so it
+                // never reaches here; render the still icon if it somehow does.
+                ReactionPresentation::Static | ReactionPresentation::Glyph => {
+                    sticker.update_sticker(reaction.static_icon.clone(), false, session);
+                }
+                ReactionPresentation::Animated => {
+                    sticker.update_sticker(reaction.select_animation.clone(), true, session);
+                }
+                ReactionPresentation::AnimatedOnce => {
+                    // Play the select animation once, then swap to the still icon so it
+                    // doesn't replay when the chip scrolls back into view.
+                    let static_icon = reaction.static_icon.clone();
+                    sticker.connect_animation_finished(clone!(
+                        #[weak]
+                        session,
+                        move |sticker| {
+                            sticker.update_sticker(static_icon.clone(), false, session);
+                        }
+                    ));
+                    sticker.update_sticker(reaction.select_animation.clone(), false, session);
+                }
+            }
+            bin.set_child(Some(&sticker));
+        }
+    ));
+
+    bin.upcast()
+}
+
+/// Toggles the current user's reaction of `reaction_type` on `message`: it is added
+/// if not currently chosen, otherwise removed. The local reaction list is updated
+/// optimistically so the chip appears/disappears immediately; the authoritative
+/// server state replaces it when `updateMessageInteractionInfo` arrives.
+pub(crate) fn toggle_reaction(message: &model::Message, reaction_type: tdlib::enums::ReactionType) {
+    let now_chosen = message
+        .interaction_info()
+        .toggle_reaction_optimistic(&reaction_type);
+
     let chat = message.chat_();
     let client_id = chat.session_().client_().id();
     let chat_id = chat.id();
     let message_id = message.id();
-    let reaction_type = reaction.reaction_type_();
-    let is_chosen = reaction.is_chosen();
 
     utils::spawn(async move {
-        let result = if is_chosen {
-            tdlib::functions::remove_message_reaction(chat_id, message_id, reaction_type, client_id)
-                .await
-        } else {
+        let result = if now_chosen {
             tdlib::functions::add_message_reaction(
                 chat_id,
                 message_id,
@@ -247,6 +330,9 @@ fn toggle_reaction(message: &model::Message, reaction: &model::MessageReaction) 
                 client_id,
             )
             .await
+        } else {
+            tdlib::functions::remove_message_reaction(chat_id, message_id, reaction_type, client_id)
+                .await
         };
 
         if let Err(e) = result {

@@ -54,6 +54,12 @@ mod imp {
         /// `updateDefaultReactionType`. Not a GObject property because
         /// `ReactionType` has no meaningful default value.
         pub(super) default_reaction_type: RefCell<Option<model::BoxedReactionType>>,
+        /// Cache of resolved standard-emoji reaction assets (static icon, animations),
+        /// keyed by emoji. Reaction emoji are a tiny, heavily repeated set, so caching
+        /// avoids an async round-trip per reaction chip and gives the tap-burst a
+        /// ready source for the animations the badge just resolved.
+        pub(super) emoji_reactions:
+            RefCell<HashMap<String, std::rc::Rc<tdlib::types::EmojiReaction>>>,
     }
 
     #[glib::object_subclass]
@@ -290,6 +296,33 @@ impl ClientStateSession {
     /// The user's server-side default ("favorite") reaction, if known.
     pub(crate) fn default_reaction_type(&self) -> Option<model::BoxedReactionType> {
         self.imp().default_reaction_type.borrow().clone()
+    }
+
+    /// Resolves a standard emoji to its reaction assets (static icon and
+    /// animations), caching the result. Returns `None` when the emoji has no
+    /// active reaction. Concurrent resolves for the same emoji are tolerated
+    /// (first writer wins); the underlying `getEmojiReaction` is a local DB read.
+    pub(crate) async fn resolve_emoji_reaction(
+        &self,
+        emoji: String,
+    ) -> Option<std::rc::Rc<tdlib::types::EmojiReaction>> {
+        if let Some(cached) = self.imp().emoji_reactions.borrow().get(&emoji) {
+            return Some(cached.clone());
+        }
+
+        let client_id = self.client_().id();
+        let tdlib::enums::EmojiReaction::EmojiReaction(reaction) =
+            tdlib::functions::get_emoji_reaction(emoji.clone(), client_id)
+                .await
+                .ok()?;
+
+        let reaction = std::rc::Rc::new(reaction);
+        self.imp()
+            .emoji_reactions
+            .borrow_mut()
+            .entry(emoji)
+            .or_insert_with(|| reaction.clone());
+        Some(reaction)
     }
 
     fn set_private_chats_notification_settings(

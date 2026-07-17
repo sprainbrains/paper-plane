@@ -114,7 +114,7 @@ impl MessageMenuReactions {
                     if types.len() >= MAX_QUICK_REACTIONS {
                         break;
                     }
-                    if seen.insert(reaction_key(&reaction_type)) {
+                    if seen.insert(model::reaction_type_key(&reaction_type)) {
                         types.push(reaction_type);
                     }
                 }
@@ -130,6 +130,7 @@ impl MessageMenuReactions {
                         reaction_type.clone(),
                         &session,
                         REACTION_ICON_SIZE,
+                        super::message_row::ReactionPresentation::Animated,
                     );
                     let button = gtk::Button::builder().child(&icon).build();
                     button.add_css_class("flat");
@@ -138,21 +139,9 @@ impl MessageMenuReactions {
                         #[weak]
                         obj,
                         move |_| {
-                            let reaction_type = reaction_type.clone();
-                            utils::spawn(async move {
-                                if let Err(e) = tdlib::functions::add_message_reaction(
-                                    chat_id,
-                                    message_id,
-                                    reaction_type,
-                                    false,
-                                    true,
-                                    client_id,
-                                )
-                                .await
-                                {
-                                    log::warn!("Failed to add a reaction: {e:?}");
-                                }
-                            });
+                            if let Some(message) = obj.imp().message.borrow().clone() {
+                                super::message_row::toggle_reaction(&message, reaction_type.clone());
+                            }
                             obj.close_menu();
                         }
                     ));
@@ -311,11 +300,3 @@ impl MessageMenuReactions {
     }
 }
 
-/// A stable de-duplication key for a reaction type.
-fn reaction_key(reaction_type: &tdlib::enums::ReactionType) -> String {
-    match reaction_type {
-        tdlib::enums::ReactionType::Emoji(data) => format!("e:{}", data.emoji),
-        tdlib::enums::ReactionType::CustomEmoji(data) => format!("c:{}", data.custom_emoji_id),
-        tdlib::enums::ReactionType::Paid => "paid".to_owned(),
-    }
-}
