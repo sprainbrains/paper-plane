@@ -18,7 +18,7 @@ use crate::ui;
 use crate::utils;
 
 /// What a freshly-initialized window should show.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) enum InitialView {
     /// Restore the last-used account (the normal primary-window behavior).
     RestoreLast,
