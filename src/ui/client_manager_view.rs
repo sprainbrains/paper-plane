@@ -43,7 +43,9 @@ mod imp {
         pub(super) active_client: glib::WeakRef<model::Client>,
         #[property(get)]
         pub(super) last_used_session: RefCell<Option<String>>,
-        /// A chat to select as soon as the next active client's `Session` materializes.
+        /// A chat to pre-select on the next active client. Consumed only once that client's
+        /// `Session` exists (built synchronously for an already-logged-in client); if no
+        /// session is present the request is left in place rather than silently dropped.
         pub(super) pending_chat: Cell<Option<ChatId>>,
         /// The `notify::chat` handler on the current session's `Content`, and the
         /// `(client, chat)` pair last reported to the application registry. Both are
@@ -151,8 +153,8 @@ mod imp {
             // For an already-logged-in client the `Session` (and `Content`) is built
             // synchronously by the state expression, so the chat can be selected and the
             // registry wired up right away.
-            if let Some(chat_id) = self.pending_chat.take()
-                && let Some(session) = utils::descendant::<_, ui::Session>(&client_view)
+            if let Some(session) = utils::descendant::<_, ui::Session>(&client_view)
+                && let Some(chat_id) = self.pending_chat.take()
             {
                 session.select_chat(chat_id);
             }
