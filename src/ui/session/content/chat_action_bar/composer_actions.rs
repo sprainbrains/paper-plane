@@ -134,8 +134,8 @@ impl super::ChatActionBar {
         {
             let extension = match mime.as_str() {
                 "image/png" => "png",
-                "image/jpg" => "jpg",
-                _ => unreachable!(),
+                "image/jpeg" => "jpg",
+                other => return Err(anyhow!("Unsupported clipboard image mime type: {other}")),
             };
 
             let temp_dir = utils::temp_dir()
