@@ -216,7 +216,7 @@ impl MessageMenuReactions {
         // hand off so the menu's close keeps the message spotlight during the picker.
         let chat_history = menu
             .as_ref()
-            .and_then(|menu| utils::ancestor::<_, ui::ChatHistory>(menu));
+            .and_then(utils::ancestor::<ui::MessageMenu, ui::ChatHistory>);
         if let Some(menu) = &menu {
             menu.begin_picker_handoff();
             menu.popdown();
