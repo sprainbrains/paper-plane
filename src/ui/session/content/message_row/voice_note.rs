@@ -144,7 +144,7 @@ impl ui::MessageBaseExt for MessageVoiceNote {
             let voice_note = data.voice_note;
             imp.duration.set(voice_note.duration);
             imp.duration_label
-                .set_label(&format_duration(voice_note.duration));
+                .set_label(&utils::format_duration(voice_note.duration));
 
             imp.samples.replace(decode_waveform(&voice_note.waveform));
             imp.waveform.queue_draw();
@@ -246,10 +246,10 @@ impl MessageVoiceNote {
                 let imp = obj.imp();
                 if media.is_ended() {
                     imp.duration_label
-                        .set_label(&format_duration(imp.duration.get()));
+                        .set_label(&utils::format_duration(imp.duration.get()));
                 } else {
                     let seconds = (media.timestamp() / 1_000_000) as i32;
-                    imp.duration_label.set_label(&format_duration(seconds));
+                    imp.duration_label.set_label(&utils::format_duration(seconds));
                 }
             }
         ));
@@ -273,12 +273,6 @@ impl MessageVoiceNote {
                     && matches!(message.content().0, tdlib::enums::MessageContent::MessageVoiceNote(data) if file_id == 0 || data.voice_note.voice.id == file_id)
             })
     }
-}
-
-fn format_duration(seconds: i32) -> String {
-    let minutes = seconds / 60;
-    let seconds = seconds % 60;
-    format!("{minutes}:{seconds:02}")
 }
 
 /// Decodes TDLib's base64 waveform (5 bits per sample) into 0..=31 amplitudes.

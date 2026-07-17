@@ -23,3 +23,10 @@ pub(crate) use settings::PaperPlaneSettings;
 pub(crate) use widgets::ancestor;
 pub(crate) use widgets::descendant;
 pub(crate) use widgets::show_toast;
+
+/// Formats a duration in seconds as `M:SS` (used by voice and video notes).
+pub(crate) fn format_duration(seconds: i32) -> String {
+    let minutes = seconds / 60;
+    let seconds = seconds % 60;
+    format!("{minutes}:{seconds:02}")
+}

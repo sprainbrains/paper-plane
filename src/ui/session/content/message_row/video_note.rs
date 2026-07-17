@@ -149,7 +149,7 @@ impl MessageVideoNote {
         // Video notes are square/round.
         imp.picture.set_aspect_ratio(1.0);
         imp.indicator
-            .set_label(&format_duration(video_note.duration));
+            .set_label(&utils::format_duration(video_note.duration));
 
         if video_note.video.local.is_downloading_completed {
             if imp.demand.get() {
@@ -212,10 +212,4 @@ impl MessageVideoNote {
         imp.picture.set_paintable(Some(&media));
         imp.media.replace(Some(media));
     }
-}
-
-fn format_duration(seconds: i32) -> String {
-    let minutes = seconds / 60;
-    let seconds = seconds % 60;
-    format!("{minutes}:{seconds:02}")
 }
