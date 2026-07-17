@@ -1158,9 +1158,9 @@ impl ContentPicker {
         }
     }
 
-    fn build_sticker_pack_rail(&self, infos: &[(bool, tdlib::types::StickerSetInfo)]) {
+    fn build_sticker_pack_rail(&self, infos: &[tdlib::types::StickerSetInfo]) {
         self.rebuild_rail(PickerPage::Stickers);
-        for (_, info) in infos {
+        for info in infos {
             let picture = gtk::Picture::builder()
                 .width_request(24)
                 .height_request(24)
@@ -1575,7 +1575,7 @@ impl ContentPicker {
                 if !obj.sticker_generation_is(generation) {
                     return;
                 }
-                obj.populate_stickers(generation, favorites.ok(), recent.ok(), sets.ok(), None)
+                obj.populate_stickers(generation, favorites.ok(), recent.ok(), sets.ok())
                     .await;
                 log::info!(
                     target: "paper_plane::content_picker",
@@ -1613,7 +1613,6 @@ impl ContentPicker {
         favorites: Option<tdlib::enums::Stickers>,
         recent: Option<tdlib::enums::Stickers>,
         sets: Option<tdlib::enums::StickerSets>,
-        emoji_sets: Option<tdlib::enums::StickerSets>,
     ) {
         let started = Instant::now();
         for (title, removal, data) in [
@@ -1628,17 +1627,10 @@ impl ContentPicker {
             return;
         };
         let client_id = session.client_().id();
-        let infos = [(false, sets), (true, emoji_sets)]
-            .into_iter()
-            .flat_map(|(custom, list)| match list {
-                Some(tdlib::enums::StickerSets::StickerSets(data)) => data
-                    .sets
-                    .into_iter()
-                    .map(move |info| (custom, info))
-                    .collect(),
-                None => Vec::new(),
-            })
-            .collect::<Vec<_>>();
+        let infos = match sets {
+            Some(tdlib::enums::StickerSets::StickerSets(data)) => data.sets,
+            None => Vec::new(),
+        };
         self.build_sticker_pack_rail(&infos);
         let cache_path = sticker_set_cache_path(&session);
         let mut previous_cache = load_sticker_set_cache(cache_path.clone()).await;
@@ -1653,7 +1645,7 @@ impl ContentPicker {
                     "Sticker packs",
                 ))));
         }
-        let mut packs = futures::stream::iter(infos.into_iter().map(|(custom, info)| {
+        let mut packs = futures::stream::iter(infos.into_iter().map(|info| {
             let signature = StickerSetSignature::from(&info);
             let cached = previous_cache.sets.remove(&info.id);
             async move {
@@ -1662,7 +1654,6 @@ impl ContentPicker {
                     && cached.signature == signature
                 {
                     return (
-                        custom,
                         info.id,
                         info.title,
                         started.elapsed(),
@@ -1671,7 +1662,6 @@ impl ContentPicker {
                 }
                 match tdlib::functions::get_sticker_set(info.id, client_id).await {
                     Ok(tdlib::enums::StickerSet::StickerSet(set)) => (
-                        custom,
                         info.id,
                         info.title,
                         started.elapsed(),
@@ -1680,14 +1670,13 @@ impl ContentPicker {
                     Err(error) => {
                         if let Some(cached) = cached {
                             (
-                                custom,
                                 info.id,
                                 info.title,
                                 started.elapsed(),
                                 Ok((cached, true, Some(error))),
                             )
                         } else {
-                            (custom, info.id, info.title, started.elapsed(), Err(error))
+                            (info.id, info.title, started.elapsed(), Err(error))
                         }
                     }
                 }
@@ -1696,7 +1685,7 @@ impl ContentPicker {
         .buffered(4);
         let mut pack_count = 0;
         let mut loading_visible = true;
-        while let Some((custom, set_id, title, elapsed, result)) = packs.next().await {
+        while let Some((set_id, title, elapsed, result)) = packs.next().await {
             if !self.sticker_generation_is(generation) {
                 return;
             }
@@ -1723,7 +1712,7 @@ impl ContentPicker {
                     pack_count += 1;
                     log::info!(
                         target: "paper_plane::content_picker",
-                        "pack populated; id={set_id} custom={custom} cached={cache_hit} stickers={sticker_count} elapsed={elapsed:?} title={:?}",
+                        "pack populated; id={set_id} cached={cache_hit} stickers={sticker_count} elapsed={elapsed:?} title={:?}",
                         cached.set.title,
                     );
                     if let Some(error) = refresh_error {
@@ -1741,7 +1730,7 @@ impl ContentPicker {
                         }));
                     log::warn!(
                         target: "paper_plane::content_picker",
-                        "failed to load sticker pack; id={set_id} custom={custom} elapsed={elapsed:?} error={error:?}",
+                        "failed to load sticker pack; id={set_id} elapsed={elapsed:?} error={error:?}",
                     );
                 }
             }
