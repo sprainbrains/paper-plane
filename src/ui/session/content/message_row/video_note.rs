@@ -61,6 +61,29 @@ mod imp {
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             self.derived_property(id, pspec)
         }
+
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            // Video notes autoplay muted; a single tap toggles their audio so they can be
+            // heard. The n_press guard leaves double-click free for the row's reply gesture.
+            let gesture = gtk::GestureClick::new();
+            gesture.set_button(1);
+            gesture.connect_released(clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |gesture, n_press, _, _| {
+                    if n_press != 1 {
+                        return;
+                    }
+                    if let Some(media) = obj.media.borrow().as_ref() {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        media.set_muted(!media.is_muted());
+                    }
+                }
+            ));
+            self.picture.add_controller(gesture);
+        }
     }
 
     impl MessageVideoNote {
