@@ -24,8 +24,6 @@ mod imp {
 
     #[derive(Debug, Default)]
     pub(crate) struct Application {
-        /// The primary (first) window. Actions with no better target fall back to it.
-        pub(super) window: OnceCell<glib::WeakRef<ui::Window>>,
         /// The single TDLib-backed client manager, shared by every window.
         pub(super) client_manager: OnceCell<model::ClientManager>,
         /// Which window currently displays a given chat, so a chat can't be opened in
@@ -48,15 +46,12 @@ mod imp {
 
             let obj = self.obj();
 
-            if let Some(window) = self.window.get().and_then(glib::WeakRef::upgrade) {
+            if let Some(window) = obj.existing_window() {
                 window.present();
                 return;
             }
 
             let window = ui::Window::new(&obj);
-            self.window
-                .set(window.downgrade())
-                .expect("Window already set.");
             window.init_session(InitialView::RestoreLast);
             window.present();
         }
@@ -121,8 +116,20 @@ impl Application {
             .build()
     }
 
+    /// The first live application window, if any. Derived from `windows()` so it never
+    /// dangles the way a cached handle would once its window closes.
+    pub(crate) fn existing_window(&self) -> Option<ui::Window> {
+        self.windows()
+            .into_iter()
+            .find_map(|window| window.downcast::<ui::Window>().ok())
+    }
+
+    /// A window to use as a last-resort target for actions that have no better one.
+    /// Panics only if the application is running with no window at all, which no action
+    /// path can reach.
     pub(crate) fn main_window(&self) -> ui::Window {
-        self.imp().window.get().unwrap().upgrade().unwrap()
+        self.existing_window()
+            .expect("the application has no window")
     }
 
     pub(crate) fn client_manager(&self) -> model::ClientManager {
