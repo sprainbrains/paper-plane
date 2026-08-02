@@ -181,8 +181,7 @@ impl MessageLocation {
                 }
 
                 let message_date = message.date();
-                if let Some(last_update_date) = self.update_time(message_date, live_period)
-                {
+                if let Some(last_update_date) = self.update_time(message_date, live_period) {
                     imp.last_updated_label
                         .set_label(&gettext("updated just now"));
 
@@ -277,9 +276,7 @@ impl MessageLocation {
 /// Extracts the coordinates and live-broadcast period from a location message, handling
 /// both static (`MessageLocation`) and live (`MessageLiveLocation`) content. `live_period`
 /// is 0 for a static location.
-fn location_info(
-    content: &tdlib::enums::MessageContent,
-) -> Option<(tdlib::types::Location, i32)> {
+fn location_info(content: &tdlib::enums::MessageContent) -> Option<(tdlib::types::Location, i32)> {
     match content {
         tdlib::enums::MessageContent::MessageLocation(data) => Some((data.location.clone(), 0)),
         tdlib::enums::MessageContent::MessageLiveLocation(data) => {

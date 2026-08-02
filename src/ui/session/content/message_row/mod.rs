@@ -27,8 +27,8 @@ use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::gio;
-use gtk::graphene;
 use gtk::glib;
+use gtk::graphene;
 use gtk::subclass::prelude::*;
 
 pub(crate) use self::audio::MessageAudio;
@@ -523,8 +523,7 @@ impl Row {
                         return None;
                     }
                     let payload = chat_history.message_drag_payload()?;
-                    let mut providers =
-                        vec![gdk::ContentProvider::for_value(&payload.to_value())];
+                    let mut providers = vec![gdk::ContentProvider::for_value(&payload.to_value())];
                     let files = chat_history.selected_export_files();
                     if !files.is_empty() {
                         let file_list = gdk::FileList::from_array(&files);

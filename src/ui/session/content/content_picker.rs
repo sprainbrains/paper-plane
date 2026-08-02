@@ -427,7 +427,9 @@ impl ContentPicker {
         let flush = |pending: &mut Vec<tdlib::types::Sticker>,
                      out: &mut Vec<glib::BoxedAnyObject>| {
             for chunk in pending.chunks(columns) {
-                out.push(glib::BoxedAnyObject::new(EmojiRow::CustomEmoji(chunk.to_vec())));
+                out.push(glib::BoxedAnyObject::new(EmojiRow::CustomEmoji(
+                    chunk.to_vec(),
+                )));
             }
             pending.clear();
         };

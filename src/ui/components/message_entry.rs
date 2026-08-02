@@ -232,11 +232,9 @@ impl MessageEntry {
             imp.placeholder.set_visible(true);
         } else {
             let entities = self.rebuild_custom_emoji_entities();
-            imp.formatted_text
-                .replace(Some(model::BoxedFormattedText(tdlib::types::FormattedText {
-                    text,
-                    entities,
-                })));
+            imp.formatted_text.replace(Some(model::BoxedFormattedText(
+                tdlib::types::FormattedText { text, entities },
+            )));
 
             imp.placeholder.set_visible(false);
         }

@@ -156,7 +156,10 @@ impl MessageMenuReactions {
                         obj,
                         move |_| {
                             if let Some(message) = obj.imp().message.borrow().clone() {
-                                super::message_row::toggle_reaction(&message, reaction_type.clone());
+                                super::message_row::toggle_reaction(
+                                    &message,
+                                    reaction_type.clone(),
+                                );
                             }
                             obj.close_menu();
                         }
@@ -342,4 +345,3 @@ impl MessageMenuReactions {
         popover.popup();
     }
 }
-

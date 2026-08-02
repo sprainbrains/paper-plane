@@ -249,7 +249,8 @@ impl MessageVoiceNote {
                         .set_label(&utils::format_duration(imp.duration.get()));
                 } else {
                     let seconds = (media.timestamp() / 1_000_000) as i32;
-                    imp.duration_label.set_label(&utils::format_duration(seconds));
+                    imp.duration_label
+                        .set_label(&utils::format_duration(seconds));
                 }
             }
         ));

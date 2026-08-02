@@ -12,6 +12,5 @@ pub(crate) fn message_media_local_path(content: &tdlib::enums::MessageContent) -
         MessageVideoNote(data) => data.video_note.video.clone(),
         _ => return None,
     };
-    (file.local.is_downloading_completed && !file.local.path.is_empty())
-        .then_some(file.local.path)
+    (file.local.is_downloading_completed && !file.local.path.is_empty()).then_some(file.local.path)
 }

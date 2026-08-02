@@ -579,12 +579,11 @@ impl ChatActionBar {
         // composed text now; the save runs deferred, after imp.chat and the composer have
         // already been swapped to the new chat, so reading them then would save the wrong chat.
         if let Some(outgoing_chat) = self.chat() {
-            let reply_to_message_id =
-                if let ChatActionBarState::Replying(id) = imp.state.get() {
-                    id
-                } else {
-                    0
-                };
+            let reply_to_message_id = if let ChatActionBarState::Replying(id) = imp.state.get() {
+                id
+            } else {
+                0
+            };
             let formatted_text = imp.message_entry.formatted_text();
             utils::spawn(async move {
                 Self::save_draft_for(outgoing_chat, reply_to_message_id, formatted_text).await;

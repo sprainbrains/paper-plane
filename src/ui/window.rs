@@ -133,7 +133,8 @@ impl Window {
     /// requested initial account/chat. Must be called once, right after `new`.
     pub(crate) fn init_session(&self, initial: ui::InitialView) {
         let app = self.application().and_downcast::<Application>().unwrap();
-        self.client_manager_view().init(&app.client_manager(), initial);
+        self.client_manager_view()
+            .init(&app.client_manager(), initial);
     }
 
     pub(crate) fn select_chat(&self, client_id: ClientId, chat_id: ChatId) {

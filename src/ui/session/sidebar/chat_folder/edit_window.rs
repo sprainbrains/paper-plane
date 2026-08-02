@@ -290,16 +290,15 @@ impl EditWindow {
             #[weak(rename_to = obj)]
             self,
             async move {
-                let folder = match tdlib::functions::get_chat_folder(chat_folder_id, client_id)
-                    .await
-                {
-                    Ok(tdlib::enums::ChatFolder::ChatFolder(folder)) => folder,
-                    Err(e) => {
-                        log::warn!("Failed to load chat folder: {e:?}");
-                        obj.set_content_sensitive(true);
-                        return;
-                    }
-                };
+                let folder =
+                    match tdlib::functions::get_chat_folder(chat_folder_id, client_id).await {
+                        Ok(tdlib::enums::ChatFolder::ChatFolder(folder)) => folder,
+                        Err(e) => {
+                            log::warn!("Failed to load chat folder: {e:?}");
+                            obj.set_content_sensitive(true);
+                            return;
+                        }
+                    };
 
                 let imp = obj.imp();
                 imp.name_entry.set_text(&folder.name.text.text);
@@ -456,9 +455,7 @@ impl EditWindow {
 
         folder.icon = {
             let name = imp.icon_name.borrow();
-            (!name.is_empty()).then(|| tdlib::types::ChatFolderIcon {
-                name: name.clone(),
-            })
+            (!name.is_empty()).then(|| tdlib::types::ChatFolderIcon { name: name.clone() })
         };
 
         folder.include_contacts = imp.include_contacts_row.is_active();

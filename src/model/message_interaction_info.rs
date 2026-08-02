@@ -91,7 +91,10 @@ impl MessageInteractionInfo {
         let reactions = self.reactions();
         let key = model::reaction_type_key(reaction_type);
         let existing = (0..reactions.n_items()).find_map(|i| {
-            let reaction = reactions.item(i)?.downcast::<model::MessageReaction>().ok()?;
+            let reaction = reactions
+                .item(i)?
+                .downcast::<model::MessageReaction>()
+                .ok()?;
             (model::reaction_type_key(&reaction.reaction_type_()) == key).then_some((i, reaction))
         });
 

@@ -244,9 +244,18 @@ fn sender_label(message: model::Message) -> Option<String> {
 
     // Just use a sender label for specific messages.
     match message.content().0 {
-        MessageText(_) | MessageLocation(_) | MessageLiveLocation(_) | MessageSticker(_)
-        | MessagePhoto(_) | MessageAudio(_) | MessageAnimation(_) | MessageVideo(_)
-        | MessageDocument(_) | MessageVoiceNote(_) | MessageCall(_) | MessageVenue(_) => {}
+        MessageText(_)
+        | MessageLocation(_)
+        | MessageLiveLocation(_)
+        | MessageSticker(_)
+        | MessagePhoto(_)
+        | MessageAudio(_)
+        | MessageAnimation(_)
+        | MessageVideo(_)
+        | MessageDocument(_)
+        | MessageVoiceNote(_)
+        | MessageCall(_)
+        | MessageVenue(_) => {}
         _ => return None,
     }
 

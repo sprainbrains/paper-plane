@@ -308,7 +308,14 @@ fn bubble_path(w: f32, h: f32, top: f32, bottom: f32, outgoing: bool, tail: bool
             -TAIL_OVERHANG,
             h - 1.5,
         );
-        b.cubic_to(-TAIL_OVERHANG * 0.2, h - 5.0, 0.0, h - 8.0, 0.0, h - TAIL_HEIGHT);
+        b.cubic_to(
+            -TAIL_OVERHANG * 0.2,
+            h - 5.0,
+            0.0,
+            h - 8.0,
+            0.0,
+            h - TAIL_HEIGHT,
+        );
     } else {
         b.line_to(bottom, h);
         b.html_arc_to(0.0, h, 0.0, h - bottom, bottom); // bottom-left
@@ -508,9 +515,7 @@ impl MessageBubble {
                 model::MessageForwardOrigin::Chat { chat }
                 | model::MessageForwardOrigin::Channel { chat } => chat.title(),
                 model::MessageForwardOrigin::HiddenUser { sender_name }
-                | model::MessageForwardOrigin::MessageImport { sender_name } => {
-                    sender_name.clone()
-                }
+                | model::MessageForwardOrigin::MessageImport { sender_name } => sender_name.clone(),
             };
             self.imp()
                 .forward_label

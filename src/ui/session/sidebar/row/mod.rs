@@ -177,10 +177,8 @@ mod imp {
 
             // A message selection dragged from the chat history can be dropped on a chat
             // to forward the messages there.
-            let drop_target = gtk::DropTarget::new(
-                ui::MessageDragPayload::static_type(),
-                gdk::DragAction::COPY,
-            );
+            let drop_target =
+                gtk::DropTarget::new(ui::MessageDragPayload::static_type(), gdk::DragAction::COPY);
             drop_target.connect_drop(clone!(
                 #[weak]
                 obj,

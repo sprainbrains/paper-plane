@@ -103,8 +103,14 @@ pub(crate) struct RichInline {
 #[derive(Debug, Clone)]
 pub(crate) enum RichBlock {
     Paragraph(RichInline),
-    Code { code: String, language: String },
-    Quote { inline: RichInline, expandable: bool },
+    Code {
+        code: String,
+        language: String,
+    },
+    Quote {
+        inline: RichInline,
+        expandable: bool,
+    },
 }
 
 /// Converts a TDLib utf16 code-unit range into a byte range of `text`, `None` if the
@@ -198,11 +204,9 @@ pub(crate) fn parse_inline(formatted: &tdlib::types::FormattedText) -> RichInlin
         match &entity.r#type {
             Spoiler => inline.spoilers.push(range),
             Code => inline.codes.push(range),
-            CustomEmoji(data) => {
-                inline
-                    .custom_emoji
-                    .push((range.0, range.1, data.custom_emoji_id))
-            }
+            CustomEmoji(data) => inline
+                .custom_emoji
+                .push((range.0, range.1, data.custom_emoji_id)),
             _ => {}
         }
     }
@@ -315,7 +319,8 @@ pub(crate) fn parse_formatted_text(formatted_text: tdlib::types::FormattedText) 
     };
 
     for c in formatted_text.text.chars() {
-        while next_boundary < boundaries.len() && code_units_offset as i64 >= boundaries[next_boundary]
+        while next_boundary < boundaries.len()
+            && code_units_offset as i64 >= boundaries[next_boundary]
         {
             recompute = true;
             next_boundary += 1;
@@ -524,9 +529,7 @@ mod tests {
                 entity(
                     0,
                     2,
-                    CustomEmoji(tdlib::types::TextEntityTypeCustomEmoji {
-                        custom_emoji_id: 7,
-                    }),
+                    CustomEmoji(tdlib::types::TextEntityTypeCustomEmoji { custom_emoji_id: 7 }),
                 ),
                 entity(3, 6, Spoiler),
                 entity(10, 1, Code),

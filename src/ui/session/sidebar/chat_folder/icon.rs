@@ -135,7 +135,10 @@ mod imp {
         }
 
         fn update_unread(&self) {
-            let count = self.obj().chat_list().map_or(0, |list| list.unread_chat_count());
+            let count = self
+                .obj()
+                .chat_list()
+                .map_or(0, |list| list.unread_chat_count());
             self.unread_label.set_label(&count.to_string());
             self.unread_label.set_visible(count > 0);
             // The badge mask/label in `snapshot` reads the count live.

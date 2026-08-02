@@ -1148,9 +1148,7 @@ impl ChatHistory {
                         .message()
                         .downcast::<model::Message>()
                         .ok()
-                        .and_then(|message| {
-                            utils::message_media_local_path(&message.content().0)
-                        })
+                        .and_then(|message| utils::message_media_local_path(&message.content().0))
                         .is_some();
             }
             widget = w.parent();
@@ -1223,7 +1221,13 @@ impl ChatHistory {
         let name: String = chat
             .title()
             .chars()
-            .map(|c| if c.is_alphanumeric() || " -_".contains(c) { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || " -_".contains(c) {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         let name = name.trim();
         let name = if name.is_empty() { "chat" } else { name };
@@ -1560,7 +1564,8 @@ impl ChatHistory {
         if messages.is_empty() {
             return;
         }
-        self.clipboard().set_text(&Self::render_transcript(messages));
+        self.clipboard()
+            .set_text(&Self::render_transcript(messages));
         self.clear_selection();
     }
 
@@ -2075,7 +2080,11 @@ impl ChatHistory {
                         tdlib::enums::MessageContent::MessageText(content)
                             if content.text.text.trim() == text
                     );
-                if looks_sent && newest_sent.as_ref().is_none_or(|(_, id)| message.id() > *id) {
+                if looks_sent
+                    && newest_sent
+                        .as_ref()
+                        .is_none_or(|(_, id)| message.id() > *id)
+                {
                     newest_sent = Some((row.clone(), message.id()));
                 }
             }

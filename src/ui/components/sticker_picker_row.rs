@@ -217,8 +217,12 @@ mod imp {
             {
                 let (cx, cy) = obj.remove_badge_center(index);
                 let r = REMOVE_BADGE_RADIUS;
-                let bounds =
-                    graphene::Rect::new(cx - r - 1.0, cy - r - 1.0, (r + 1.0) * 2.0, (r + 1.0) * 2.0);
+                let bounds = graphene::Rect::new(
+                    cx - r - 1.0,
+                    cy - r - 1.0,
+                    (r + 1.0) * 2.0,
+                    (r + 1.0) * 2.0,
+                );
                 let ctx = snapshot.append_cairo(&bounds);
                 ctx.arc(cx as f64, cy as f64, r as f64, 0.0, std::f64::consts::TAU);
                 ctx.set_source_rgba(0.0, 0.0, 0.0, 0.55);
@@ -421,10 +425,7 @@ impl StickerPickerRow {
     fn remove_badge_center(&self, index: usize) -> (f32, f32) {
         let cell_width = self.width() as f32 / self.imp().columns.get() as f32;
         let inset = REMOVE_BADGE_RADIUS + 2.0;
-        (
-            index as f32 * cell_width + cell_width - inset,
-            inset,
-        )
+        (index as f32 * cell_width + cell_width - inset, inset)
     }
 
     fn set_hovered_at(&self, x: f64) {
