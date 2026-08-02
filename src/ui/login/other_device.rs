@@ -12,6 +12,16 @@ use crate::model;
 use crate::ui;
 use crate::utils;
 
+fn render_login_qr(link: &str, size: usize) -> Result<Vec<u8>, String> {
+    let symbol = qrcode_generator::qr::Encoder::new(qrcode_generator::qr::ErrorCorrection::Low)
+        .encode_text(link)
+        .map_err(|error| error.to_string())?;
+
+    qrcode_generator::Renderer::new(&symbol, size)
+        .to_luma8()
+        .map_err(|error| error.to_string())
+}
+
 mod imp {
     use std::cell::RefCell;
 
@@ -156,12 +166,10 @@ impl OtherDevice {
                     let size = obj.imp().image.pixel_size() as usize;
                     let bytes_per_pixel = 3;
 
-                    let data_luma = qrcode_generator::to_image_from_str(
-                        data.0.link,
-                        qrcode_generator::QrCodeEcc::Low,
-                        size,
-                    )
-                    .unwrap();
+                    let data_luma = render_login_qr(&data.0.link, size).unwrap_or_else(|error| {
+                        log::error!("Could not render login QR code: {error}");
+                        vec![255; size * size]
+                    });
 
                     let bytes = glib::Bytes::from_owned(
                         // gdk::Texture only knows 3 byte color spaces, thus convert Luma.
@@ -181,5 +189,24 @@ impl OtherDevice {
                 }
             ))
             .bind(&*self.imp().image, "paintable", Some(self));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_login_qr;
+
+    #[test]
+    fn renders_a_square_login_qr_code() {
+        let pixels = render_login_qr("tg://login?token=test", 128).unwrap();
+
+        assert_eq!(pixels.len(), 128 * 128);
+        assert!(pixels.iter().any(|pixel| *pixel == 0));
+        assert!(pixels.iter().any(|pixel| *pixel == 255));
+    }
+
+    #[test]
+    fn rejects_a_qr_code_smaller_than_its_modules() {
+        assert!(render_login_qr("tg://login?token=test", 1).is_err());
     }
 }

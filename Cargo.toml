@@ -3,7 +3,7 @@ name = "paper-plane"
 version = "0.1.0-beta.5"
 authors = ["Marco Melorio <marco.melorio@protonmail.com>", "Marcus Behrendt <marcus.behrendt.86@gmail.com>"]
 edition = "2024"
-rust-version = "1.92"
+rust-version = "1.97"
 
 [dependencies]
 adw = { version = "0.9", package = "libadwaita", features = ["v1_7"] }
@@ -17,7 +17,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 indexmap = "2"
 log = "0.4"
 ori = { git = "https://github.com/Yach0/origami.git", tag="v0.10.0", package = "origami" }
-qrcode-generator = { version = "5", default-features = false }
+qrcode-generator = { version = "6", default-features = false, features = ["qr"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,7 +25,7 @@ rlt = { package = "gtk-rlottie", git = "https://github.com/Yach0/gtk-rlottie-rs.
 shumate = { version = "0.8", package = "libshumate" }
 tdlib = { version = "1.4", package = "tdlib-rs", features = ["pkg-config"] }
 temp-dir = "0.2"
-thiserror = "2"
+thiserror = "2.0.19"
 sys-locale = "0.3"
 unicode-segmentation = "1"
 

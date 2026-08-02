@@ -2,5 +2,5 @@
 # `org.freedesktop.Sdk.Extension.rust-stable` version shipped with the
 # GNOME 50 flatpak runtime used in build-aux/app.drey.PaperPlane.Devel.json.
 [toolchain]
-channel = "1.97.0"
+channel = "1.97.1"
 components = ["rustfmt", "clippy"]

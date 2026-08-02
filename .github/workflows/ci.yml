@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # .rustfmt.toml uses nightly-only import grouping options.
       - uses: dtolnay/rust-toolchain@nightly-2026-07-01
         with:
           components: rustfmt
