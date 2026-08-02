@@ -43,7 +43,7 @@ We compile it in the CI and we upload the artifacts to the GitHub releases, so w
 
 It's mainly created for using it in the [tgt](https://github.com/FedericoBruzzone/tgt) client, but it should work also for any other Rust project.
 
-Current supported TDLib version: [1.8.61](https://github.com/tdlib/td/commit/11e254af695060d8890024dd7faa1cc2d6685ef8).
+Current supported TDLib version: [1.8.66](https://github.com/tdlib/td/commit/022d60202e446ad1287b9fb68e687c8a0760788b).
 
 ## Cargo features
 
@@ -71,7 +71,7 @@ fn main() {
 
 ### local-tdlib
 
-`local-tdlib` require you to have the `tdlib` (version 1.8.61) compiled and installed on your system, and the following variables exported, for example in the `.bashrc` file:
+`local-tdlib` require you to have the `tdlib` (version 1.8.66) compiled and installed on your system, and the following variables exported, for example in the `.bashrc` file:
 
 ```sh
 # The path to the tdlib folder
@@ -114,7 +114,7 @@ fn main() {
 }
 ```
 
-remember to have the `tdlib` (version 1.8.61) compiled on your system, and the following variables exported, for example in the `.bashrc` file:
+remember to have the `tdlib` (version 1.8.66) compiled on your system, and the following variables exported, for example in the `.bashrc` file:
 
 ```sh
 # pkg-config configuration

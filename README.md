@@ -96,7 +96,7 @@ The following tools and development packages are required to build Paper Plane:
 - GTK >= 4.16
 - libadwaita >= 1.6
 - libshumate >= 1.0.0
-- [TDLib 1.8.61](https://github.com/tdlib/td/tree/v1.8.61), including `tdjson`
+- [TDLib 1.8.66](https://github.com/tdlib/td/tree/v1.8.66), including `tdjson`
 - [Telegram API Credentials](https://my.telegram.org/) (optional, but recommended)
 
 Additionally, Paper Plane requires the following GStreamer plugins installed in your system to correctly show all media files:
@@ -112,6 +112,10 @@ meson compile -C _build
 meson test -C _build --print-errorlogs
 sudo meson install -C _build
 ```
+
+Use a fresh build directory after upgrading Meson. Meson build directories are
+not forward-compatible across every Meson release; for example,
+`meson setup _build-modern` avoids reusing an older `_build` directory.
 
 Omit the Telegram API options to use the limited test credentials. Omit
 `-Dprofile=development` for a release build.
