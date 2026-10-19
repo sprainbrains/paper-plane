@@ -152,6 +152,13 @@ pub(crate) fn next_proxy_id(ids: &[i64], current: i64) -> Option<i64> {
     })
 }
 
+/// Whether the auto-switch deadline timer should be armed: rotation needs
+/// at least two candidates, a positive deadline, an offline connection,
+/// and an active proxy to move away from.
+pub(crate) fn should_rotate(count: usize, deadline: i32, online: bool, active: bool) -> bool {
+    count >= 2 && deadline > 0 && !online && active
+}
+
 /// Builds the TDLib payload for a proxy's transport parameters.
 fn proxy_payload(
     kind: ProxyKind,
@@ -451,5 +458,18 @@ mod tests {
         assert_eq!(next_proxy_id(&[5, 9], 5), Some(9));
         assert_eq!(next_proxy_id(&[5, 9], 9), Some(5));
         assert_eq!(next_proxy_id(&[5, 9], 42), Some(5));
+    }
+
+    #[test]
+    fn rotation_skips_when_fewer_than_two_candidates() {
+        assert!(!should_rotate(0, 10, false, true));
+        assert!(!should_rotate(1, 10, false, true));
+        assert!(should_rotate(2, 10, false, true));
+        // deadline 0 means the feature is off
+        assert!(!should_rotate(2, 0, false, true));
+        // nothing to recover from while online
+        assert!(!should_rotate(2, 10, true, true));
+        // no active proxy: rotation has no origin
+        assert!(!should_rotate(2, 10, false, false));
     }
 }

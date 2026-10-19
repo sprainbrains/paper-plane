@@ -26,6 +26,14 @@
       <summary>Enable notifications</summary>
       <description>Whether to show desktop notifications for new messages</description>
     </key>
+    <key name="proxy-auto-switch-deadline" type="i">
+      <default>10</default>
+      <summary>Automatic proxy switch deadline</summary>
+      <description>
+        Seconds without a connection after which the next proxy from the
+        list is tried. 0 disables automatic switching.
+      </description>
+    </key>
     <key name="color-scheme" type="s">
       <choices>
         <choice value="default"/>

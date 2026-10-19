@@ -11,8 +11,10 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::time::Duration;
 
 use glib::Properties;
+use glib::clone;
 use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
@@ -20,8 +22,10 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::model::proxies::{
-    MergeOp, ProxyEntry, ProxyItem, ProxyStatus, entry_from_added, plan_merge,
+    MergeOp, ProxyEntry, ProxyItem, ProxyStatus, entry_from_added, next_proxy_id, plan_merge,
+    should_rotate,
 };
+use crate::utils;
 
 mod imp {
     use super::*;
@@ -38,6 +42,7 @@ mod imp {
         pub(super) active_proxy_id: Cell<i64>,
         pub(super) list: RefCell<Vec<ProxyItem>>,
         pub(super) checking: RefCell<HashSet<i64>>,
+        pub(super) rotation_source: RefCell<Option<glib::SourceId>>,
     }
 
     #[glib::object_subclass]
@@ -58,6 +63,12 @@ mod imp {
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             self.derived_property(id, pspec)
+        }
+
+        fn dispose(&self) {
+            if let Some(source) = self.rotation_source.borrow_mut().take() {
+                source.remove();
+            }
         }
     }
 
@@ -99,6 +110,11 @@ impl ProxyManager {
         }
         imp.connection_online.set(online);
         self.notify_connection_online();
+        if online {
+            self.disarm_rotation();
+        } else {
+            self.arm_rotation();
+        }
     }
 
     pub(crate) fn set_active(&self, id: i64) {
@@ -108,6 +124,68 @@ impl ProxyManager {
         }
         imp.active_proxy_id.set(id);
         self.notify_active_proxy_id();
+        self.arm_rotation();
+    }
+
+    /// Stops the auto-switch deadline timer, if armed.
+    pub(crate) fn disarm_rotation(&self) {
+        if let Some(source) = self.imp().rotation_source.borrow_mut().take() {
+            source.remove();
+        }
+    }
+
+    /// Arms the auto-switch deadline timer when rotation applies: offline,
+    /// an active proxy, at least two candidates and a positive deadline.
+    /// Called on every state change that could make rotation relevant; the
+    /// gate itself is the pure `should_rotate`.
+    pub(crate) fn arm_rotation(&self) {
+        let imp = self.imp();
+        if imp.rotation_source.borrow().is_some() {
+            return; // one deadline window at a time
+        }
+        let deadline = utils::PaperPlaneSettings::default().int("proxy-auto-switch-deadline");
+        let count = imp.list.borrow().len();
+        if !should_rotate(
+            count,
+            deadline,
+            imp.connection_online.get(),
+            imp.active_proxy_id.get() != 0,
+        ) {
+            return;
+        }
+        let source = glib::timeout_add_local_once(
+            Duration::from_secs(deadline as u64),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move || {
+                    obj.imp().rotation_source.borrow_mut().take();
+                    obj.rotate_now();
+                }
+            ),
+        );
+        *imp.rotation_source.borrow_mut() = Some(source);
+    }
+
+    fn rotate_now(&self) {
+        let ids: Vec<i64> = self.imp().list.borrow().iter().map(ProxyItem::id).collect();
+        let Some(next) = next_proxy_id(&ids, self.active_proxy_id()) else {
+            return;
+        };
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                if let Err(e) = obj.enable(next).await {
+                    log::warn!("Proxy auto-switch failed: {e:?}");
+                }
+                // Still offline after the switch: try the next candidate
+                // after another deadline window.
+                if !obj.connection_online() {
+                    obj.arm_rotation();
+                }
+            }
+        ));
     }
 
     pub(crate) async fn refresh(&self) {
@@ -247,5 +325,7 @@ impl ProxyManager {
                 .map(|entry| entry.id)
                 .unwrap_or(0),
         );
+        // The candidate count may have just reached two.
+        self.arm_rotation();
     }
 }
