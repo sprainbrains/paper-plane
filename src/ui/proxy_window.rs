@@ -26,8 +26,11 @@ mod imp {
     pub(crate) struct ProxyWindow {
         pub(super) client: OnceCell<model::Client>,
         pub(super) manager: OnceCell<model::ProxyManager>,
-        /// Set while the code syncs the radio rows from the model, so the
-        /// resulting activation handlers do not echo back into TDLib.
+        /// The transient parent, used as toast host: dialogs are not under the
+        /// main window's AdwToastOverlay.
+        pub(super) parent: glib::WeakRef<gtk::Window>,
+        /// Set while a user activation drives a TDLib round-trip, so the
+        /// model-driven `sync_radio_rows` does not re-trigger it.
         pub(super) syncing: Cell<bool>,
         #[template_child]
         pub(super) none_row: TemplateChild<adw::ActionRow>,
@@ -68,9 +71,36 @@ mod imp {
     }
 
     impl ObjectImpl for ProxyWindow {
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: std::sync::OnceLock<Vec<glib::ParamSpec>> =
+                std::sync::OnceLock::new();
+            PROPERTIES.get_or_init(|| {
+                vec![
+                    glib::ParamSpecObject::builder::<model::Client>("client")
+                        .construct_only()
+                        .build(),
+                ]
+            })
+        }
+
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            match pspec.name() {
+                "client" => self.client.set(value.get().unwrap()).unwrap(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "client" => self.client.get().to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
         fn constructed(&self) {
             self.parent_constructed();
 
+            // `client` is a construct-only property: it is already set here.
             let Some(client) = self.client.get() else {
                 return;
             };
@@ -177,11 +207,18 @@ glib::wrapper! {
 
 impl ProxyWindow {
     pub(crate) fn new(parent: &gtk::Window, client: &model::Client) -> Self {
-        let window: Self = glib::Object::new();
-        // `new` is the only constructor; the cells are always fresh here.
-        let _ = window.imp().client.set(client.clone());
+        let window: Self = glib::Object::builder().property("client", client).build();
+        window.imp().parent.set(Some(parent));
         window.present(Some(parent));
         window
+    }
+
+    /// Toasts surface on the main window's overlay: dialogs are not under it.
+    fn toast(&self, message: String) {
+        match self.imp().parent.upgrade() {
+            Some(parent) => utils::show_toast(&parent, message),
+            None => log::info!("{message}"),
+        }
     }
 
     /// Mirrors the model's active proxy into the radio rows.
@@ -234,7 +271,10 @@ impl ProxyWindow {
         }
         // Nothing to enable yet: snap back with an explanation.
         let Some(first) = manager.item(0).and_downcast::<model::ProxyItem>() else {
-            utils::show_toast(self, gettext("Add a proxy first"));
+            imp.syncing.set(true);
+            self.toast(gettext("Add a proxy first"));
+            self.sync_radio_rows();
+            imp.syncing.set(false);
             return;
         };
         let id = first.id();

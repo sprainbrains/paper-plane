@@ -133,13 +133,11 @@ impl ProxyManager {
 
     /// Arms the auto-switch deadline timer when rotation applies: offline,
     /// an active proxy, at least two candidates and a positive deadline.
-    /// Called on every state change that could make rotation relevant; the
-    /// gate itself is the pure `should_rotate`.
+    /// Called on every state change that could flip the gate; when the gate
+    /// is false any armed timer is removed, so a user who just disabled the
+    /// proxy is never rotated back.
     pub(crate) fn arm_rotation(&self) {
         let imp = self.imp();
-        if imp.rotation_source.borrow().is_some() {
-            return; // one deadline window at a time
-        }
         let deadline = utils::PaperPlaneSettings::default().int("proxy-auto-switch-deadline");
         let count = imp.list.borrow().len();
         if !should_rotate(
@@ -148,7 +146,13 @@ impl ProxyManager {
             imp.connection_online.get(),
             imp.active_proxy_id.get() != 0,
         ) {
+            if let Some(source) = imp.rotation_source.borrow_mut().take() {
+                source.remove();
+            }
             return;
+        }
+        if imp.rotation_source.borrow().is_some() {
+            return; // one deadline window at a time
         }
         let source = glib::timeout_add_local_once(
             Duration::from_secs(deadline as u64),
@@ -165,6 +169,9 @@ impl ProxyManager {
     }
 
     fn rotate_now(&self) {
+        if self.active_proxy_id() == 0 {
+            return; // the user disabled the proxy while the timer was pending
+        }
         let ids: Vec<i64> = self.imp().list.borrow().iter().map(ProxyItem::id).collect();
         let Some(next) = next_proxy_id(&ids, self.active_proxy_id()) else {
             return;

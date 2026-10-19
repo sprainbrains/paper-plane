@@ -49,6 +49,9 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/proxy_editor.ui")]
     pub(crate) struct ProxyEditor {
         pub(super) client: OnceCell<model::Client>,
+        /// The transient parent, used as toast host (dialogs are not under
+        /// the main window's AdwToastOverlay).
+        pub(super) parent: glib::WeakRef<gtk::Window>,
         /// The proxy being edited, `None` while adding.
         pub(super) editing: RefCell<Option<model::ProxyItem>>,
         /// Whether a saved proxy should become the active one.
@@ -89,6 +92,32 @@ mod imp {
     }
 
     impl ObjectImpl for ProxyEditor {
+        fn properties() -> &'static [glib::ParamSpec] {
+            static PROPERTIES: std::sync::OnceLock<Vec<glib::ParamSpec>> =
+                std::sync::OnceLock::new();
+            PROPERTIES.get_or_init(|| {
+                vec![
+                    glib::ParamSpecObject::builder::<model::Client>("client")
+                        .construct_only()
+                        .build(),
+                ]
+            })
+        }
+
+        fn set_property(&self, _id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            match pspec.name() {
+                "client" => self.client.set(value.get().unwrap()).unwrap(),
+                _ => unimplemented!(),
+            }
+        }
+
+        fn property(&self, _id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "client" => self.client.get().to_value(),
+                _ => unimplemented!(),
+            }
+        }
+
         fn constructed(&self) {
             self.parent_constructed();
 
@@ -140,7 +169,7 @@ impl ProxyEditor {
     /// Opens the editor to add a new proxy. The new proxy becomes active
     /// exactly when one already is (the window's "Use Proxy" state).
     pub(crate) fn for_add(parent: &gtk::Window, client: &model::Client) {
-        let editor = Self::new_window(client);
+        let editor = Self::new_window(parent, client);
         editor
             .imp()
             .enable_on_save
@@ -154,7 +183,7 @@ impl ProxyEditor {
         client: &model::Client,
         link: &utils::proxy_link::ProxyLink,
     ) {
-        let editor = Self::new_window(client);
+        let editor = Self::new_window(parent, client);
         {
             let imp = editor.imp();
             imp.enable_on_save.set(true);
@@ -177,7 +206,7 @@ impl ProxyEditor {
 
     /// Opens the editor prefilled from an existing proxy.
     pub(crate) fn for_edit(parent: &gtk::Window, client: &model::Client, item: &model::ProxyItem) {
-        let editor = Self::new_window(client);
+        let editor = Self::new_window(parent, client);
         {
             let imp = editor.imp();
             imp.editing.replace(Some(item.clone()));
@@ -195,10 +224,19 @@ impl ProxyEditor {
         editor.present(Some(parent));
     }
 
-    fn new_window(client: &model::Client) -> Self {
-        let editor: Self = glib::Object::new();
-        let _ = editor.imp().client.set(client.clone());
+    fn new_window(parent: &gtk::Window, client: &model::Client) -> Self {
+        let editor: Self = glib::Object::builder().property("client", client).build();
+        editor.imp().parent.set(Some(parent));
         editor
+    }
+
+    /// Toasts surface on the transient parent's overlay: dialogs are not
+    /// under the main window's AdwToastOverlay.
+    fn toast(&self, message: String) {
+        match self.imp().parent.upgrade() {
+            Some(parent) => utils::show_toast(&parent, message),
+            None => log::info!("{message}"),
+        }
     }
 
     fn update_field_visibility(&self) {
@@ -254,6 +292,10 @@ impl ProxyEditor {
         let enable = imp.enable_on_save.get();
         let editing = imp.editing.borrow().clone();
 
+        // Lock Save for the round-trip; re-enable on failure (the dialog
+        // stays open) so a slow TDLib cannot be double-clicked into a
+        // duplicate proxy.
+        imp.save_button.set_sensitive(false);
         utils::spawn(clone!(
             #[weak(rename_to = as_this)]
             self,
@@ -268,7 +310,8 @@ impl ProxyEditor {
                     }
                     Err(e) => {
                         log::warn!("SaveProxy failed: {e:?}");
-                        utils::show_toast(&as_this, gettext("Could not save the proxy"));
+                        as_this.imp().save_button.set_sensitive(true);
+                        as_this.toast(gettext("Could not save the proxy"));
                     }
                 }
             }

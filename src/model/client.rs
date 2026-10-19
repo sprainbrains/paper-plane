@@ -315,10 +315,16 @@ impl Client {
 
     /// The client's proxy manager, created on first use.
     pub(crate) fn proxies(&self) -> model::ProxyManager {
-        self.imp()
-            .proxies
-            .get_or_init(|| model::ProxyManager::new(self))
-            .clone()
+        let imp = self.imp();
+        let manager = imp.proxies.get_or_init(|| {
+            let manager = model::ProxyManager::new(self);
+            // Seed the real connection state: TDLib only pushes
+            // updateConnectionState on transitions, which may have
+            // happened before the manager existed.
+            manager.set_connection_online(imp.connection_online.get());
+            manager
+        });
+        manager.clone()
     }
 
     fn set_connection_online(&self, online: bool) {
