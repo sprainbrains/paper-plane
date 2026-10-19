@@ -807,12 +807,13 @@ impl ChatHistory {
 
             // A new or deleted message flips its neighbour's grouping; refresh the
             // visible rows so the repeated avatar/name/corners update at once. Older
-            // messages load at high positions (off-screen), so skip those bulk appends.
+            // messages load at the top of the view (off-screen), so skip those bulk
+            // inserts — only changes at the newest end (the last view rows) matter.
             model.connect_items_changed(clone!(
                 #[weak(rename_to = obj)]
                 self,
-                move |_, position, removed, _| {
-                    if position == 0 || removed > 0 {
+                move |model, position, removed, added| {
+                    if removed > 0 || position + added >= model.n_items() {
                         obj.refresh_grouping_visuals();
                     }
                 }
@@ -824,12 +825,13 @@ impl ChatHistory {
                 let list = gio::ListStore::new::<gio::ListModel>();
 
                 // We need to create a list here so that we can append the sponsored message
-                // to the chat history in the GtkListView using a GtkFlattenListModel
+                // to the chat history in the GtkListView using a GtkFlattenListModel.
+                // The newest messages are at the end of the view now, so the sponsored
+                // slot goes after the history to stay at the bottom.
                 let sponsored_message_list = gio::ListStore::new::<model::SponsoredMessage>();
+                list.append(&model);
                 list.append(&sponsored_message_list);
                 self.request_sponsored_message(chat, &sponsored_message_list);
-
-                list.append(&model);
 
                 gtk::FlattenListModel::new(Some(list)).upcast()
             } else {
@@ -857,9 +859,11 @@ impl ChatHistory {
                     scrollbar.set_visible(false);
 
                     let adj = imp.list_view.vadjustment().unwrap();
-                    adj.set_value(0.0);
 
-                    while adj.value() == 0.0 {
+                    // Prefill the viewport: keep loading the next older batch until the
+                    // loaded window is taller than the visible area, then pin the view to
+                    // the newest end (the bottom).
+                    while adj.upper() <= adj.page_size() {
                         let result = model.load_older_messages(2).await;
                         if !obj.is_current_history(generation, chat_id, &model) {
                             return;
@@ -876,6 +880,8 @@ impl ChatHistory {
                             }
                         }
                     }
+
+                    adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
 
                     scrollbar.set_visible(true);
                     imp.is_loading_messages.set(false);

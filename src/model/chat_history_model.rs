@@ -77,10 +77,13 @@ mod imp {
             self.list.borrow().len() as u32
         }
 
+        /// The interface is exposed in ascending time order (oldest item at position 0)
+        /// so a plain, non-reversed `GtkListView` renders new messages at the bottom.
+        /// Internal storage stays newest-first.
         fn item(&self, position: u32) -> Option<glib::Object> {
-            self.list
-                .borrow()
-                .get(position as usize)
+            let list = self.list.borrow();
+            let index = list.len().checked_sub(1)?.checked_sub(position as usize)?;
+            list.get(index)
                 .map(glib::object::Cast::upcast_ref::<glib::Object>)
                 .cloned()
         }
@@ -261,6 +264,11 @@ impl ChatHistoryModel {
     fn emit_items_changed_with_dividers(&self, position: u32, removed: u32, added: u32) {
         let imp = self.imp();
 
+        // The caller has already applied its (position, removed, added) change to the
+        // newest-first storage; this is the count before that change. Divider fixes below
+        // widen the same range, keeping it valid against this base.
+        let old_len = imp.list.borrow().len() + removed as usize - added as usize;
+
         let added = {
             let position = position as usize;
             let added = added as usize;
@@ -282,6 +290,7 @@ impl ChatHistoryModel {
             remove_duplicate_day_divider(&mut list, position as usize, removed, added)
         };
 
+        let position = view_emit_position(old_len, position as usize, removed as usize) as u32;
         self.upcast_ref::<gio::ListModel>()
             .items_changed(position, removed, added);
     }
@@ -377,12 +386,18 @@ impl ChatHistoryModel {
             return false;
         };
 
-        imp.list.borrow_mut().insert(
-            position,
-            model::ChatHistoryItem::for_unread_divider(last_read_id),
-        );
+        let old_len = {
+            let mut list = imp.list.borrow_mut();
+            let old_len = list.len();
+            list.insert(
+                position,
+                model::ChatHistoryItem::for_unread_divider(last_read_id),
+            );
+            old_len
+        };
+        let position = view_emit_position(old_len, position, 0) as u32;
         self.upcast_ref::<gio::ListModel>()
-            .items_changed(position as u32, 0, 1);
+            .items_changed(position, 0, 1);
         true
     }
 
@@ -486,6 +501,18 @@ impl ChatHistoryModel {
 
         self.emit_items_changed_with_dividers(index, 1, 0);
     }
+}
+
+/// Translates a change notification from newest-first storage coordinates to the
+/// reversed interface exposed by [`ChatHistoryModel`] as a `ListModel`. A change
+/// replacing model storage positions `position..position + removed` in a list of
+/// `old_len` items lands at view position `old_len - removed - position`: storage
+/// index 0 (newest) is the last view row, storage index `old_len - 1` (oldest) is
+/// the first.
+fn view_emit_position(old_len: usize, position: usize, removed: usize) -> usize {
+    old_len
+        .checked_sub(position + removed)
+        .expect("change range within old item count")
 }
 
 fn insert_day_dividers(
@@ -601,7 +628,20 @@ mod tests {
 
     use super::day_divider_offsets;
     use super::remove_trailing_day_divider;
+    use super::view_emit_position;
     use crate::model;
+
+    #[test]
+    fn view_emit_positions_reverse_change_ranges() {
+        // A new message inserted at storage front lands as the last view row.
+        assert_eq!(view_emit_position(30, 0, 0), 30);
+        // A batch of older messages appended at storage back inserts at the view top.
+        assert_eq!(view_emit_position(30, 30, 0), 0);
+        // Deleting storage index j maps to view index n - 1 - j.
+        assert_eq!(view_emit_position(30, 5, 1), 24);
+        // Clearing the whole window starts at the top of the view.
+        assert_eq!(view_emit_position(30, 0, 30), 0);
+    }
 
     #[test]
     fn divider_offsets_mark_each_day_boundary_from_oldest_to_newest() {

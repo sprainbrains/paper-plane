@@ -389,7 +389,6 @@
                         <property name="vscroll-policy">natural</property>
                         <property name="child">
                           <object class="GtkListView" id="list_view">
-                            <property name="reversed">True</property>
                             <style>
                               <class name="chat-history"/>
                             </style>
