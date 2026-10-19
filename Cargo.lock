@@ -1267,7 +1267,6 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "origami"
 version = "0.10.0"
-source = "git+https://github.com/Yach0/origami.git?tag=v0.10.0#b68dc7b8fc57d9a669c4b17c2e986bae9fb1ae0e"
 dependencies = [
  "gtk4",
  "libadwaita",

@@ -15,3 +15,6 @@ src/config.rs
 
 # flatpak-builder local build output
 _build_flatpak/
+
+# Machine-local cargo overrides (native build paths)
+.cargo/

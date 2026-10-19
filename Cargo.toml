@@ -38,3 +38,8 @@ codegen-units = 1
 # release targets 1.8.66. The native tdjson pinned in the flatpak manifest must match.
 [patch.crates-io]
 tdlib-rs = { path = "vendor/tdlib-rs" }
+
+# Vendored origami built against GTK v4_20 for native hosts without GTK 4.21
+# (upstream tag v0.10.0 pins v4_22, which only the GNOME 50 SDK provides).
+[patch."https://github.com/Yach0/origami.git"]
+origami = { path = "vendor/origami" }
