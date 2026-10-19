@@ -2,7 +2,7 @@
 Name=Paper Plane
 Comment=Chat over Telegram on a modern and elegant client
 Type=Application
-Exec=paper-plane
+Exec=@bindir@/paper-plane
 Terminal=false
 Categories=GNOME;GTK;Chat;Network;InstantMessaging;
 Keywords=Gnome;GTK;telegram;tg;chat;im;messaging;messenger;

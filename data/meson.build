@@ -3,6 +3,7 @@ subdir('resources')
 # Desktop file
 desktop_conf = configuration_data()
 desktop_conf.set('icon', application_id)
+desktop_conf.set('bindir', bindir)
 desktop_file = i18n.merge_file(
   type: 'desktop',
   input: configure_file(
