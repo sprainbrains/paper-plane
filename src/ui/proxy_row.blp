@@ -1,0 +1,53 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $PaplProxyRow : Adw.ActionRow {
+  [prefix]
+  Image kind_image {
+    valign: center;
+  }
+
+  [suffix]
+  Box status_box {
+    spacing: 6;
+    valign: center;
+
+    Image status_checking {
+      icon-name: "process-working-symbolic";
+      visible: false;
+    }
+
+    Image status_ok {
+      icon-name: "object-select-symbolic";
+      visible: false;
+
+      styles ["success"]
+    }
+
+    Image status_failed {
+      icon-name: "cross-small-symbolic";
+      visible: false;
+
+      styles ["error"]
+    }
+
+    Label latency_label {
+      visible: false;
+      styles ["dim-label", "caption"]
+    }
+
+    Button check_button {
+      icon-name: "view-refresh-symbolic";
+      tooltip-text: _("Check");
+
+      styles ["flat"]
+    }
+
+    Button remove_button {
+      icon-name: "user-trash-symbolic";
+      tooltip-text: _("Remove");
+
+      styles ["flat"]
+    }
+  }
+}

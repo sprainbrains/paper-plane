@@ -7,6 +7,53 @@ template $PaplProxyWindow : Adw.PreferencesDialog {
     icon-name: "proxy-shield-symbolic";
 
     Adw.PreferencesGroup {
+      Adw.ActionRow none_row {
+        title: _("Don't Use Proxy");
+        activatable: true;
+        selectable: false;
+
+        [prefix]
+        Image none_check {
+          icon-name: "object-select-symbolic";
+          valign: center;
+        }
+      }
+
+      Adw.ActionRow use_row {
+        title: _("Use Proxy");
+        activatable: true;
+        selectable: false;
+
+        [prefix]
+        Image use_check {
+          icon-name: "object-select-symbolic";
+          valign: center;
+        }
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Automatic Switching");
+      description: _("Try the next proxy from the list when the connection stays down for:");
+
+      Adw.ComboRow deadline_combo_row {
+        title: _("Switch Deadline");
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Proxies");
+
+      header-suffix: Button add_proxy_button {
+        icon-name: "list-add-symbolic";
+        tooltip-text: _("Add Proxy");
+        action-name: "proxy-window.add";
+      }
+
+      ListBox proxy_list {
+        css-classes: ["boxed-list"];
+        activate-on-single-click: true;
+      }
     }
   }
 }
