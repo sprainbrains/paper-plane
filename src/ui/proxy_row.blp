@@ -8,6 +8,15 @@ template $PaplProxyRow : Adw.ActionRow {
   }
 
   [suffix]
+  Image selected_check {
+    icon-name: "object-select-symbolic";
+    valign: center;
+    visible: false;
+
+    styles ["success"]
+  }
+
+  [suffix]
   Box status_box {
     spacing: 6;
     valign: center;

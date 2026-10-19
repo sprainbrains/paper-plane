@@ -185,6 +185,8 @@ mod imp {
                 async move {
                     manager.refresh().await;
                     obj.sync_radio_rows();
+                    // Fresh pings for every row while the window is open.
+                    manager.check_all().await;
                 }
             ));
 

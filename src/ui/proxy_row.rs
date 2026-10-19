@@ -22,6 +22,8 @@ mod imp {
         #[template_child]
         pub(super) kind_image: TemplateChild<gtk::Image>,
         #[template_child]
+        pub(super) selected_check: TemplateChild<gtk::Image>,
+        #[template_child]
         pub(super) status_checking: TemplateChild<gtk::Image>,
         #[template_child]
         pub(super) status_ok: TemplateChild<gtk::Image>,
@@ -176,6 +178,7 @@ impl ProxyRow {
         }
 
         self.set_activatable(!item.enabled());
+        imp.selected_check.set_visible(item.enabled());
         if item.enabled() {
             self.add_css_class("active-proxy");
         } else {

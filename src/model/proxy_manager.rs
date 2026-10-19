@@ -280,6 +280,15 @@ impl ProxyManager {
         self.imp().checking.borrow_mut().remove(&id);
     }
 
+    /// Probes every proxy in turn so the list shows fresh latencies when it
+    /// opens. Sequential on purpose: parallel probes would skew each other.
+    pub(crate) async fn check_all(&self) {
+        let items: Vec<ProxyItem> = self.imp().list.borrow().clone();
+        for item in items {
+            self.check(&item).await;
+        }
+    }
+
     /// Replaces storage from an incoming snapshot, preserving item identity
     /// and emitting one exactly-ranged `items-changed`.
     fn apply_entries(&self, entries: Vec<ProxyEntry>) {

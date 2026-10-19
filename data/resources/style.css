@@ -13,6 +13,11 @@
   margin-right: 3px;
 }
 
+/* The sidebar shield button while a proxy carries the traffic. */
+button.proxy-shield-on {
+  color: #ffffff;
+}
+
 .typing-dots:dir(rtl) {
   margin-left: 3px;
   margin-right: 1px;

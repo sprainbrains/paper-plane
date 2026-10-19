@@ -61,6 +61,12 @@ mod imp {
         // reconnected whenever the session changes.
         pub(super) archive_handler:
             RefCell<Option<(glib::WeakRef<model::ChatList>, glib::SignalHandlerId)>>,
+        // The session's proxy manager and its active-proxy handler, driving the
+        // shield's "proxy on" styling across session switches.
+        pub(super) proxy_handler:
+            RefCell<Option<(glib::WeakRef<model::ProxyManager>, glib::SignalHandlerId)>>,
+        #[template_child]
+        pub(super) proxy_shield_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub(super) navigation_view: TemplateChild<adw::NavigationView>,
         #[template_child]
@@ -125,6 +131,13 @@ mod imp {
                 list.disconnect(id);
             }
 
+            if let Some((weak, id)) = self.proxy_handler.take()
+                && let Some(manager) = weak.upgrade()
+            {
+                manager.disconnect(id);
+            }
+            obj.update_shield_styling(false);
+
             if let Some(session) = session {
                 let list = session.archive_chat_list();
                 let id = list.connect_items_changed(clone!(
@@ -137,6 +150,15 @@ mod imp {
                     }
                 ));
                 self.archive_handler.replace(Some((list.downgrade(), id)));
+
+                let manager = session.client_().proxies();
+                let id = manager.connect_active_proxy_id_notify(clone!(
+                    #[weak]
+                    obj,
+                    move |manager| obj.update_shield_styling(manager.active_proxy_id() != 0)
+                ));
+                obj.update_shield_styling(manager.active_proxy_id() != 0);
+                self.proxy_handler.replace(Some((manager.downgrade(), id)));
             }
 
             self.session.set(session);
@@ -376,6 +398,17 @@ impl Sidebar {
             return;
         };
         ui::ProxyWindow::new(&window, &client);
+    }
+
+    /// Pure white shield while a proxy carries the traffic, theme default
+    /// otherwise.
+    fn update_shield_styling(&self, proxy_on: bool) {
+        let button = self.imp().proxy_shield_button.get();
+        if proxy_on {
+            button.add_css_class("proxy-shield-on");
+        } else {
+            button.remove_css_class("proxy-shield-on");
+        }
     }
 
     pub(crate) fn show_archived_chats(&self) {
