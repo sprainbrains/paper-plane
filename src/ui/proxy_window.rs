@@ -53,8 +53,12 @@ mod imp {
             klass.bind_template();
 
             klass.install_action("proxy-window.add", None, move |widget, _, _| {
-                // The editor dialog arrives with the next task on this branch.
-                utils::show_toast(widget, gettext("Adding proxies is not available yet"));
+                if let (Some(parent), Some(client)) = (
+                    widget.root().and_downcast::<gtk::Window>(),
+                    widget.imp().client.get().cloned(),
+                ) {
+                    ui::ProxyEditor::for_add(&parent, &client);
+                }
             });
         }
 

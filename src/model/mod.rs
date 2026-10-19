@@ -94,6 +94,7 @@ pub(crate) use self::message_forward_info::MessageForwardOrigin;
 pub(crate) use self::message_interaction_info::MessageInteractionInfo;
 pub(crate) use self::message_reaction::MessageReaction;
 pub(crate) use self::message_reaction::reaction_type_key;
+pub(crate) use self::proxies::ProxyEntry;
 pub(crate) use self::proxies::ProxyItem;
 pub(crate) use self::proxies::ProxyKind;
 pub(crate) use self::proxy_manager::ProxyManager;

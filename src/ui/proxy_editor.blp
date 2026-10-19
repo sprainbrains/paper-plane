@@ -1,0 +1,83 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $PaplProxyEditor : Adw.Dialog {
+  title: _("Proxy");
+  content-width: 400;
+  // Keep the sheet compact; rows scroll if the window is short.
+  can-close: true;
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle title {
+        title: _("Add Proxy");
+      }
+
+      [start]
+      Button {
+        icon-name: "edit-cancel-symbolic";
+        action-name: "dialog.close";
+      }
+
+      [end]
+      Button save_button {
+        label: _("_Save");
+        use-underline: true;
+
+        styles ["suggested-action", "text-button"]
+      }
+    }
+
+    Adw.Clamp {
+      maximum-size: 360;
+      margin-top: 12;
+      margin-bottom: 12;
+
+      Box {
+        orientation: vertical;
+        spacing: 12;
+
+        Adw.PreferencesGroup {
+          Adw.ComboRow kind_row {
+            title: _("Type");
+            model: Gtk.StringList {
+              strings [
+                // translators: proxy protocol
+                _("MTProto"),
+                // translators: proxy protocol
+                _("SOCKS5"),
+                // translators: proxy protocol
+                _("HTTP"),
+              ]
+            };
+          }
+
+          Adw.EntryRow server_row {
+            title: _("Server");
+          }
+
+          Adw.EntryRow port_row {
+            title: _("Port");
+          }
+
+          Adw.EntryRow secret_row {
+            title: _("Secret");
+          }
+
+          Adw.EntryRow username_row {
+            title: _("Username");
+          }
+
+          Adw.EntryRow password_row {
+            title: _("Password");
+          }
+
+          Adw.EntryRow name_row {
+            title: _("Proxy Name");
+          }
+        }
+      }
+    }
+  };
+}

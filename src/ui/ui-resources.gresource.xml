@@ -4,6 +4,7 @@
 
     <file compressed="true" preprocess="xml-stripblanks">client_manager_view.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">client_view.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">proxy_editor.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">proxy_row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">proxy_window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">window.ui</file>

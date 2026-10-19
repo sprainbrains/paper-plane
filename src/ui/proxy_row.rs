@@ -10,6 +10,7 @@ use gtk::CompositeTemplate;
 use gtk::glib;
 
 use crate::model;
+use crate::ui;
 use crate::utils;
 
 mod imp {
@@ -28,6 +29,8 @@ mod imp {
         pub(super) status_failed: TemplateChild<gtk::Image>,
         #[template_child]
         pub(super) latency_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) edit_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub(super) check_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -57,6 +60,11 @@ mod imp {
             self.parent_constructed();
 
             let obj = &*self.obj();
+            self.edit_button.connect_clicked(clone!(
+                #[weak]
+                obj,
+                move |_| obj.on_edit_clicked()
+            ));
             self.check_button.connect_clicked(clone!(
                 #[weak]
                 obj,
@@ -173,6 +181,19 @@ impl ProxyRow {
         } else {
             self.remove_css_class("active-proxy");
         }
+    }
+
+    fn on_edit_clicked(&self) {
+        let (Some(item), Some(manager)) = (
+            self.imp().item.borrow().clone(),
+            self.imp().manager.borrow().clone(),
+        ) else {
+            return;
+        };
+        let Some(window) = self.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        ui::ProxyEditor::for_edit(&window, &manager.client_(), &item);
     }
 
     fn on_check_clicked(&self) {
