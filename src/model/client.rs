@@ -60,6 +60,9 @@ mod imp {
         pub(super) state: RefCell<Option<glib::Object>>,
         #[property(get, set)]
         pub(super) active: Cell<bool>,
+        #[property(get)]
+        pub(super) connection_online: Cell<bool>,
+        pub(super) proxies: OnceCell<model::ProxyManager>,
     }
 
     #[glib::object_subclass]
@@ -299,10 +302,39 @@ impl Client {
                     }
                 }
             }
+            Update::ConnectionState(state) => {
+                let online = matches!(state.state, tdlib::enums::ConnectionState::Ready);
+                self.set_connection_online(online);
+            }
             _ => match self.state().and_downcast::<model::ClientStateSession>() {
                 Some(state) => self.handle_session_update(&state, update),
                 None => self.imp().queued_updates.borrow_mut().push_back(update),
             },
+        }
+    }
+
+    /// The client's proxy manager, created on first use.
+    // `allow(dead_code)`: the proxy window task consumes this; drop the
+    // attribute along with its siblings in `proxy_manager.rs` together.
+    #[allow(dead_code)]
+    pub(crate) fn proxies(&self) -> model::ProxyManager {
+        self.imp()
+            .proxies
+            .get_or_init(|| model::ProxyManager::new(self))
+            .clone()
+    }
+
+    fn set_connection_online(&self, online: bool) {
+        let imp = self.imp();
+        if imp.connection_online.get() == online {
+            return;
+        }
+        imp.connection_online.set(online);
+        self.notify_connection_online();
+        // Only touch the manager if it already exists: connection updates
+        // arrive long before any proxy UI.
+        if let Some(manager) = imp.proxies.get() {
+            manager.set_connection_online(online);
         }
     }
 

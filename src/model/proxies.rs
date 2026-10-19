@@ -70,6 +70,131 @@ pub(crate) struct ProxyEntry {
     pub(crate) enabled: bool,
 }
 
+/// One structural change from an existing proxy list to the incoming one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MergeOp {
+    /// Apply fresh fields to the existing item at this pre-merge index.
+    Update(usize, ProxyEntry),
+    /// New proxy, appended in incoming order.
+    Insert(ProxyEntry),
+    /// Existing index whose id is gone.
+    Remove(usize),
+}
+
+pub(crate) fn entry_from_added(added: &tdlib::types::AddedProxy) -> ProxyEntry {
+    use tdlib::enums::ProxyType;
+
+    let (kind, username, password, secret) = match &added.proxy.r#type {
+        ProxyType::Socks5(t) => (
+            ProxyKind::Socks5,
+            t.username.clone(),
+            t.password.clone(),
+            String::new(),
+        ),
+        ProxyType::Http(t) => (
+            ProxyKind::Http,
+            t.username.clone(),
+            t.password.clone(),
+            String::new(),
+        ),
+        ProxyType::Mtproto(t) => (
+            ProxyKind::Mtproto,
+            String::new(),
+            String::new(),
+            t.secret.clone(),
+        ),
+    };
+
+    ProxyEntry {
+        id: i64::from(added.id),
+        server: added.proxy.server.clone(),
+        port: added.proxy.port,
+        kind,
+        username,
+        password,
+        secret,
+        comment: added.comment.clone(),
+        enabled: added.is_enabled,
+    }
+}
+
+/// Plans the transition from the list with `existing_ids` to `incoming`.
+/// All indices refer to the pre-merge existing list.
+pub(crate) fn plan_merge(existing_ids: &[i64], incoming: &[ProxyEntry]) -> Vec<MergeOp> {
+    let mut ops = Vec::new();
+
+    for (index, id) in existing_ids.iter().enumerate() {
+        if incoming.iter().all(|entry| entry.id != *id) {
+            ops.push(MergeOp::Remove(index));
+        }
+    }
+
+    for e in incoming {
+        match existing_ids.iter().position(|id| *id == e.id) {
+            Some(index) => ops.push(MergeOp::Update(index, e.clone())),
+            None => ops.push(MergeOp::Insert(e.clone())),
+        }
+    }
+
+    ops
+}
+
+/// The id to enable when rotation should move away from `current`.
+/// `None` when there is nothing to rotate to; an unknown `current`
+/// (e.g. the active proxy left the list) starts from the first entry.
+pub(crate) fn next_proxy_id(ids: &[i64], current: i64) -> Option<i64> {
+    if ids.len() < 2 {
+        return None;
+    }
+    Some(match ids.iter().position(|id| *id == current) {
+        Some(index) => ids[(index + 1) % ids.len()],
+        None => ids[0],
+    })
+}
+
+/// Builds the TDLib payload for a proxy's transport parameters.
+fn proxy_payload(
+    kind: ProxyKind,
+    server: &str,
+    port: i32,
+    username: &str,
+    password: &str,
+    secret: &str,
+) -> tdlib::types::Proxy {
+    let r#type = match kind {
+        ProxyKind::Socks5 => tdlib::enums::ProxyType::Socks5(tdlib::types::ProxyTypeSocks5 {
+            username: username.to_string(),
+            password: password.to_string(),
+        }),
+        ProxyKind::Http => tdlib::enums::ProxyType::Http(tdlib::types::ProxyTypeHttp {
+            username: username.to_string(),
+            password: password.to_string(),
+            http_only: false,
+        }),
+        ProxyKind::Mtproto => tdlib::enums::ProxyType::Mtproto(tdlib::types::ProxyTypeMtproto {
+            secret: secret.to_string(),
+        }),
+    };
+    tdlib::types::Proxy {
+        server: server.to_string(),
+        port,
+        r#type,
+    }
+}
+
+impl ProxyEntry {
+    pub(crate) fn tdlib_proxy(&self) -> tdlib::types::Proxy {
+        proxy_payload(
+            self.kind,
+            &self.server,
+            self.port,
+            &self.username,
+            &self.password,
+            &self.secret,
+        )
+    }
+}
+
 mod imp {
     use super::*;
 
@@ -224,111 +349,19 @@ impl ProxyItem {
     /// The TDLib request payload for this proxy.
     pub(crate) fn tdlib_proxy(&self) -> tdlib::types::Proxy {
         let imp = self.imp();
-        let r#type = match imp.kind.get() {
-            ProxyKind::Socks5 => tdlib::enums::ProxyType::Socks5(tdlib::types::ProxyTypeSocks5 {
-                username: imp.username.borrow().clone(),
-                password: imp.password.borrow().clone(),
-            }),
-            ProxyKind::Http => tdlib::enums::ProxyType::Http(tdlib::types::ProxyTypeHttp {
-                username: imp.username.borrow().clone(),
-                password: imp.password.borrow().clone(),
-                http_only: false,
-            }),
-            ProxyKind::Mtproto => {
-                tdlib::enums::ProxyType::Mtproto(tdlib::types::ProxyTypeMtproto {
-                    secret: imp.secret.borrow().clone(),
-                })
-            }
-        };
-        tdlib::types::Proxy {
-            server: imp.server.borrow().clone(),
-            port: imp.port.get(),
-            r#type,
-        }
-    }
-}
-
-/// One structural change from an existing proxy list to the incoming one.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum MergeOp {
-    /// Apply fresh fields to the existing item at this pre-merge index.
-    Update(usize, ProxyEntry),
-    /// New proxy, appended in incoming order.
-    Insert(ProxyEntry),
-    /// Existing index whose id is gone.
-    Remove(usize),
-}
-
-pub(crate) fn entry_from_added(added: &tdlib::types::AddedProxy) -> ProxyEntry {
-    use tdlib::enums::ProxyType;
-
-    let (kind, username, password, secret) = match &added.proxy.r#type {
-        ProxyType::Socks5(t) => (
-            ProxyKind::Socks5,
-            t.username.clone(),
-            t.password.clone(),
-            String::new(),
-        ),
-        ProxyType::Http(t) => (
-            ProxyKind::Http,
-            t.username.clone(),
-            t.password.clone(),
-            String::new(),
-        ),
-        ProxyType::Mtproto(t) => (
-            ProxyKind::Mtproto,
-            String::new(),
-            String::new(),
-            t.secret.clone(),
-        ),
-    };
-
-    ProxyEntry {
-        id: i64::from(added.id),
-        server: added.proxy.server.clone(),
-        port: added.proxy.port,
-        kind,
-        username,
-        password,
-        secret,
-        comment: added.comment.clone(),
-        enabled: added.is_enabled,
-    }
-}
-
-/// Plans the transition from the list with `existing_ids` to `incoming`.
-/// All indices refer to the pre-merge existing list.
-pub(crate) fn plan_merge(existing_ids: &[i64], incoming: &[ProxyEntry]) -> Vec<MergeOp> {
-    let mut ops = Vec::new();
-
-    for (index, id) in existing_ids.iter().enumerate() {
-        match incoming.iter().position(|entry| entry.id == *id) {
-            Some(_) => {}
-            None => ops.push(MergeOp::Remove(index)),
-        }
+        proxy_payload(
+            imp.kind.get(),
+            &imp.server.borrow(),
+            imp.port.get(),
+            &imp.username.borrow(),
+            &imp.password.borrow(),
+            &imp.secret.borrow(),
+        )
     }
 
-    for e in incoming {
-        match existing_ids.iter().position(|id| *id == e.id) {
-            Some(index) => ops.push(MergeOp::Update(index, e.clone())),
-            None => ops.push(MergeOp::Insert(e.clone())),
-        }
+    pub(crate) fn kind(&self) -> ProxyKind {
+        self.imp().kind.get()
     }
-
-    ops
-}
-
-/// The id to enable when rotation should move away from `current`.
-/// `None` when there is nothing to rotate to; an unknown `current`
-/// (e.g. the active proxy left the list) starts from the first entry.
-pub(crate) fn next_proxy_id(ids: &[i64], current: i64) -> Option<i64> {
-    if ids.len() < 2 {
-        return None;
-    }
-    Some(match ids.iter().position(|id| *id == current) {
-        Some(index) => ids[(index + 1) % ids.len()],
-        None => ids[0],
-    })
 }
 
 #[cfg(test)]
