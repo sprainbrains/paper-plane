@@ -3,6 +3,10 @@ mod image_decode;
 mod markup;
 mod media;
 mod paths;
+// Re-exported wholesale: consumers reference utils::proxy_link::… until
+// later tasks use the individual names, which keeps unused re-exports
+// out of the crate (clippy -D warnings).
+pub(crate) mod proxy_link;
 mod settings;
 mod widgets;
 
