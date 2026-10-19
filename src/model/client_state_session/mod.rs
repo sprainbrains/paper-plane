@@ -86,6 +86,11 @@ mod imp {
 
             let obj = &*self.obj();
 
+            // Seed the chat lists from the local database right away. The
+            // server-side option below is a request that can stay pending
+            // indefinitely without connectivity, so it must not gate the load.
+            obj.fetch_chats();
+
             utils::spawn(clone!(
                 #[weak]
                 obj,
@@ -101,8 +106,6 @@ mod imp {
                     {
                         log::warn!("Error setting the notification_group_count_max option: {e:?}");
                     }
-
-                    obj.fetch_chats();
                 }
             ));
         }

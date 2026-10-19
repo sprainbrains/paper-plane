@@ -18,6 +18,9 @@ use crate::utils;
 
 /// How many chats to request per `loadChats` batch.
 const CHATS_FETCH_LIMIT: i32 = 20;
+/// How many locally known chats `getChats` seeds the list with before the
+/// server-backed `loadChats` pagination takes over.
+const CHATS_SEED_LIMIT: i32 = 200;
 /// Delay between batches, so chats stream in without blocking the UI.
 const CHATS_FETCH_INTERVAL_MS: u64 = 50;
 
@@ -176,6 +179,22 @@ impl ChatList {
             self,
             async move {
                 let client_id = obj.session_().client_().id();
+
+                // Seed from the local database first: `getChats` answers
+                // immediately even without connectivity, and TDLib emits the
+                // new-chat and position updates for the returned chats, which
+                // populate this model. `loadChats` below then guarantees the
+                // full server-synced list.
+                if let Err(e) = tdlib::functions::get_chats(
+                    Some(obj.list_type().0),
+                    CHATS_SEED_LIMIT,
+                    client_id,
+                )
+                .await
+                {
+                    log::warn!("GetChats failed: {e:?}");
+                }
+
                 loop {
                     let result = tdlib::functions::load_chats(
                         Some(obj.list_type().0),
