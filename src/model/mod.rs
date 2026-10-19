@@ -33,6 +33,7 @@ mod message;
 mod message_forward_info;
 mod message_interaction_info;
 mod message_reaction;
+mod proxies;
 mod secret_chat;
 mod sponsored_message;
 mod supergroup;
