@@ -9,8 +9,13 @@
 /* Animated "typing" dots (sidebar row and chat header). Three accent dots pulse in
    sequence; the frame clock drives the CSS, so no per-widget timers are needed. */
 .typing-dots {
-  margin-start: 1px;
-  margin-end: 3px;
+  margin-left: 1px;
+  margin-right: 3px;
+}
+
+.typing-dots:dir(rtl) {
+  margin-left: 3px;
+  margin-right: 1px;
 }
 
 .typing-dots > .typing-dot {
@@ -373,8 +378,8 @@ listview.chat-history.menu-dimmed > row.menu-active {
 /* The trailing multi-select checkbox: a round indicator, empty when unchecked and
    accent-filled when selected (tdesktop style). */
 .selection-check {
-  margin-start: 8px;
-  margin-end: 8px;
+  margin-left: 8px;
+  margin-right: 8px;
   min-height: 0;
   min-width: 0;
   padding: 0;
