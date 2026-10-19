@@ -65,6 +65,10 @@ mod imp {
                     widget.request_qr_code().await;
                 },
             );
+
+            klass.install_action("login.phone-number.show-proxies", None, |widget, _, _| {
+                widget.show_proxies();
+            });
         }
 
         fn instance_init(obj: &InitializingObject<Self>) {
@@ -169,6 +173,15 @@ impl From<&model::ClientStateAuthPhoneNumber> for PhoneNumber {
 impl PhoneNumber {
     pub(crate) fn model_(&self) -> model::ClientStateAuthPhoneNumber {
         self.model().unwrap()
+    }
+
+    /// Opens the proxy settings for the client being authenticated.
+    fn show_proxies(&self) {
+        let client = self.model_().auth_().client_();
+        let Some(window) = self.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        ui::ProxyWindow::new(&window, &client);
     }
 
     pub(crate) async fn exit(&self) {

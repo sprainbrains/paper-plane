@@ -17,6 +17,13 @@ template $PaplLoginPhoneNumber {
         icon-name: "go-previous-symbolic";
         visible: bind exit_button.sensitive;
       }
+
+      [end]
+      Button {
+        action-name: "login.phone-number.show-proxies";
+        icon-name: "proxy-shield-symbolic";
+        tooltip-text: _("Proxy");
+      }
     }
 
     Adw.StatusPage {

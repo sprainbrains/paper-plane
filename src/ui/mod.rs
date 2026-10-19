@@ -3,6 +3,7 @@ mod client_view;
 mod components;
 mod helpers;
 mod login;
+mod proxy_window;
 mod session;
 mod window;
 
@@ -36,6 +37,7 @@ pub(crate) use self::login::OtherDevice as LoginOtherDevice;
 pub(crate) use self::login::Password as LoginPassword;
 pub(crate) use self::login::PhoneNumber as LoginPhoneNumber;
 pub(crate) use self::login::Registration as LoginRegistration;
+pub(crate) use self::proxy_window::ProxyWindow;
 pub(crate) use self::session::Background;
 pub(crate) use self::session::ChatActionBar;
 pub(crate) use self::session::ChatHistory;
@@ -150,6 +152,7 @@ pub(crate) fn init() {
     MessageVideoNote::static_type();
     MessageVoiceNote::static_type();
     PhoneNumberInput::static_type();
+    ProxyWindow::static_type();
     PreferencesWindow::static_type();
     SendMediaWindow::static_type();
     Session::static_type();

@@ -97,6 +97,10 @@ mod imp {
                 widget.begin_chats_search();
             });
 
+            klass.install_action("sidebar.show-proxies", None, move |widget, _, _| {
+                widget.show_proxies();
+            });
+
             klass.install_action("sidebar.show-archived-chats", None, move |widget, _, _| {
                 widget.show_archived_chats();
             });
@@ -358,6 +362,20 @@ impl Sidebar {
         imp.search.reset();
         imp.search.grab_focus();
         imp.navigation_view.push_by_tag("search");
+    }
+
+    /// Opens the proxy settings for the current session's client.
+    fn show_proxies(&self) {
+        let Some(client) = utils::ancestor::<_, ui::Session>(self)
+            .and_then(|session| session.model())
+            .map(|model| model.client_())
+        else {
+            return;
+        };
+        let Some(window) = self.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        ui::ProxyWindow::new(&window, &client);
     }
 
     pub(crate) fn show_archived_chats(&self) {

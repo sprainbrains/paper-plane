@@ -4,6 +4,7 @@ blueprints = custom_target('blueprints',
     'client_manager_view.blp',
     'client_view.blp',
     'window.blp',
+    'proxy_window.blp',
 
     'components/animated_bin.blp',
     'components/avatar.blp',
