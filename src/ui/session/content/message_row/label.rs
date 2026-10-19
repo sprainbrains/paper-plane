@@ -775,7 +775,7 @@ impl MessageLabel {
                     let seed = (rect_index * 512 + i) as f64;
                     let fx = (seed * 12.9898).sin().abs().fract();
                     let fy = (seed * 78.233).sin().abs().fract();
-                    let speed = 0.02 + (seed * 3.14).sin().abs().fract() * 0.05;
+                    let speed = 0.02 + (seed * std::f64::consts::PI).sin().abs().fract() * 0.05;
                     let x = rect.x() + (((fx + t * speed) % 1.0) * rect.width() as f64) as f32;
                     let y =
                         rect.y() + (((fy + t * speed * 0.7) % 1.0) * rect.height() as f64) as f32;

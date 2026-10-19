@@ -35,9 +35,10 @@ const TAIL_HEIGHT: f32 = 12.0;
 /// Where the message indicators (timestamp etc.) currently live. The template starts
 /// them overlaid on the content (see `bubble.blp`), and they migrate as the message
 /// gains a text label or reactions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum IndicatorPlacement {
     /// Overlaid bottom-right on media / an empty-caption bubble.
+    #[default]
     Overlay,
     /// Trailing the text inside the message label.
     Label,
@@ -45,11 +46,6 @@ enum IndicatorPlacement {
     Reactions,
 }
 
-impl Default for IndicatorPlacement {
-    fn default() -> Self {
-        Self::Overlay
-    }
-}
 const SENDER_COLOR_CLASSES: &[&str] = &[
     "sender-text-red",
     "sender-text-orange",
