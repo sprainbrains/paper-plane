@@ -454,6 +454,15 @@ impl MessageLabel {
         } else if let Some(tag) = uri.strip_prefix("tag:") {
             self.clipboard().set_text(tag);
             utils::show_toast(self, gettext("Copied to clipboard"));
+        } else if let Some(link) = utils::proxy_link::parse_proxy_link(uri) {
+            let Some(session) = utils::ancestor::<_, ui::Session>(self).and_then(|s| s.model())
+            else {
+                return glib::Propagation::Proceed;
+            };
+            let Some(window) = self.root().and_downcast::<gtk::Window>() else {
+                return glib::Propagation::Proceed;
+            };
+            ui::ProxyEditor::for_link(&window, &session.client_(), &link);
         } else {
             return glib::Propagation::Proceed;
         }

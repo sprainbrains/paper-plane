@@ -314,9 +314,6 @@ impl Client {
     }
 
     /// The client's proxy manager, created on first use.
-    // `allow(dead_code)`: the proxy window task consumes this; drop the
-    // attribute along with its siblings in `proxy_manager.rs` together.
-    #[allow(dead_code)]
     pub(crate) fn proxies(&self) -> model::ProxyManager {
         self.imp()
             .proxies

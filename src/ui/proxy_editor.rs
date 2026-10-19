@@ -149,9 +149,6 @@ impl ProxyEditor {
     }
 
     /// Opens the editor prefilled from a `t.me/proxy` link; saving activates it.
-    // `allow(dead_code)`: the message-link task wires this next; remove with
-    // the branch's other temporary allows.
-    #[allow(dead_code)]
     pub(crate) fn for_link(
         parent: &gtk::Window,
         client: &model::Client,

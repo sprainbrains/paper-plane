@@ -4,9 +4,6 @@
 //! The per-client proxy list: TDLib-backed storage, statuses, and the
 //! active-proxy bookkeeping. Auto-switching lives here too (next task).
 //!
-//! `allow(dead_code)`: the proxy window that consumes this lands in the
-//! next tasks on this branch; drop the attribute once it does.
-#![allow(dead_code)]
 
 use std::cell::Cell;
 use std::cell::RefCell;

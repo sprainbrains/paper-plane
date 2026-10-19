@@ -4,10 +4,6 @@
 //! Parsing of `t.me/proxy` / `tg://proxy` links into proxy connection
 //! parameters, mirroring the links Telegram shares for MTProto proxies.
 //!
-//! `allow(dead_code)`: the proxy editor and message-link handling that
-//! consume this land in later work on this branch; drop the attribute
-//! once they do.
-#![allow(dead_code)]
 
 use std::borrow::Cow;
 

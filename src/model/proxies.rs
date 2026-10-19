@@ -3,9 +3,6 @@
 
 //! Proxy model: item, kinds, and pure merge/rotation planning.
 //!
-//! `allow(dead_code)`: the manager and UI that consume this land in the
-//! next tasks on this branch; drop the attribute once they do.
-#![allow(dead_code)]
 
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -50,7 +47,6 @@ impl From<utils::proxy_link::ProxyKindTag> for ProxyKind {
 /// Liveness of a proxy as last observed by the app.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProxyStatus {
-    Unknown,
     Checking,
     Ok(i32),
     Failed,
@@ -311,24 +307,8 @@ impl ProxyItem {
         }
     }
 
-    pub(crate) fn entry(&self) -> ProxyEntry {
-        let imp = self.imp();
-        ProxyEntry {
-            id: imp.id.get(),
-            server: imp.server.borrow().clone(),
-            port: imp.port.get(),
-            kind: imp.kind.get(),
-            username: imp.username.borrow().clone(),
-            password: imp.password.borrow().clone(),
-            secret: imp.secret.borrow().clone(),
-            comment: imp.comment.borrow().clone(),
-            enabled: imp.enabled.get(),
-        }
-    }
-
     pub(crate) fn set_status(&self, status: ProxyStatus) {
         let (code, latency) = match status {
-            ProxyStatus::Unknown => (0, 0),
             ProxyStatus::Checking => (1, 0),
             ProxyStatus::Ok(ms) => (2, ms),
             ProxyStatus::Failed => (3, 0),
@@ -341,15 +321,6 @@ impl ProxyItem {
         if imp.latency_ms.get() != latency {
             imp.latency_ms.set(latency);
             self.notify_latency_ms();
-        }
-    }
-
-    pub(crate) fn status(&self) -> ProxyStatus {
-        match self.imp().status_code.get() {
-            1 => ProxyStatus::Checking,
-            2 => ProxyStatus::Ok(self.imp().latency_ms.get()),
-            3 => ProxyStatus::Failed,
-            _ => ProxyStatus::Unknown,
         }
     }
 

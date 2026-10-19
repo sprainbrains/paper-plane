@@ -184,16 +184,6 @@ impl ProxyWindow {
         window
     }
 
-    /// Whether the "Use Proxy" radio is selected. The editor task enables
-    /// newly added proxies when this is true.
-    // `allow(dead_code)`: consumed by the editor task with the rest of the
-    // branch's temporary allows.
-    #[allow(dead_code)]
-    pub(crate) fn use_proxy_active(&self) -> bool {
-        let imp = self.imp();
-        imp.use_check.is_visible()
-    }
-
     /// Mirrors the model's active proxy into the radio rows.
     fn sync_radio_rows(&self) {
         let imp = self.imp();
