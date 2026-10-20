@@ -26,11 +26,7 @@ mod imp {
         #[template_child]
         pub(super) status_checking: TemplateChild<gtk::Image>,
         #[template_child]
-        pub(super) status_ok: TemplateChild<gtk::Image>,
-        #[template_child]
-        pub(super) status_failed: TemplateChild<gtk::Image>,
-        #[template_child]
-        pub(super) latency_label: TemplateChild<gtk::Label>,
+        pub(super) status_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) edit_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -167,14 +163,22 @@ impl ProxyRow {
             model::ProxyKind::Socks5 | model::ProxyKind::Http => Some("network-server-symbolic"),
         });
 
-        let checking = item.status_code() == 1;
-        imp.status_checking.set_visible(checking);
-        imp.status_ok.set_visible(item.status_code() == 2);
-        imp.status_failed.set_visible(item.status_code() == 3);
-        imp.latency_label.set_visible(item.status_code() == 2);
-        if item.status_code() == 2 {
-            imp.latency_label
-                .set_label(&format!("{} ms", item.latency_ms()));
+        imp.status_checking.set_visible(item.status_code() == 1);
+        match item.status_code() {
+            2 => {
+                imp.status_label
+                    .set_label(&gettext!("Available ({} ms)", item.latency_ms()));
+                imp.status_label.set_visible(true);
+                imp.status_label.add_css_class("success");
+                imp.status_label.remove_css_class("error");
+            }
+            3 => {
+                imp.status_label.set_label(&gettext!("Unavailable"));
+                imp.status_label.set_visible(true);
+                imp.status_label.add_css_class("error");
+                imp.status_label.remove_css_class("success");
+            }
+            _ => imp.status_label.set_visible(false),
         }
 
         self.set_activatable(!item.enabled());

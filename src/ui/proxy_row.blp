@@ -26,23 +26,10 @@ template $PaplProxyRow : Adw.ActionRow {
       visible: false;
     }
 
-    Image status_ok {
-      icon-name: "object-select-symbolic";
+    Label status_label {
       visible: false;
 
-      styles ["success"]
-    }
-
-    Image status_failed {
-      icon-name: "cross-small-symbolic";
-      visible: false;
-
-      styles ["error"]
-    }
-
-    Label latency_label {
-      visible: false;
-      styles ["dim-label", "caption"]
+      styles ["caption"]
     }
 
     Button edit_button {

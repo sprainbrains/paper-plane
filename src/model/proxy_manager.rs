@@ -168,27 +168,45 @@ impl ProxyManager {
         *imp.rotation_source.borrow_mut() = Some(source);
     }
 
+    /// Deadline fired. tdesktop-style, rotation follows the proxy's own
+    /// liveness: probe the active proxy first and only move on when it does
+    /// not answer. Rotating on the timer alone is self-defeating — every
+    /// `enableProxy` re-kicks all TDLib connections, so while the storm runs
+    /// the session can never reach Ready and the probes time out behind it.
     fn rotate_now(&self) {
-        if self.active_proxy_id() == 0 {
+        let active = self.active_proxy_id();
+        if active == 0 {
             return; // the user disabled the proxy while the timer was pending
         }
-        let ids: Vec<i64> = self.imp().list.borrow().iter().map(ProxyItem::id).collect();
-        let Some(next) = next_proxy_id(&ids, self.active_proxy_id()) else {
+        let imp = self.imp();
+        let ids: Vec<i64> = imp.list.borrow().iter().map(ProxyItem::id).collect();
+        let Some(next) = next_proxy_id(&ids, active) else {
             return;
         };
-        log::debug!(
-            "auto-switch: rotating from {} to {next}",
-            self.active_proxy_id()
-        );
+        let Some(item) = imp.list.borrow().iter().find(|i| i.id() == active).cloned() else {
+            return;
+        };
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
             async move {
+                obj.check(&item).await;
+                // Anything but a fresh failure means "keep it": code 2 is an
+                // answering proxy, code 1 means another probe is in flight and
+                // the next window will see its result.
+                if item.status_code() != 3 {
+                    log::debug!("auto-switch: id={active} still answering, keeping it");
+                    if !obj.connection_online() {
+                        obj.arm_rotation();
+                    }
+                    return;
+                }
+                log::debug!("auto-switch: id={active} unresponsive, rotating to {next}");
                 if let Err(e) = obj.enable(next).await {
                     log::warn!("Proxy auto-switch failed: {e:?}");
                 }
-                // Still offline after the switch: try the next candidate
-                // after another deadline window.
+                // Still offline after the switch: try again after another
+                // deadline window.
                 if !obj.connection_online() {
                     obj.arm_rotation();
                 }

@@ -65,6 +65,7 @@ build-aux/dev-drive.sh describe 987654321 123456789
 | `auto-open-chat` | `x` chat | open a chat |
 | `auto-send-text` | `(xs)` chat, text | send a text message |
 | `auto-react` | `(xxs)` chat, message, emoji | add a reaction |
+| `auto-show-proxies` | — | open the active client's proxy window |
 
 ## Test data center
 

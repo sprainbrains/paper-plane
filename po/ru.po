@@ -1400,6 +1400,14 @@ msgstr "_Тестовый Сервер"
 msgid "New Session"
 msgstr "Новый сеанс"
 
+#: src/ui/proxy_row.rs
+msgid "Available ({} ms)"
+msgstr "Доступен ({} мс)"
+
+#: src/ui/proxy_row.rs
+msgid "Unavailable"
+msgstr "Недоступен"
+
 #~ msgid "A Telegram client optimized for the GNOME desktop"
 #~ msgstr "Клиент Telegram, оптимизированный для рабочего стола GNOME"
 

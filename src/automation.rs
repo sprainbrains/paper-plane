@@ -44,6 +44,7 @@ use crate::model;
 use crate::types::ChatId;
 use crate::types::ClientId;
 use crate::types::MessageId;
+use crate::ui;
 use crate::utils;
 
 /// Directory where automation artifacts (screenshots, dumps) are written.
@@ -171,6 +172,7 @@ impl Application {
                 app.auto_react(chat_id, message_id, emoji);
             },
         );
+        self.add_auto_action("auto-show-proxies", None, |app, _| app.auto_show_proxies());
     }
 
     /// Adds a `SimpleAction` that forwards to `handler`, receiving the
@@ -379,6 +381,16 @@ impl Application {
             return;
         };
         self.main_window().select_chat(client_id, chat_id);
+    }
+
+    /// Opens the active client's proxy window, mirroring the sidebar shield.
+    fn auto_show_proxies(&self) {
+        let window = self.main_window();
+        let Some(client) = window.client_manager_view().active_client() else {
+            log::warn!("auto-show-proxies: no active client");
+            return;
+        };
+        ui::ProxyWindow::new(window.upcast_ref::<gtk::Window>(), &client);
     }
 
     fn auto_send_text(&self, chat_id: ChatId, text: String) {
