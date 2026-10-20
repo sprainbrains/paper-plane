@@ -157,6 +157,10 @@ mod imp {
                     obj,
                     move |manager| obj.update_shield_styling(manager.active_proxy_id() != 0)
                 ));
+                log::debug!(
+                    "sidebar: proxy shield wired, active={}",
+                    manager.active_proxy_id()
+                );
                 obj.update_shield_styling(manager.active_proxy_id() != 0);
                 self.proxy_handler.replace(Some((manager.downgrade(), id)));
             }
@@ -400,7 +404,7 @@ impl Sidebar {
         ui::ProxyWindow::new(&window, &client);
     }
 
-    /// Pure white shield while a proxy carries the traffic, theme default
+    /// Accent-tinted shield while a proxy carries the traffic, theme default
     /// otherwise.
     fn update_shield_styling(&self, proxy_on: bool) {
         let button = self.imp().proxy_shield_button.get();

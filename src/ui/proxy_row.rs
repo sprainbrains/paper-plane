@@ -77,10 +77,10 @@ mod imp {
                 obj,
                 move |_| obj.on_remove_clicked()
             ));
-            obj.connect_activate(clone!(
+            obj.connect_activated(clone!(
                 #[weak]
                 obj,
-                move |_| obj.on_activate()
+                move |_| obj.on_activated()
             ));
         }
 
@@ -225,7 +225,7 @@ impl ProxyRow {
         });
     }
 
-    fn on_activate(&self) {
+    fn on_activated(&self) {
         let (Some(item), Some(manager)) = (
             self.imp().item.borrow().clone(),
             self.imp().manager.borrow().clone(),
@@ -236,6 +236,7 @@ impl ProxyRow {
             return;
         }
         let id = item.id();
+        log::debug!("proxy row activated: enabling id={id}");
         utils::spawn(async move {
             if let Err(e) = manager.enable(id).await {
                 log::warn!("EnableProxy failed: {e:?}");

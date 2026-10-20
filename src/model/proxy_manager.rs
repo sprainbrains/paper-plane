@@ -176,6 +176,10 @@ impl ProxyManager {
         let Some(next) = next_proxy_id(&ids, self.active_proxy_id()) else {
             return;
         };
+        log::debug!(
+            "auto-switch: rotating from {} to {next}",
+            self.active_proxy_id()
+        );
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -243,6 +247,7 @@ impl ProxyManager {
     pub(crate) async fn enable(&self, id: i64) -> Result<(), tdlib::types::Error> {
         let client_id = self.client_().id();
         tdlib::functions::enable_proxy(id as i32, client_id).await?;
+        log::debug!("proxy id={id} enabled");
         self.refresh().await;
         Ok(())
     }
@@ -269,9 +274,14 @@ impl ProxyManager {
 
         let client_id = self.client_().id();
         let start = glib::monotonic_time();
-        let result = tdlib::functions::test_proxy(item.tdlib_proxy(), 0, 5.0, client_id).await;
+        // TDLib matches dc_id against its built-in production DC options
+        // (ids 1-5) and fails instantly with "Invalid datacenter identifier
+        // specified" otherwise. DC 2 is always present; the id only picks
+        // which endpoint the probe reaches through the proxy.
+        let result = tdlib::functions::test_proxy(item.tdlib_proxy(), 2, 5.0, client_id).await;
         let latency_ms = ((glib::monotonic_time() - start) / 1000) as i32;
 
+        log::debug!("proxy check id={id}: ok={} ms={latency_ms}", result.is_ok());
         item.set_status(if result.is_ok() {
             ProxyStatus::Ok(latency_ms)
         } else {

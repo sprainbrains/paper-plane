@@ -322,6 +322,17 @@ impl Client {
             // updateConnectionState on transitions, which may have
             // happened before the manager existed.
             manager.set_connection_online(imp.connection_online.get());
+            // Pull the proxy list once at creation: the active proxy may have
+            // been enabled by an earlier run, so `active-proxy-id` (and the
+            // sidebar shield with it) would otherwise stay stale until the
+            // proxy window opens.
+            utils::spawn(clone!(
+                #[weak]
+                manager,
+                async move {
+                    manager.refresh().await;
+                }
+            ));
             manager
         });
         manager.clone()

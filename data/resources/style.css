@@ -13,9 +13,10 @@
   margin-right: 3px;
 }
 
-/* The sidebar shield button while a proxy carries the traffic. */
+/* The sidebar shield button while a proxy carries the traffic. The accent tint
+   reads as "filled" on both light and dark headers, unlike a fixed color. */
 button.proxy-shield-on {
-  color: #ffffff;
+  color: @accent_color;
 }
 
 .typing-dots:dir(rtl) {
