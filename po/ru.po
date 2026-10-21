@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 19:50+0300\n"
+"POT-Creation-Date: 2026-10-21 20:30+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -59,15 +59,19 @@ msgstr "Последний использованный сеанс"
 msgid "The directory name of the last used session"
 msgstr "Имя каталога последнего использованного сеанса"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:26
 msgid "Enable notifications"
 msgstr "Включить уведомления"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:27
 msgid "Whether to show desktop notifications for new messages"
 msgstr "Показывать ли уведомления рабочего стола о новых сообщениях"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:31
 msgid "Automatic proxy switch deadline"
 msgstr "Срок автоматического переключения прокси"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:32
 msgid ""
 "Seconds without a connection after which the next proxy from the list is "
 "tried. 0 disables automatic switching."
@@ -84,15 +88,19 @@ msgstr "Цветовая схема"
 msgid "The color scheme to be used in the app"
 msgstr "Цветовая схема, которая будет использоваться в приложении"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:49
 msgid "Recently used emoji"
 msgstr "Недавно использованные эмодзи"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:50
 msgid "Emoji recently inserted through the content picker"
 msgstr "Эмодзи, недавно вставленные через панель выбора"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:54
 msgid "Enable debug options"
 msgstr "Включить параметры отладки"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:55
 msgid ""
 "Whether to expose developer/debug features such as \"Copy Debug Entry\" in "
 "message menus"
@@ -100,9 +108,11 @@ msgstr ""
 "Показывать ли инструменты разработчика, такие как «Скопировать отладочную "
 "запись» в меню сообщений"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:59
 msgid "Vertical chat folders"
 msgstr "Вертикальные папки чатов"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:60
 msgid ""
 "Show chat folders as a vertical rail on the far left of the sidebar instead "
 "of a horizontal bar at the top"
@@ -110,17 +120,21 @@ msgstr ""
 "Отображать папки чатов вертикальной панелью у левого края сайдбара вместо "
 "горизонтальной сверху"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:64
 msgid "Chat list sidebar width"
 msgstr "Ширина сайдбара со списком чатов"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:65
 msgid "The saved width, in pixels, of the resizable chat list sidebar"
 msgstr ""
 "Сохранённая ширина изменяемого по размеру сайдбара со списком чатов, в "
 "пикселях"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:69
 msgid "Content picker width"
 msgstr "Ширина панели выбора"
 
+#: data/app.drey.PaperPlane.gschema.xml.in:70
 msgid ""
 "The saved width, in pixels, of the resizable emoji/sticker content picker "
 "panel"
@@ -170,6 +184,7 @@ msgstr "Поиск групп и людей."
 msgid "Main window"
 msgstr "Главное окно"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:48
 msgid ""
 "This is the fifth beta release of Paper Plane 0.1.0 with new features and "
 "bug fixes:"
@@ -177,12 +192,15 @@ msgstr ""
 "Это пятый бета-выпуск Paper Plane 0.1.0 с новыми функциями и исправлениями "
 "ошибок:"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:50
 msgid "Archived chats can now be displayed. (#598, #607, #613)"
 msgstr "Теперь можно просматривать архивные чаты. (#598, #607, #613)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:51
 msgid "Chats can now be archived and de-archived. (#601)"
 msgstr "Теперь чаты можно помещать в архив и извлекать из него. (#601)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:52
 msgid ""
 "Chat folders can now be displayed, selected and deleted. (#603, #608, #609, "
 "#614)"
@@ -190,19 +208,23 @@ msgstr ""
 "Теперь папки чатов можно просматривать, выбирать и удалять. (#603, #608, "
 "#609, #614)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:53
 msgid ""
 "A regression that prevented images from being sent has been fixed. (#586)"
 msgstr ""
 "Исправлена регрессия, из-за которой невозможно было отправить изображения. "
 "(#586)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:54
 msgid "The indicator for venue messages now has the correct opacity. (#588)"
 msgstr ""
 "Индикатор сообщений о месте теперь имеет правильную прозрачность. (#588)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:55
 msgid "You can now reply to messages with pictures. (#589)"
 msgstr "Теперь можно отвечать на сообщения картинками. (#589)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:56
 msgid ""
 "A loading indicator is now displayed when a document is downloaded, in "
 "coorporation with @yuraiz. (#590)"
@@ -210,6 +232,7 @@ msgstr ""
 "Теперь при загрузке документа показывается индикатор, совместно с @yuraiz. "
 "(#590)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:57
 msgid ""
 "Many improvements to venue and location messages have landed, such as "
 "opening the map in the modal and displaying the location on the OSM website. "
@@ -218,6 +241,7 @@ msgstr ""
 "Много улучшений сообщений о месте и геолокации: открытие карты в модальном "
 "окне и просмотр местоположения на сайте OSM. (#596)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:58
 msgid ""
 "The loading of messages has been improved so that there are now always "
 "enough messages loaded to allow scrolling. (#600)"
@@ -225,23 +249,28 @@ msgstr ""
 "Загрузка сообщений улучшена: теперь всегда загружено достаточно сообщений "
 "для прокрутки. (#600)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:59
 msgid ""
 "Fixed a crash that occurred sporadically when starting the application. "
 "(#602)"
 msgstr "Исправлен редкий сбой при запуске приложения. (#602)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:60
 msgid ""
 "Release descriptions have been marked as untranslatable, thanks to "
 "@sabriunal. (#594)"
 msgstr ""
 "Описания выпусков помечены как непереводимые, спасибо @sabriunal. (#594)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:61
 msgid "Dependencies have been updated. (#615)"
 msgstr "Зависимости обновлены. (#615)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:62
 msgid "Translations have been updated. (#587, #616)"
 msgstr "Переводы обновлены. (#587, #616)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:68
 msgid ""
 "This is the fourth beta release of Paper Plane 0.1.0 with new features and "
 "bug fixes:"
@@ -249,6 +278,7 @@ msgstr ""
 "Это четвёртый бета-выпуск Paper Plane 0.1.0 с новыми функциями и "
 "исправлениями ошибок:"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:70
 msgid ""
 "Paper Plane now uses some new shiny widgets from libadwaita 1.4, thanks to "
 "@melix99. (#518)"
@@ -256,6 +286,7 @@ msgstr ""
 "Paper Plane теперь использует новые эффектные виджеты из libadwaita 1.4, "
 "спасибо @melix99. (#518)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:71
 msgid ""
 "The tdlib telegram client library has been updated to 1.8.19, thanks to "
 "@alissonlauffer. (#577)"
@@ -263,12 +294,14 @@ msgstr ""
 "Библиотека клиента Telegram tdlib обновлена до 1.8.19, спасибо "
 "@alissonlauffer. (#577)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:72
 msgid ""
 "The login flow has been completely redesigned and now looks more modern. "
 "(#510)"
 msgstr ""
 "Процесс входа полностью переработан и теперь выглядит современнее. (#510)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:73
 msgid ""
 "We have redesigned the session switcher. It has been moved to the sidebar "
 "and shows a confirmation dialog when logging out. (#510)"
@@ -276,6 +309,7 @@ msgstr ""
 "Мы переработали переключатель сеансов. Он перемещён в сайдбар и показывает "
 "диалог подтверждения при выходе. (#510)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:74
 msgid ""
 "The message entry can now be clicked without effecting the state of the "
 "application window. (#510)"
@@ -283,12 +317,15 @@ msgstr ""
 "Теперь поле ввода можно нажимать, не влияя на состояние окна приложения. "
 "(#510)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:75
 msgid "Displaying location and venue messages is now implemented. (#548, #582)"
 msgstr "Реализовано отображение сообщений о геолокации и месте. (#548, #582)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:76
 msgid "Fixed an application crash when trying to log in. (#559)"
 msgstr "Исправлен сбой приложения при попытке входа. (#559)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:77
 msgid ""
 "A mask is now used for the document message status indicator, thanks to "
 "@yuraiz. (#555)"
@@ -296,6 +333,7 @@ msgstr ""
 "Теперь для индикатора статуса сообщения-файла используется маска, спасибо "
 "@yuraiz. (#555)"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:78
 msgid ""
 "The dialog for sending media files has been improved in function and "
 "appearance, thanks to @melix99. (#540)"
@@ -309,6 +347,7 @@ msgstr ""
 msgid "Dependencies have been updated."
 msgstr "Обновлены зависимости."
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:80
 msgid "Translations have been updated."
 msgstr "Переводы обновлены."
 
@@ -320,6 +359,7 @@ msgstr ""
 "Третий бета-релиз Paper Plane 0.1.0 должен в первую очередь исправить ошибку "
 "сборки на Flathub:"
 
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:88
 msgid ""
 "Added registered categories to the desktop file to fix a build error on "
 "Flathub."
@@ -398,18 +438,19 @@ msgstr ""
 msgid "Marco Melorio"
 msgstr "Марко Мелорио"
 
+#: src/application.rs:163
 msgid "Chat is already open in another window"
 msgstr "Чат уже открыт в другом окне"
 
-#: src/application.rs:317
+#: src/application.rs:330
 msgid "Paper Plane developers"
 msgstr "Разработчики Paper Plane"
 
-#: src/application.rs:337
+#: src/application.rs:350
 msgid "Sponsors"
 msgstr "Спонсоры"
 
-#: src/application.rs:343
+#: src/application.rs:356
 msgid ""
 "<span size=\"small\">Map data by                 <a href=\"https://www."
 "openstreetmap.org\">OpenStreetMap</a>                 and contributors</span>"
@@ -417,6 +458,7 @@ msgstr ""
 "<span size=\"small\">Картографические данные <a href=\"https://www."
 "openstreetmap.org\">OpenStreetMap</a> и авторы</span>"
 
+#: src/application.rs:362
 msgid ""
 "OpenStreetMap® is open data, licensed under the                 <a href="
 "\"https://opendatacommons.org/licenses/odbl\">                Open Data "
@@ -428,7 +470,7 @@ msgstr ""
 "License</a> (ODbL) организацией <a href=\"https://osmfoundation.org"
 "\">OpenStreetMap Foundation</a> (OSMF)."
 
-#: src/application.rs:393 src/strings/message.rs:238
+#: src/application.rs:406 src/strings/message.rs:238
 msgid "Incoming call"
 msgstr "Входящий вызов"
 
@@ -471,9 +513,11 @@ msgstr "Вывести версию приложения"
 msgid "Specify the minimum log level"
 msgstr "Указать минимальный уровень журнала"
 
+#: src/main.rs:204
 msgid "Override the builtin client id"
 msgstr "Переопределить встроенный client id"
 
+#: src/main.rs:213
 msgid "Override the builtin client secret"
 msgstr "Переопределить встроенный client secret"
 
@@ -482,6 +526,7 @@ msgid "Whether to use a test data center on first account"
 msgstr ""
 "Использовать ли тестовый центр обработки данных на первой учетной записи"
 
+#: src/model/chat_list.rs:322
 msgid "Only folders can be deleted."
 msgstr "Удалять можно только папки."
 
@@ -1228,6 +1273,8 @@ msgstr ""
 msgid "_OK"
 msgstr "_ОК"
 
+#: src/ui/login/phone_number.blp:25 src/ui/proxy_editor.blp:5
+#: src/ui/proxy_window.blp:6 src/ui/session/sidebar/mod.blp:144
 msgid "Proxy"
 msgstr "Прокси"
 
@@ -1297,30 +1344,43 @@ msgstr "_Да"
 msgid "Terms of Service"
 msgstr "Условия предоставления услуг"
 
+#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:191
+#: src/ui/proxy_window.blp:49
 msgid "Add Proxy"
 msgstr "Добавить прокси"
 
+#: src/ui/proxy_editor.blp:25
 msgid "_Save"
 msgstr "_Сохранить"
 
+#: src/ui/proxy_editor.blp:43
 msgid "Type"
 msgstr "Тип"
 
+#. translators: proxy protocol
+#: src/ui/proxy_editor.blp:47
 msgid "MTProto"
 msgstr "MTProto"
 
+#. translators: proxy protocol
+#: src/ui/proxy_editor.blp:49
 msgid "SOCKS5"
 msgstr "SOCKS5"
 
+#. translators: proxy protocol
+#: src/ui/proxy_editor.blp:51
 msgid "HTTP"
 msgstr "HTTP"
 
+#: src/ui/proxy_editor.blp:57
 msgid "Server"
 msgstr "Сервер"
 
+#: src/ui/proxy_editor.blp:61
 msgid "Port"
 msgstr "Порт"
 
+#: src/ui/proxy_editor.blp:65
 msgid "Secret"
 msgstr "Секрет"
 
@@ -1328,68 +1388,88 @@ msgstr "Секрет"
 msgid "Username"
 msgstr "Имя пользователя"
 
+#: src/ui/proxy_editor.blp:77
 msgid "Proxy Name"
 msgstr "Название прокси"
 
+#: src/ui/proxy_editor.rs:214
 msgid "Edit Proxy"
 msgstr "Изменить прокси"
 
+#: src/ui/proxy_editor.rs:314
 msgid "Could not save the proxy"
 msgstr "Не удалось сохранить прокси"
 
+#: src/ui/proxy_row.blp:37
 msgid "Edit"
 msgstr "Изменить"
 
+#: src/ui/proxy_row.blp:44
 msgid "Check"
 msgstr "Проверить"
 
+#: src/ui/proxy_row.blp:51
 msgid "Remove"
 msgstr "Удалить"
 
+#: src/ui/proxy_row.rs:172
 msgid "Available ({ping} ms)"
 msgstr "Доступен ({ping} мс)"
 
-#: src/ui/proxy_row.rs:181
+#: src/ui/proxy_row.rs:180
 msgid "Unavailable"
 msgstr "Недоступен"
 
+#: src/ui/proxy_window.blp:11
 msgid "Don't Use Proxy"
 msgstr "Не использовать прокси"
 
+#: src/ui/proxy_window.blp:23
 msgid "Use Proxy"
 msgstr "Использовать прокси"
 
+#: src/ui/proxy_window.blp:36
 msgid "Automatic Switching"
 msgstr "Автоматическое переключение"
 
+#: src/ui/proxy_window.blp:37
 msgid "Try the next proxy from the list when the connection stays down for:"
 msgstr ""
 "Пробовать следующий прокси из списка, если соединение отсутствует более:"
 
+#: src/ui/proxy_window.blp:40
 msgid "Switch Deadline"
 msgstr "Срок переключения"
 
+#: src/ui/proxy_window.blp:45
 msgid "Proxies"
 msgstr "Прокси"
 
+#: src/ui/proxy_window.rs:146
 msgid "Off"
 msgstr "Выключено"
 
+#: src/ui/proxy_window.rs:147
 msgid "5 seconds"
 msgstr "5 секунд"
 
+#: src/ui/proxy_window.rs:148
 msgid "10 seconds"
 msgstr "10 секунд"
 
+#: src/ui/proxy_window.rs:149
 msgid "15 seconds"
 msgstr "15 секунд"
 
+#: src/ui/proxy_window.rs:150
 msgid "30 seconds"
 msgstr "30 секунд"
 
+#: src/ui/proxy_window.rs:151
 msgid "60 seconds"
 msgstr "60 секунд"
 
+#: src/ui/proxy_window.rs:277
 msgid "Add a proxy first"
 msgstr "Сначала добавьте прокси"
 
@@ -1401,6 +1481,7 @@ msgstr "Сообщение"
 msgid "Unblock"
 msgstr "Разблокировать"
 
+#: src/ui/session/content/chat_action_bar.blp:119
 msgid "Delete Chat"
 msgstr "Удалить чат"
 
@@ -1412,12 +1493,16 @@ msgstr "Присоединиться"
 msgid "Failed to join chat: {error}"
 msgstr "Не удалось присоединиться к чату: {error}"
 
+#: src/ui/session/content/chat_action_bar/mod.rs:391
 msgid "Delete chat?"
 msgstr "Удалить чат?"
 
+#: src/ui/session/content/chat_action_bar/mod.rs:392
 msgid "This will permanently delete the chat for you."
 msgstr "Это безвозвратно удалит чат для вас."
 
+#: src/ui/session/content/chat_action_bar/mod.rs:394
+#: src/ui/session/content/chat_history.rs:1608
 msgid "_Delete"
 msgstr "_Удалить"
 
@@ -1425,9 +1510,13 @@ msgstr "_Удалить"
 msgid "Images"
 msgstr "Изображения"
 
+#: src/ui/session/content/chat_action_bar/mod.rs:431
 msgid "Could not open the selected file"
 msgstr "Не удалось открыть выбранный файл"
 
+#. Telegram rejects empty edits; keep the edit state so the user can
+#. fix it, and tell them why nothing happened.
+#: src/ui/session/content/chat_action_bar/mod.rs:465
 msgid "A message can't be empty"
 msgstr "Сообщение не может быть пустым"
 
@@ -1447,51 +1536,76 @@ msgstr "Покинуть чат?"
 msgid "Do you want to leave this chat?"
 msgstr "Вы точно хотите покинуть этот чат?"
 
+#: src/ui/session/content/chat_history.rs:1486
 msgid "{n} selected"
 msgstr "Выбрано: {n}"
 
+#: src/ui/session/content/chat_history.rs:1605
 msgid "Delete Messages"
 msgstr "Удалить сообщения"
 
+#: src/ui/session/content/chat_history.rs:1606
 msgid "Delete the selected messages?"
 msgstr "Удалить выбранные сообщения?"
 
+#: src/ui/session/content/chat_history.rs:2233
 msgid "Pinned panel was hidden"
 msgstr "Панель закреплённых сообщений скрыта"
 
+#: src/ui/session/content/chat_history.rs:2234
 msgid "Show"
 msgstr "Показать"
 
+#. Pinned messages are numbered oldest = 1, like tdesktop.
+#: src/ui/session/content/chat_history.rs:2359
 msgid "Pinned Message #{n}"
 msgstr "Закреплённое сообщение №{n}"
 
+#: src/ui/session/content/chat_history.rs:2361
+#: src/ui/session/content/chat_history.ui:126
 msgid "Pinned Message"
 msgstr "Закреплённое сообщение"
 
+#: src/ui/session/content/chat_history.rs:2419
 msgid "{n} Pinned Messages"
 msgstr "Закреплённых сообщений: {n}"
 
+#: src/ui/session/content/chat_history.ui:154
 msgid "All Pinned Messages"
 msgstr "Все закреплённые сообщения"
 
+#: src/ui/session/content/chat_history.ui:165
 msgid "Unpin for Everyone"
 msgstr "Открепить для всех"
 
+#: src/ui/session/content/chat_history.ui:177
 msgid "Hide Pinned Panel"
 msgstr "Скрыть панель закреплённых"
 
+#: src/ui/session/content/chat_history.ui:197
+#: src/ui/session/content/chat_history.ui:201
+#: src/ui/session/content/message_row/mod.rs:612
 msgid "Forward"
 msgstr "Переслать"
 
+#: src/ui/session/content/chat_history.ui:214
+#: src/ui/session/content/chat_history.ui:218
+#: src/ui/session/content/message_row/mod.rs:616
 msgid "Copy Text"
 msgstr "Скопировать текст"
 
+#: src/ui/session/content/chat_history.ui:231
+#: src/ui/session/content/chat_history.ui:235
+#: src/ui/session/content/message_row/mod.rs:620
 msgid "Delete"
 msgstr "Удалить"
 
+#: src/ui/session/content/chat_history.ui:260
+#: src/ui/session/content/message_row/mod.rs:624
 msgid "Clear Selection"
 msgstr "Снять выделение"
 
+#: src/ui/session/content/chat_history.ui:289
 msgid "Back"
 msgstr "Назад"
 
@@ -1503,6 +1617,7 @@ msgstr "Прокрутить донизу"
 msgid "View Info"
 msgstr "Посмотреть информацию"
 
+#: src/ui/session/content/chat_history.ui:451
 msgid "Show Pinned Panel"
 msgstr "Показать панель закреплённых"
 
@@ -1520,6 +1635,7 @@ msgstr "%e %B"
 msgid "%B %e, %Y"
 msgstr "%e %B, %Y"
 
+#: src/ui/session/content/chat_history_row.rs:169
 msgid "Unread messages"
 msgstr "Непрочитанные сообщения"
 
@@ -1553,6 +1669,7 @@ msgstr "Ссылка"
 msgid "Copied to clipboard"
 msgstr "Cкопировано в буфер обмена"
 
+#: src/ui/session/content/message_row/bubble.rs:518
 msgid "Forwarded from {name}"
 msgstr "Переслано от {name}"
 
@@ -1564,6 +1681,7 @@ msgstr "изменено"
 msgid "sponsored"
 msgstr "спонсировано"
 
+#: src/ui/session/content/message_row/label.rs:562
 msgid "Code copied to clipboard"
 msgstr "Код скопирован в буфер обмена"
 
@@ -1588,9 +1706,11 @@ msgstr "Вы хотите удалить это сообщение для <b>в�
 msgid "Do you want to delete this message?"
 msgstr "Вы хотите удалить это сообщение?"
 
+#: src/ui/session/content/message_row/mod.rs:425
 msgid "Confirm Message Deletion"
 msgstr "Подтвердить удаление сообщения"
 
+#: src/ui/session/content/message_row/mod.rs:1049
 msgid "Send Message"
 msgstr "Отправить сообщение"
 
@@ -1598,12 +1718,15 @@ msgstr "Отправить сообщение"
 msgid "Loading…"
 msgstr "Загрузка…"
 
+#: src/ui/session/content/message_row/reply.rs:146
 msgid "Deleted message"
 msgstr "Удалённое сообщение"
 
+#: src/ui/session/content/message_row/reply.rs:150
 msgid "Story"
 msgstr "История"
 
+#: src/ui/session/content/message_row/text.rs:153
 msgid ""
 "This message is not supported by your version of Paper Plane. Please update."
 msgstr ""
@@ -1644,15 +1767,19 @@ msgstr "Чаты"
 msgid "Content"
 msgstr "Содержимое"
 
+#: src/ui/session/preferences_window.blp:6
 msgid "General"
 msgstr "Основные"
 
+#: src/ui/session/preferences_window.blp:10
 msgid "Notifications"
 msgstr "Уведомления"
 
+#: src/ui/session/preferences_window.blp:13
 msgid "Enable Notifications"
 msgstr "Включить уведомления"
 
+#: src/ui/session/preferences_window.blp:14
 msgid "Show desktop notifications for new messages"
 msgstr "Показывать уведомления рабочего стола о новых сообщениях"
 
@@ -1668,6 +1795,7 @@ msgstr "Размер кеша"
 msgid "Clear Cache"
 msgstr "Очистить кеш"
 
+#: src/ui/session/preferences_window.blp:41
 msgid "Design"
 msgstr "Оформление"
 
@@ -1679,27 +1807,35 @@ msgstr "Использовать системную тему"
 msgid "Dark Theme"
 msgstr "Тёмная тема"
 
+#: src/ui/session/preferences_window.blp:67
 msgid "Sidebar"
 msgstr "Сайдбар"
 
+#: src/ui/session/preferences_window.blp:70
 msgid "Vertical Folders"
 msgstr "Вертикальные папки"
 
+#: src/ui/session/preferences_window.blp:71
 msgid "Show chat folders as a rail on the far left of the sidebar"
 msgstr "Показывать папки чатов вертикальной панелью у левого края сайдбара"
 
+#: src/ui/session/preferences_window.blp:77
 msgid "Features"
 msgstr "Функции"
 
+#: src/ui/session/preferences_window.blp:81
 msgid "Debug Options"
 msgstr "Параметры отладки"
 
+#: src/ui/session/preferences_window.blp:82
 msgid "Developer tools for troubleshooting and bug reports"
 msgstr "Инструменты разработчика для устранения неполадок и отчётов об ошибках"
 
+#: src/ui/session/preferences_window.blp:85
 msgid "Enable Debug Options"
 msgstr "Включить параметры отладки"
 
+#: src/ui/session/preferences_window.blp:86
 msgid ""
 "Adds \"Copy Debug Entry\" to the message menu, which copies a message's raw "
 "data for bug reports"
@@ -1707,21 +1843,27 @@ msgstr ""
 "Добавляет «Скопировать отладочную запись» в меню сообщения; копирует "
 "исходные данные сообщения для отчётов об ошибках"
 
+#: src/ui/session/preferences_window.blp:92
 msgid "About"
 msgstr "О приложении"
 
+#: src/ui/session/preferences_window.blp:98
 msgid "A Telegram client for the GNOME desktop"
 msgstr "Клиент Telegram для рабочего стола GNOME"
 
+#: src/ui/session/preferences_window.blp:102
 msgid "Version"
 msgstr "Версия"
 
+#: src/ui/session/preferences_window.blp:112
 msgid "Website"
 msgstr "Веб-сайт"
 
+#: src/ui/session/preferences_window.blp:123
 msgid "Report an Issue"
 msgstr "Сообщить о проблеме"
 
+#: src/ui/session/preferences_window.blp:138
 msgid "About Paper Plane"
 msgstr "О Paper Plane"
 
@@ -1761,6 +1903,7 @@ msgstr "_Комбинации клавиш"
 msgid "_About Paper Plane"
 msgstr "_О приложении"
 
+#: src/ui/session/sidebar/mod.blp:97
 msgid "Archive"
 msgstr "Архив"
 
@@ -1772,12 +1915,15 @@ msgstr "Поиск"
 msgid "Sessions"
 msgstr "Сеансы"
 
+#: src/ui/session/sidebar/mod.blp:203
 msgid "Archived Chats"
 msgstr "Архивные чаты"
 
+#: src/ui/session/sidebar/row_menu.blp:6
 msgid "_Archive"
 msgstr "_Архив"
 
+#: src/ui/session/sidebar/row_menu.blp:12
 msgid "_Unarchive"
 msgstr "_Убрать из архива"
 
@@ -1797,6 +1943,7 @@ msgstr "Пометить как _непрочитанное"
 msgid "Mark as _Read"
 msgstr "Пометить как _прочитанное"
 
+#: src/ui/session/sidebar/row_menu.blp:44
 msgid "Open in Separate _Window"
 msgstr "Открыть в отдельном _окне"
 
@@ -1827,6 +1974,9 @@ msgstr "_Тестовый Сервер"
 #: src/ui/session/switcher.blp:41
 msgid "New Session"
 msgstr "Новый сеанс"
+
+msgid "Loading chats…"
+msgstr "Загрузка чатов…"
 
 #~ msgid ""
 #~ "Added registered categories to te desktop file to fix a build error on "

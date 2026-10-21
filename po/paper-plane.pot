@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 19:50+0300\n"
+"POT-Creation-Date: 2026-10-21 20:30+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -371,25 +371,25 @@ msgstr ""
 msgid "Marco Melorio"
 msgstr ""
 
-#: src/application.rs:150
+#: src/application.rs:163
 msgid "Chat is already open in another window"
 msgstr ""
 
-#: src/application.rs:317
+#: src/application.rs:330
 msgid "Paper Plane developers"
 msgstr ""
 
-#: src/application.rs:337
+#: src/application.rs:350
 msgid "Sponsors"
 msgstr ""
 
-#: src/application.rs:343
+#: src/application.rs:356
 msgid ""
 "<span size=\"small\">Map data by                 <a href=\"https://www."
 "openstreetmap.org\">OpenStreetMap</a>                 and contributors</span>"
 msgstr ""
 
-#: src/application.rs:349
+#: src/application.rs:362
 msgid ""
 "OpenStreetMap® is open data, licensed under the                 <a href="
 "\"https://opendatacommons.org/licenses/odbl\">                Open Data "
@@ -397,7 +397,7 @@ msgid ""
 "\"https://osmfoundation.org\">OpenStreetMap Foundation</a> (OSMF)."
 msgstr ""
 
-#: src/application.rs:393 src/strings/message.rs:238
+#: src/application.rs:406 src/strings/message.rs:238
 msgid "Incoming call"
 msgstr ""
 
@@ -1321,11 +1321,11 @@ msgstr ""
 msgid "Remove"
 msgstr ""
 
-#: src/ui/proxy_row.rs:173
+#: src/ui/proxy_row.rs:172
 msgid "Available ({ping} ms)"
 msgstr ""
 
-#: src/ui/proxy_row.rs:181
+#: src/ui/proxy_row.rs:180
 msgid "Unavailable"
 msgstr ""
 
