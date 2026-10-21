@@ -5,10 +5,12 @@ use std::cell::RefCell;
 
 use adw::prelude::*;
 use adw::subclass::prelude::*;
+use gettextrs::gettext;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::glib;
 
+use crate::i18n::gettext_f;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -166,14 +168,16 @@ impl ProxyRow {
         imp.status_checking.set_visible(item.status_code() == 1);
         match item.status_code() {
             2 => {
-                imp.status_label
-                    .set_label(&gettext!("Available ({} ms)", item.latency_ms()));
+                imp.status_label.set_label(&gettext_f(
+                    "Available ({ping} ms)",
+                    &[("ping", &item.latency_ms().to_string())],
+                ));
                 imp.status_label.set_visible(true);
                 imp.status_label.add_css_class("success");
                 imp.status_label.remove_css_class("error");
             }
             3 => {
-                imp.status_label.set_label(&gettext!("Unavailable"));
+                imp.status_label.set_label(&gettext("Unavailable"));
                 imp.status_label.set_visible(true);
                 imp.status_label.add_css_class("error");
                 imp.status_label.remove_css_class("success");

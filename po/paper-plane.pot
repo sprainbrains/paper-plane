@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-19 21:16+0300\n"
+"POT-Creation-Date: 2026-10-21 19:50+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1253,7 +1253,7 @@ msgstr ""
 msgid "Terms of Service"
 msgstr ""
 
-#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:162
+#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:191
 #: src/ui/proxy_window.blp:49
 msgid "Add Proxy"
 msgstr ""
@@ -1301,24 +1301,32 @@ msgstr ""
 msgid "Proxy Name"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:185
+#: src/ui/proxy_editor.rs:214
 msgid "Edit Proxy"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:271
+#: src/ui/proxy_editor.rs:314
 msgid "Could not save the proxy"
 msgstr ""
 
-#: src/ui/proxy_row.blp:41
+#: src/ui/proxy_row.blp:37
 msgid "Edit"
 msgstr ""
 
-#: src/ui/proxy_row.blp:48
+#: src/ui/proxy_row.blp:44
 msgid "Check"
 msgstr ""
 
-#: src/ui/proxy_row.blp:55
+#: src/ui/proxy_row.blp:51
 msgid "Remove"
+msgstr ""
+
+#: src/ui/proxy_row.rs:173
+msgid "Available ({ping} ms)"
+msgstr ""
+
+#: src/ui/proxy_row.rs:181
+msgid "Unavailable"
 msgstr ""
 
 #: src/ui/proxy_window.blp:11
@@ -1345,31 +1353,31 @@ msgstr ""
 msgid "Proxies"
 msgstr ""
 
-#: src/ui/proxy_window.rs:116
+#: src/ui/proxy_window.rs:146
 msgid "Off"
 msgstr ""
 
-#: src/ui/proxy_window.rs:117
+#: src/ui/proxy_window.rs:147
 msgid "5 seconds"
 msgstr ""
 
-#: src/ui/proxy_window.rs:118
+#: src/ui/proxy_window.rs:148
 msgid "10 seconds"
 msgstr ""
 
-#: src/ui/proxy_window.rs:119
+#: src/ui/proxy_window.rs:149
 msgid "15 seconds"
 msgstr ""
 
-#: src/ui/proxy_window.rs:120
+#: src/ui/proxy_window.rs:150
 msgid "30 seconds"
 msgstr ""
 
-#: src/ui/proxy_window.rs:121
+#: src/ui/proxy_window.rs:151
 msgid "60 seconds"
 msgstr ""
 
-#: src/ui/proxy_window.rs:237
+#: src/ui/proxy_window.rs:277
 msgid "Add a proxy first"
 msgstr ""
 
