@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-09-25 16:58+0200\n"
+"POT-Creation-Date: 2026-10-21 19:50+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -16,12 +16,13 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
-"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
+"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
 "X-Generator: Weblate 5.1-dev\n"
 
 #: data/app.drey.PaperPlane.desktop.in.in:3
 #: data/app.drey.PaperPlane.metainfo.xml.in.in:7
+#: src/ui/session/preferences_window.blp:97
 msgid "Paper Plane"
 msgstr "Paper Plane"
 
@@ -58,14 +59,74 @@ msgstr "Последний использованный сеанс"
 msgid "The directory name of the last used session"
 msgstr "Имя каталога последнего использованного сеанса"
 
-#: data/app.drey.PaperPlane.gschema.xml.in:31
-#: src/ui/session/preferences_window.blp:7
+msgid "Enable notifications"
+msgstr "Включить уведомления"
+
+msgid "Whether to show desktop notifications for new messages"
+msgstr "Показывать ли уведомления рабочего стола о новых сообщениях"
+
+msgid "Automatic proxy switch deadline"
+msgstr "Срок автоматического переключения прокси"
+
+msgid ""
+"Seconds without a connection after which the next proxy from the list is "
+"tried. 0 disables automatic switching."
+msgstr ""
+"Секунды без соединения, по истечении которых пробуется следующий прокси из "
+"списка. 0 отключает автоматическое переключение."
+
+#: data/app.drey.PaperPlane.gschema.xml.in:44
+#: src/ui/session/preferences_window.blp:45
 msgid "Color Scheme"
 msgstr "Цветовая схема"
 
-#: data/app.drey.PaperPlane.gschema.xml.in:32
+#: data/app.drey.PaperPlane.gschema.xml.in:45
 msgid "The color scheme to be used in the app"
 msgstr "Цветовая схема, которая будет использоваться в приложении"
+
+msgid "Recently used emoji"
+msgstr "Недавно использованные эмодзи"
+
+msgid "Emoji recently inserted through the content picker"
+msgstr "Эмодзи, недавно вставленные через панель выбора"
+
+msgid "Enable debug options"
+msgstr "Включить параметры отладки"
+
+msgid ""
+"Whether to expose developer/debug features such as \"Copy Debug Entry\" in "
+"message menus"
+msgstr ""
+"Показывать ли инструменты разработчика, такие как «Скопировать отладочную "
+"запись» в меню сообщений"
+
+msgid "Vertical chat folders"
+msgstr "Вертикальные папки чатов"
+
+msgid ""
+"Show chat folders as a vertical rail on the far left of the sidebar instead "
+"of a horizontal bar at the top"
+msgstr ""
+"Отображать папки чатов вертикальной панелью у левого края сайдбара вместо "
+"горизонтальной сверху"
+
+msgid "Chat list sidebar width"
+msgstr "Ширина сайдбара со списком чатов"
+
+msgid "The saved width, in pixels, of the resizable chat list sidebar"
+msgstr ""
+"Сохранённая ширина изменяемого по размеру сайдбара со списком чатов, в "
+"пикселях"
+
+msgid "Content picker width"
+msgstr "Ширина панели выбора"
+
+msgid ""
+"The saved width, in pixels, of the resizable emoji/sticker content picker "
+"panel"
+msgstr ""
+"Сохранённая ширина изменяемой по размеру панели выбора эмодзи/стикеров, в "
+"пикселях"
 
 #: data/app.drey.PaperPlane.metainfo.xml.in.in:10
 msgid ""
@@ -109,7 +170,149 @@ msgstr "Поиск групп и людей."
 msgid "Main window"
 msgstr "Главное окно"
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:47
+msgid ""
+"This is the fifth beta release of Paper Plane 0.1.0 with new features and "
+"bug fixes:"
+msgstr ""
+"Это пятый бета-выпуск Paper Plane 0.1.0 с новыми функциями и исправлениями "
+"ошибок:"
+
+msgid "Archived chats can now be displayed. (#598, #607, #613)"
+msgstr "Теперь можно просматривать архивные чаты. (#598, #607, #613)"
+
+msgid "Chats can now be archived and de-archived. (#601)"
+msgstr "Теперь чаты можно помещать в архив и извлекать из него. (#601)"
+
+msgid ""
+"Chat folders can now be displayed, selected and deleted. (#603, #608, #609, "
+"#614)"
+msgstr ""
+"Теперь папки чатов можно просматривать, выбирать и удалять. (#603, #608, "
+"#609, #614)"
+
+msgid ""
+"A regression that prevented images from being sent has been fixed. (#586)"
+msgstr ""
+"Исправлена регрессия, из-за которой невозможно было отправить изображения. "
+"(#586)"
+
+msgid "The indicator for venue messages now has the correct opacity. (#588)"
+msgstr ""
+"Индикатор сообщений о месте теперь имеет правильную прозрачность. (#588)"
+
+msgid "You can now reply to messages with pictures. (#589)"
+msgstr "Теперь можно отвечать на сообщения картинками. (#589)"
+
+msgid ""
+"A loading indicator is now displayed when a document is downloaded, in "
+"coorporation with @yuraiz. (#590)"
+msgstr ""
+"Теперь при загрузке документа показывается индикатор, совместно с @yuraiz. "
+"(#590)"
+
+msgid ""
+"Many improvements to venue and location messages have landed, such as "
+"opening the map in the modal and displaying the location on the OSM website. "
+"(#596)"
+msgstr ""
+"Много улучшений сообщений о месте и геолокации: открытие карты в модальном "
+"окне и просмотр местоположения на сайте OSM. (#596)"
+
+msgid ""
+"The loading of messages has been improved so that there are now always "
+"enough messages loaded to allow scrolling. (#600)"
+msgstr ""
+"Загрузка сообщений улучшена: теперь всегда загружено достаточно сообщений "
+"для прокрутки. (#600)"
+
+msgid ""
+"Fixed a crash that occurred sporadically when starting the application. "
+"(#602)"
+msgstr "Исправлен редкий сбой при запуске приложения. (#602)"
+
+msgid ""
+"Release descriptions have been marked as untranslatable, thanks to "
+"@sabriunal. (#594)"
+msgstr ""
+"Описания выпусков помечены как непереводимые, спасибо @sabriunal. (#594)"
+
+msgid "Dependencies have been updated. (#615)"
+msgstr "Зависимости обновлены. (#615)"
+
+msgid "Translations have been updated. (#587, #616)"
+msgstr "Переводы обновлены. (#587, #616)"
+
+msgid ""
+"This is the fourth beta release of Paper Plane 0.1.0 with new features and "
+"bug fixes:"
+msgstr ""
+"Это четвёртый бета-выпуск Paper Plane 0.1.0 с новыми функциями и "
+"исправлениями ошибок:"
+
+msgid ""
+"Paper Plane now uses some new shiny widgets from libadwaita 1.4, thanks to "
+"@melix99. (#518)"
+msgstr ""
+"Paper Plane теперь использует новые эффектные виджеты из libadwaita 1.4, "
+"спасибо @melix99. (#518)"
+
+msgid ""
+"The tdlib telegram client library has been updated to 1.8.19, thanks to "
+"@alissonlauffer. (#577)"
+msgstr ""
+"Библиотека клиента Telegram tdlib обновлена до 1.8.19, спасибо "
+"@alissonlauffer. (#577)"
+
+msgid ""
+"The login flow has been completely redesigned and now looks more modern. "
+"(#510)"
+msgstr ""
+"Процесс входа полностью переработан и теперь выглядит современнее. (#510)"
+
+msgid ""
+"We have redesigned the session switcher. It has been moved to the sidebar "
+"and shows a confirmation dialog when logging out. (#510)"
+msgstr ""
+"Мы переработали переключатель сеансов. Он перемещён в сайдбар и показывает "
+"диалог подтверждения при выходе. (#510)"
+
+msgid ""
+"The message entry can now be clicked without effecting the state of the "
+"application window. (#510)"
+msgstr ""
+"Теперь поле ввода можно нажимать, не влияя на состояние окна приложения. "
+"(#510)"
+
+msgid "Displaying location and venue messages is now implemented. (#548, #582)"
+msgstr "Реализовано отображение сообщений о геолокации и месте. (#548, #582)"
+
+msgid "Fixed an application crash when trying to log in. (#559)"
+msgstr "Исправлен сбой приложения при попытке входа. (#559)"
+
+msgid ""
+"A mask is now used for the document message status indicator, thanks to "
+"@yuraiz. (#555)"
+msgstr ""
+"Теперь для индикатора статуса сообщения-файла используется маска, спасибо "
+"@yuraiz. (#555)"
+
+msgid ""
+"The dialog for sending media files has been improved in function and "
+"appearance, thanks to @melix99. (#540)"
+msgstr ""
+"Диалог отправки медиафайлов улучшен функционально и визуально, спасибо "
+"@melix99. (#540)"
+
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:79
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:89
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:103
+msgid "Dependencies have been updated."
+msgstr "Обновлены зависимости."
+
+msgid "Translations have been updated."
+msgstr "Переводы обновлены."
+
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:86
 msgid ""
 "The third beta release of Paper Plane 0.1.0 should in the first place fix a "
 "build error on Flathub:"
@@ -117,24 +320,18 @@ msgstr ""
 "Третий бета-релиз Paper Plane 0.1.0 должен в первую очередь исправить ошибку "
 "сборки на Flathub:"
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:49
 msgid ""
-"Added registered categories to te desktop file to fix a build error on "
+"Added registered categories to the desktop file to fix a build error on "
 "Flathub."
 msgstr ""
 "Добавлены зарегистрированные категории в файл desktop для исправления ошибки "
 "сборки на Flathub."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:50
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:64
-msgid "Dependencies have been updated."
-msgstr "Обновлены зависимости."
-
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:51
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:90
 msgid "Turkish translations have been updated, thanks to @sabriunal."
 msgstr "Обновлен перевод на турецкий язык, спасибо @sabriunal."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:57
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:96
 msgid ""
 "The second beta release of Paper Plane 0.1.0 contains the following "
 "features, fixes and chores:"
@@ -142,13 +339,14 @@ msgstr ""
 "Второй бета-релиз Paper Plane 0.1.0 содержит следующие возможности, "
 "исправления и доработки:"
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:59
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:98
 msgid ""
 "Blueprint compiler has been updated to version 0.8.1, thanks to "
 "@alissonlauffer."
-msgstr "Компилятор Blueprint обновлен до версии 0.8.1, спасибо @alissonlauffer."
+msgstr ""
+"Компилятор Blueprint обновлен до версии 0.8.1, спасибо @alissonlauffer."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:60
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:99
 msgid ""
 "The chat history now has a background image, which is animated when new "
 "messages arrive, thanks to @yuraiz."
@@ -156,7 +354,7 @@ msgstr ""
 "История чата теперь имеет фоновое изображение, которое анимируется при "
 "поступлении новых сообщений, спасибо @yuraiz."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:61
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:100
 msgid ""
 "A bug was fixed that lead to an application crash if selecting non-existing "
 "chats from the contacts window, thank to @alissonlauffer."
@@ -164,14 +362,14 @@ msgstr ""
 "Исправлена ошибка, приводившая к аварийному завершению работы приложения при "
 "выборе несуществующих чатов из окна контактов, спасибо @alissonlauffer."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:62
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:101
 msgid ""
 "Avatars of deleted accounts now have a ghost icon set, thanks to @karl0d."
 msgstr ""
 "Аватары удаленных учетных записей теперь имеют набор иконок-призраков, "
 "спасибо @karl0d."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:63
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:102
 msgid ""
 "The application will now be built with more aggressive compiler options, "
 "which should result in a smaller and maybe faster binary."
@@ -180,15 +378,15 @@ msgstr ""
 "компилятора, что должно привести к созданию более компактного и, возможно, "
 "более быстрого бинарного файла."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:65
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:104
 msgid ""
 "Portuguese and Polish translation have been updated, thanks to "
 "@jvlianodorneles and @karl0d."
 msgstr ""
-"Обновлены переводы на португальский и польский языки, спасибо @"
-"jvlianodorneles и @karl0d."
+"Обновлены переводы на португальский и польский языки, спасибо "
+"@jvlianodorneles и @karl0d."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:71
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:110
 msgid ""
 "Paper Plane 0.1.0-beta.1 is the first release for enthusiasts to try out and "
 "play around with."
@@ -196,19 +394,22 @@ msgstr ""
 "Paper Plane 0.1.0-beta.1 - это первый релиз, который энтузиасты могут "
 "опробовать и поиграть с ним."
 
-#: data/app.drey.PaperPlane.metainfo.xml.in.in:83
+#: data/app.drey.PaperPlane.metainfo.xml.in.in:122
 msgid "Marco Melorio"
 msgstr "Марко Мелорио"
 
-#: src/application.rs:165
+msgid "Chat is already open in another window"
+msgstr "Чат уже открыт в другом окне"
+
+#: src/application.rs:317
 msgid "Paper Plane developers"
 msgstr "Разработчики Paper Plane"
 
-#: src/application.rs:185
+#: src/application.rs:337
 msgid "Sponsors"
 msgstr "Спонсоры"
 
-#: src/application.rs:191
+#: src/application.rs:343
 msgid ""
 "<span size=\"small\">Map data by                 <a href=\"https://www."
 "openstreetmap.org\">OpenStreetMap</a>                 and contributors</span>"
@@ -216,62 +417,73 @@ msgstr ""
 "<span size=\"small\">Картографические данные <a href=\"https://www."
 "openstreetmap.org\">OpenStreetMap</a> и авторы</span>"
 
-#: src/application.rs:197
 msgid ""
-"OpenStreetMap® is open data, licensed under the                 <a "
-"href=\"https://opendatacommons.org/licenses/odbl\">                Open Data "
-"Commons Open Database License </a> (ODbL) by the                 <a "
-"href=\"https://osmfoundation.org\">aOpenStreetMap Foundation</a> (OSMF)."
+"OpenStreetMap® is open data, licensed under the                 <a href="
+"\"https://opendatacommons.org/licenses/odbl\">                Open Data "
+"Commons Open Database License </a> (ODbL) by the                 <a href="
+"\"https://osmfoundation.org\">OpenStreetMap Foundation</a> (OSMF)."
 msgstr ""
-"OpenStreetMap® - это открытые данные, лицензированные в соответствии с <a "
-"href=\"https://opendatacommons.org/licenses/odbl\">лицензией открытых баз "
-"данных Open Data Commons </a> (ODbL) организацией <a href=\"https"
-"://osmfoundation.org\">aOpenStreetMap Foundation</a> (OSMF)."
+"OpenStreetMap® — открытые данные, распространяемые по <a href=\"https://"
+"opendatacommons.org/licenses/odbl\">лицензии Open Data Commons Open Database "
+"License</a> (ODbL) организацией <a href=\"https://osmfoundation.org"
+"\">OpenStreetMap Foundation</a> (OSMF)."
 
-#: src/expressions.rs:20 src/ui/session/sidebar/search/item_row.rs:97
-#: src/ui/session/sidebar/search/mod.rs:182
+#: src/application.rs:393 src/strings/message.rs:238
+msgid "Incoming call"
+msgstr "Входящий вызов"
+
+#: src/expressions.rs:21 src/ui/session/sidebar/search/item_row.rs:101
+#: src/ui/session/sidebar/search/mod.rs:193
 msgid "Saved Messages"
 msgstr "Избранное"
 
-#: src/expressions.rs:22 src/expressions.rs:44 src/strings.rs:384
+#: src/expressions.rs:23 src/expressions.rs:45 src/strings/user.rs:9
 msgid "Deleted Account"
 msgstr "Удаленная учетная запись"
 
-#: src/expressions.rs:90
+#: src/expressions.rs:89 src/expressions.rs:94 src/expressions.rs:110
 msgid "The admins of this group have restricted you from writing here"
 msgstr "Администраторы группы запретили Вам писать в ней"
 
 #. Translators: This is a time representation, without seconds.
 #. Here you may want to change to a 24-hours representation, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:103 src/ui/session/content/message_row/indicators.rs:239
-#: src/ui/session/sidebar/row.rs:648
+#: src/expressions.rs:101 src/ui/session/content/message_row/indicators.rs:314
 msgid "%l:%M %p"
 msgstr "%H:%M"
 
 #. Translators: This is a date and time representation, without seconds.
 #. Here you may want to change to a 24-hours representation and change order, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:108
+#: src/expressions.rs:106
 msgid "%B %e, %Y %l:%M %p"
 msgstr "%e %B, %Y %H:%M"
 
-#: src/expressions.rs:120
+#: src/expressions.rs:123
 msgid "Writing messages isn't allowed in this group."
 msgstr "В этой группе запрещено отправлять сообщения."
 
-#: src/main.rs:121
+#: src/main.rs:186
 msgid "Prints application version"
 msgstr "Вывести версию приложения"
 
-#: src/main.rs:130
+#: src/main.rs:195
 msgid "Specify the minimum log level"
 msgstr "Указать минимальный уровень журнала"
 
-#: src/main.rs:139
+msgid "Override the builtin client id"
+msgstr "Переопределить встроенный client id"
+
+msgid "Override the builtin client secret"
+msgstr "Переопределить встроенный client secret"
+
+#: src/main.rs:222
 msgid "Whether to use a test data center on first account"
 msgstr ""
 "Использовать ли тестовый центр обработки данных на первой учетной записи"
+
+msgid "Only folders can be deleted."
+msgstr "Удалять можно только папки."
 
 #: src/model/country_info.rs:99
 msgid "Invalid Country Code"
@@ -281,240 +493,481 @@ msgstr "Недействительный код страны"
 msgid "Test Account"
 msgstr "Тестовая учетная запись"
 
-#: src/strings.rs:29
+#: src/strings/chat_action.rs:29
 msgid "{sender} is choosing a contact"
 msgstr "{sender} выбирает контакт"
 
-#: src/strings.rs:33
+#: src/strings/chat_action.rs:31
 msgid "{sender1} and {sender2} are choosing contacts"
 msgstr "{sender1} и {sender2} выбирают контакты"
 
-#: src/strings.rs:40
+#: src/strings/chat_action.rs:35
 msgid "{num} people are choosing contacts"
 msgstr "{num} человек(а) выбирают контакты"
 
-#: src/strings.rs:45
+#: src/strings/chat_action.rs:40
 msgid "choosing a contact"
 msgstr "выбирает контакт"
 
-#: src/strings.rs:52
+#: src/strings/chat_action.rs:46
 msgid "{sender} is choosing a location"
 msgstr "{sender} выбирает местоположение"
 
-#: src/strings.rs:56
+#: src/strings/chat_action.rs:48
 msgid "{sender1} and {sender2} are choosing locations"
 msgstr "{sender1} и {sender2} выбирают местоположения"
 
-#: src/strings.rs:63
+#: src/strings/chat_action.rs:52
 msgid "{num} people are choosing locations"
 msgstr "{num} человек(а) выбирают местоположения"
 
-#: src/strings.rs:68
+#: src/strings/chat_action.rs:57
 msgid "choosing a location"
 msgstr "выбирает местоположение"
 
-#: src/strings.rs:75
+#: src/strings/chat_action.rs:63
 msgid "{sender} is choosing a sticker"
 msgstr "{sender} выбирает стикер"
 
-#: src/strings.rs:79
+#: src/strings/chat_action.rs:65
 msgid "{sender1} and {sender2} are choosing stickers"
 msgstr "{sender1} и {sender2} выбирают стикеры"
 
-#: src/strings.rs:86
+#: src/strings/chat_action.rs:69
 msgid "{num} people are choosing stickers"
 msgstr "{num} человек(а) выбирают стикеры"
 
-#: src/strings.rs:91
+#: src/strings/chat_action.rs:74
 msgid "choosing a sticker"
 msgstr "выбирает стикер"
 
-#: src/strings.rs:98
+#: src/strings/chat_action.rs:80
 msgid "{sender} is recording a video"
 msgstr "{sender} записывает видео"
 
-#: src/strings.rs:102
+#: src/strings/chat_action.rs:82
 msgid "{sender1} and {sender2} are recording videos"
 msgstr "{sender1} и {sender2} записывают видео"
 
-#: src/strings.rs:109
+#: src/strings/chat_action.rs:86
 msgid "{num} people are recording videos"
 msgstr "{num} человек(а) записывают видео"
 
-#: src/strings.rs:114
+#: src/strings/chat_action.rs:91
 msgid "recording a video"
 msgstr "записывает видео"
 
-#: src/strings.rs:121
+#: src/strings/chat_action.rs:98
 msgid "{sender} is recording a video note"
 msgstr "{sender} записывает видеосообщение"
 
-#: src/strings.rs:125
+#: src/strings/chat_action.rs:102
 msgid "{sender1} and {sender2} are recording video notes"
 msgstr "{sender1} и {sender2} записывают видеосообщения"
 
-#: src/strings.rs:132
+#: src/strings/chat_action.rs:106
 msgid "{num} people are recording video notes"
 msgstr "{num} человек(а) записывают видеосообщения"
 
-#: src/strings.rs:137
+#: src/strings/chat_action.rs:111
 msgid "recording a video note"
 msgstr "записывает видеосообщение"
 
-#: src/strings.rs:144
+#: src/strings/chat_action.rs:118
 msgid "{sender} is recording a voice note"
 msgstr "{sender} записывает аудиосообщение"
 
-#: src/strings.rs:148
+#: src/strings/chat_action.rs:122
 msgid "{sender1} and {sender2} are recording voice notes"
 msgstr "{sender1} и {sender2} записывают аудиосообщения"
 
-#: src/strings.rs:155
+#: src/strings/chat_action.rs:126
 msgid "{num} people are recording voice notes"
 msgstr "{num} человек(а) записывают аудиосообщения"
 
-#: src/strings.rs:160
+#: src/strings/chat_action.rs:131
 msgid "recording a voice note"
 msgstr "записывает аудиосообщение"
 
-#: src/strings.rs:167
+#: src/strings/chat_action.rs:137
 msgid "{sender} is playing a game"
 msgstr "{sender} играет в игру"
 
-#: src/strings.rs:171
+#: src/strings/chat_action.rs:139
 msgid "{sender1} and {sender2} are playing games"
 msgstr "{sender1} и {sender2} играют в игры"
 
-#: src/strings.rs:178
+#: src/strings/chat_action.rs:143
 msgid "{num} people are playing games"
 msgstr "{num} человек(а) играют в игры"
 
-#: src/strings.rs:183
+#: src/strings/chat_action.rs:148
 msgid "playing a game"
 msgstr "играет в игру"
 
-#: src/strings.rs:190
+#: src/strings/chat_action.rs:154
 msgid "{sender} is typing"
 msgstr "{sender} печатает"
 
-#: src/strings.rs:194
+#: src/strings/chat_action.rs:156
 msgid "{sender1} and {sender2} are typing"
 msgstr "{sender1} и {sender2} печатают"
 
-#: src/strings.rs:200
+#: src/strings/chat_action.rs:159
 msgid "{num} people are typing"
 msgstr "{num} человек(а) печатают"
 
-#: src/strings.rs:203
+#: src/strings/chat_action.rs:162
 msgid "typing"
 msgstr "печатает"
 
-#: src/strings.rs:210
+#: src/strings/chat_action.rs:169
 msgid "{sender} is uploading a document ({progress}%)"
 msgstr "{sender} отправляет файл ({progress}%)"
 
-#: src/strings.rs:217
+#: src/strings/chat_action.rs:176
 msgid "{sender1} and {sender2} are uploading documents"
 msgstr "{sender1} и {sender2} отправляют файлы"
 
-#: src/strings.rs:224
+#: src/strings/chat_action.rs:180
 msgid "{num} people are uploading documents"
 msgstr "{num} человек(а) отправляют файлы"
 
-#: src/strings.rs:230
+#: src/strings/chat_action.rs:186
 msgid "uploading a document ({progress}%)"
 msgstr "отправляет файл ({progress}%)"
 
-#: src/strings.rs:239
+#: src/strings/chat_action.rs:195
 msgid "{sender} is uploading a photo ({progress}%)"
 msgstr "{sender} отправляет фото ({progress}%)"
 
-#: src/strings.rs:246
+#: src/strings/chat_action.rs:202
 msgid "{sender1} and {sender2} are uploading photos"
 msgstr "{sender1} и {sender2} отправляют фото"
 
-#: src/strings.rs:253
+#: src/strings/chat_action.rs:206
 msgid "{num} people are uploading photos"
 msgstr "{num} человек(а) отправляют фото"
 
-#: src/strings.rs:259
+#: src/strings/chat_action.rs:212
 msgid "uploading a photo ({progress}%)"
 msgstr "отправляет фото ({progress}%)"
 
-#: src/strings.rs:268
+#: src/strings/chat_action.rs:221
 msgid "{sender} is uploading a video ({progress}%)"
 msgstr "{sender} отправляет видео ({progress}%)"
 
-#: src/strings.rs:275
+#: src/strings/chat_action.rs:228
 msgid "{sender1} and {sender2} are uploading videos"
 msgstr "{sender1} и {sender2} отправляют видео"
 
-#: src/strings.rs:282
+#: src/strings/chat_action.rs:232
 msgid "{num} people are uploading videos"
 msgstr "{num} человек(а) отправляют видео"
 
-#: src/strings.rs:288
+#: src/strings/chat_action.rs:238
 msgid "uploading a video ({progress}%)"
 msgstr "отправляет видео ({progress}%)"
 
-#: src/strings.rs:297
+#: src/strings/chat_action.rs:247
 msgid "{sender} is uploading a video note ({progress}%)"
 msgstr "{sender} отправляет видеосообщение ({progress}%)"
 
-#: src/strings.rs:304
+#: src/strings/chat_action.rs:254
 msgid "{sender1} and {sender2} are uploading video notes"
 msgstr "{sender1} и {sender2} отправляют видеосообщения"
 
-#: src/strings.rs:311
+#: src/strings/chat_action.rs:258
 msgid "{num} people are uploading video notes"
 msgstr "{num} человек(а) отправляют видеосообщения"
 
-#: src/strings.rs:317
+#: src/strings/chat_action.rs:264
 msgid "uploading a video note ({progress}%)"
 msgstr "отправляет видеосообщение ({progress}%)"
 
-#: src/strings.rs:326
+#: src/strings/chat_action.rs:273
 msgid "{sender} is uploading a voice note ({progress}%)"
 msgstr "{sender} отправляет аудиосообщение ({progress}%)"
 
-#: src/strings.rs:333
+#: src/strings/chat_action.rs:280
 msgid "{sender1} and {sender2} are uploading voice notes"
 msgstr "{sender1} и {sender2} отправляют аудиосообщения"
 
-#: src/strings.rs:340
+#: src/strings/chat_action.rs:284
 msgid "{num} people are uploading voice notes"
 msgstr "{num} человек(а) отправляют аудиосообщения"
 
-#: src/strings.rs:346
+#: src/strings/chat_action.rs:290
 msgid "uploading a voice note ({progress}%)"
 msgstr "отправляет аудиосообщение ({progress}%)"
 
-#: src/strings.rs:355
+#: src/strings/chat_action.rs:299
 msgid "{sender} is watching an animation {emoji}"
 msgstr "{sender} смотрит анимацию {emoji}"
 
-#: src/strings.rs:362
+#: src/strings/chat_action.rs:303
 msgid "{sender1} and {sender2} are watching animations {emoji}"
 msgstr "{sender1} и {sender2} смотрят анимации {emoji}"
 
-#: src/strings.rs:370
+#: src/strings/chat_action.rs:311
 msgid "{num} people are watching animations {emoji}"
 msgstr "{num} человек(а) смотрят анимации {emoji}"
 
-#: src/strings.rs:375
+#: src/strings/chat_action.rs:316
 msgid "watching an animation"
 msgstr "смотрит анимацию"
 
-#: src/strings.rs:398
+#: src/strings/message.rs:37
+msgid "Location"
+msgstr "Местоположение"
+
+#: src/strings/message.rs:38 src/ui/session/content/message_row/location.blp:37
+msgid "Live Location"
+msgstr "Местоположение в реальном времени"
+
+#: src/strings/message.rs:45
+msgid "Photo has expired"
+msgstr "Фото самоуничтожилось"
+
+#: src/strings/message.rs:48
+msgid "Video has expired"
+msgstr "Видео самоуничтожилось"
+
+#: src/strings/message.rs:49
+msgid "Video Message"
+msgstr "Видеосообщение"
+
+#: src/strings/message.rs:82
+msgid "{sender} took a screenshot!"
+msgstr "{sender} сделал(а) снимок экрана!"
+
+#: src/strings/message.rs:87
+msgid "Location, {venue}"
+msgstr "Местоположение, {venue}"
+
+#: src/strings/message.rs:88
+msgid "Unsupported Message"
+msgstr "Сообщение не поддерживается"
+
+#: src/strings/message.rs:94
+msgid "GIF"
+msgstr "GIF"
+
+#: src/strings/message.rs:96
+msgid "GIF, {caption}"
+msgstr "GIF, {caption}"
+
+#: src/strings/message.rs:104
+msgid "{title} – {performer}"
+msgstr "{title} – {performer}"
+
+#: src/strings/message.rs:110
+msgid "{title} – {performer}, {caption}"
+msgstr "{title} – {performer}, {caption}"
+
+#: src/strings/message.rs:126
+msgid "{file_name}, {caption}"
+msgstr "{file_name}, {caption}"
+
+#: src/strings/message.rs:134
+msgid "Photo"
+msgstr "Фото"
+
+#: src/strings/message.rs:136
+msgid "Photo, {caption}"
+msgstr "Фото, {caption}"
+
+#. Translators: This is a sticker with the associated emoji
+#: src/strings/message.rs:142
+msgid "{emoji} Sticker"
+msgstr "Стикер {emoji}"
+
+#: src/strings/message.rs:147
+msgid "Video"
+msgstr "Видео"
+
+#: src/strings/message.rs:149
+msgid "Video, {caption}"
+msgstr "Видео, {caption}"
+
+#: src/strings/message.rs:155
+msgid "Voice Message"
+msgstr "Аудиосообщение"
+
+#: src/strings/message.rs:157
+msgid "Voice Message, {caption}"
+msgstr "Аудиосообщение, {caption}"
+
+#: src/strings/message.rs:176
+msgid "Declined outgoing video call"
+msgstr "Отклонённый исходящий видеовызов"
+
+#: src/strings/message.rs:178
+msgid "Declined outgoing call"
+msgstr "Отклонённый исходящий вызов"
+
+#: src/strings/message.rs:184
+msgid "Declined incoming video call"
+msgstr "Отклонённый входящий видеовызов"
+
+#: src/strings/message.rs:186
+msgid "Declined incoming call"
+msgstr "Отклонённый входящий вызов"
+
+#: src/strings/message.rs:194
+msgid "Canceled call"
+msgstr "Отмененный вызов"
+
+#: src/strings/message.rs:196
+msgid "Missed call"
+msgstr "Пропущенный вызов"
+
+#: src/strings/message.rs:209
+msgid "Outgoing video call ({duration})"
+msgstr "Исходящий видеовызов ({duration})"
+
+#: src/strings/message.rs:214
+msgid "Outgoing call ({duration})"
+msgstr "Исходящий вызов ({duration})"
+
+#: src/strings/message.rs:219
+msgid "Outgoing video call"
+msgstr "Исходящий видеовызов"
+
+#: src/strings/message.rs:221
+msgid "Outgoing call"
+msgstr "Исходящий вызов"
+
+#: src/strings/message.rs:226
+msgid "Incoming video call ({duration})"
+msgstr "Входящий видеовызов ({duration})"
+
+#: src/strings/message.rs:231
+msgid "Incoming call ({duration})"
+msgstr "Входящий вызов ({duration})"
+
+#: src/strings/message.rs:236
+msgid "Incoming video call"
+msgstr "Входящий видеовызов"
+
+#: src/strings/message.rs:245 src/strings/message.rs:262
+msgid "{sender} created the group \"{title}\""
+msgstr "{sender} создал(а) группу \"{title}\""
+
+#: src/strings/message.rs:257
+msgid "Channel created"
+msgstr "Канал создан"
+
+#: src/strings/message.rs:276
+msgid "Channel renamed to \"{title}\""
+msgstr "Название канала изменено на \"{title}\""
+
+#: src/strings/message.rs:281
+msgid "{sender} changed the group name to \"{title}\""
+msgstr "Название группы изменено на \"{title}\""
+
+#: src/strings/message.rs:291
+msgid "Channel photo changed"
+msgstr "Фото канала изменено"
+
+#: src/strings/message.rs:295
+msgid "{sender} changed the group photo"
+msgstr "{sender} изменил(а) фото группы"
+
+#: src/strings/message.rs:303
+msgid "Channel photo removed"
+msgstr "Фото канала удалено"
+
+#: src/strings/message.rs:307
+msgid "{sender} removed the group photo"
+msgstr "{sender} удалил(а) фото группы"
+
+#: src/strings/message.rs:315 src/strings/message.rs:350
+msgid "{sender} joined the group"
+msgstr "{sender} теперь в группе"
+
+#: src/strings/message.rs:320
+msgid "{sender} added {first_user} and {second_user}"
+msgstr "{sender} добавил(а) {first_user} и {second_user}"
+
+#: src/strings/message.rs:334
+msgid "{sender} added {users}"
+msgstr "{sender} добавил(а) {users}"
+
+#: src/strings/message.rs:343
+msgid "{sender} joined the group via invite link"
+msgstr "{sender} вступил(а) в группу по ссылке-приглашению"
+
+#: src/strings/message.rs:357
+msgid "{sender} left the group"
+msgstr "{sender} покинул(а) группу"
+
+#: src/strings/message.rs:362
+msgid "{sender} removed {user}"
+msgstr "{sender} удалил(а) {user}"
+
+#: src/strings/message.rs:389
+msgid "{sender} scored {points} in {game}"
+msgstr "{sender} набрал(а) {points} очков в {game}"
+
+#: src/strings/message.rs:398
+msgid "{sender} scored {points}"
+msgstr "{sender} набрал(а) {points} очков"
+
+#: src/strings/message.rs:418
+msgid "{sender} pinned \"{text}\""
+msgstr "{sender} закрепил(а) \"{text}\""
+
+#: src/strings/message.rs:420
+msgid "{sender} pinned a GIF"
+msgstr "{sender} закрепил(а) GIF"
+
+#: src/strings/message.rs:421
+msgid "{sender} pinned an audio file"
+msgstr "{sender} закрепил(а) аудиофайл"
+
+#: src/strings/message.rs:422
+msgid "{sender} pinned a file"
+msgstr "{sender} закрепил(а) файл"
+
+#: src/strings/message.rs:423
+msgid "{sender} pinned a photo"
+msgstr "{sender} закрепил(а) фото"
+
+#: src/strings/message.rs:424
+msgid "{sender} pinned a sticker"
+msgstr "{sender} закрепил(а) стикер"
+
+#: src/strings/message.rs:425
+msgid "{sender} pinned a video"
+msgstr "{sender} закрепил(а) видео"
+
+#: src/strings/message.rs:426
+msgid "{sender} pinned a video message"
+msgstr "{sender} закрепил(а) видеосообщение"
+
+#: src/strings/message.rs:427
+msgid "{sender} pinned a voice message"
+msgstr "{sender} закрепил(а) аудиосообщение"
+
+#: src/strings/message.rs:428 src/strings/message.rs:430
+msgid "{sender} pinned a message"
+msgstr "{sender} закрепил(а) сообщение"
+
+#: src/strings/message.rs:439
+msgid "{sender} joined Telegram"
+msgstr "{sender} теперь в Telegram"
+
+#: src/strings/user.rs:23
 msgid "last seen a long time ago"
 msgstr "был(а) очень давно"
 
-#: src/strings.rs:399
+#: src/strings/user.rs:24
 msgid "online"
 msgstr "в сети"
 
 #. Translators: This is an online status with the date
-#: src/strings.rs:408
+#: src/strings/user.rs:33
 #, c-format
 msgid "last seen %x"
 msgstr "был(а) %x"
@@ -522,286 +975,41 @@ msgstr "был(а) %x"
 #. Translators: This is an online status with the last seen time, without seconds
 #. Here you may want to change to a 24-hours representation, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/strings.rs:413
+#: src/strings/user.rs:38
 msgid "last seen yesterday at %l:%M %p"
 msgstr "был(а) вчера в %H:%M"
 
-#: src/strings.rs:417
+#: src/strings/user.rs:42
 msgid "last seen {num} hour ago"
 msgid_plural "last seen {num} hours ago"
 msgstr[0] "был(а) {num} час назад"
 msgstr[1] "был(а) {num} часа назад"
 msgstr[2] "был(а) {num} часов назад"
 
-#: src/strings.rs:424
+#: src/strings/user.rs:49
 msgid "last seen {num} minute ago"
 msgid_plural "last seen {num} minutes ago"
 msgstr[0] "был(а) {num} минуту назад"
 msgstr[1] "был(а) {num} минуты назад"
 msgstr[2] "был(а) {num} минут назад"
 
-#: src/strings.rs:430
+#: src/strings/user.rs:55
 msgid "last seen just now"
 msgstr "был(а) только что"
 
-#: src/strings.rs:433
+#: src/strings/user.rs:58
 msgid "last seen recently"
 msgstr "был(а) недавно"
 
-#: src/strings.rs:434
+#: src/strings/user.rs:59
 msgid "last seen within a week"
 msgstr "был(а) на этой неделе"
 
-#: src/strings.rs:435
+#: src/strings/user.rs:60
 msgid "last seen within a month"
 msgstr "был(а) в этом месяце"
 
-#: src/strings.rs:456 src/ui/session/content/message_row/location.blp:26
-msgid "Live Location"
-msgstr "Местоположение в реальном времени"
-
-#: src/strings.rs:458
-msgid "Location"
-msgstr "Местоположение"
-
-#: src/strings.rs:467
-msgid "Photo has expired"
-msgstr "Фото самоуничтожилось"
-
-#: src/strings.rs:470
-msgid "Video has expired"
-msgstr "Видео самоуничтожилось"
-
-#: src/strings.rs:471
-msgid "Video Message"
-msgstr "Видеосообщение"
-
-#: src/strings.rs:504
-msgid "{sender} took a screenshot!"
-msgstr "{sender} сделал(а) снимок экрана!"
-
-#: src/strings.rs:509
-msgid "Location, {venue}"
-msgstr "Местоположение, {venue}"
-
-#: src/strings.rs:510
-msgid "Unsupported Message"
-msgstr "Сообщение не поддерживается"
-
-#: src/strings.rs:516
-msgid "GIF"
-msgstr "GIF"
-
-#: src/strings.rs:518
-msgid "GIF, {caption}"
-msgstr "GIF, {caption}"
-
-#: src/strings.rs:526
-msgid "{title} – {performer}"
-msgstr "{title} – {performer}"
-
-#: src/strings.rs:532
-msgid "{title} – {performer}, {caption}"
-msgstr "{title} – {performer}, {caption}"
-
-#: src/strings.rs:548
-msgid "{file_name}, {caption}"
-msgstr "{file_name}, {caption}"
-
-#: src/strings.rs:556
-msgid "Photo"
-msgstr "Фото"
-
-#: src/strings.rs:558
-msgid "Photo, {caption}"
-msgstr "Фото, {caption}"
-
-#. Translators: This is a sticker with the associated emoji
-#: src/strings.rs:564
-msgid "{emoji} Sticker"
-msgstr "Стикер {emoji}"
-
-#: src/strings.rs:569
-msgid "Video"
-msgstr "Видео"
-
-#: src/strings.rs:571
-msgid "Video, {caption}"
-msgstr "Видео, {caption}"
-
-#: src/strings.rs:577
-msgid "Voice Message"
-msgstr "Аудиосообщение"
-
-#: src/strings.rs:579
-msgid "Voice Message, {caption}"
-msgstr "Аудиосообщение, {caption}"
-
-#: src/strings.rs:598
-msgid "Declined outgoing video call"
-msgstr "Отклонённый исходящий видеовызов"
-
-#: src/strings.rs:600
-msgid "Declined outgoing call"
-msgstr "Отклонённый исходящий вызов"
-
-#: src/strings.rs:606
-msgid "Declined incoming video call"
-msgstr "Отклонённый входящий видеовызов"
-
-#: src/strings.rs:608
-msgid "Declined incoming call"
-msgstr "Отклонённый входящий вызов"
-
-#: src/strings.rs:614
-msgid "Canceled call"
-msgstr "Отмененный вызов"
-
-#: src/strings.rs:616
-msgid "Missed call"
-msgstr "Пропущенный вызов"
-
-#: src/strings.rs:629
-msgid "Outgoing video call ({duration})"
-msgstr "Исходящий видеовызов ({duration})"
-
-#: src/strings.rs:634
-msgid "Outgoing call ({duration})"
-msgstr "Исходящий вызов ({duration})"
-
-#: src/strings.rs:639
-msgid "Outgoing video call"
-msgstr "Исходящий видеовызов"
-
-#: src/strings.rs:641
-msgid "Outgoing call"
-msgstr "Исходящий вызов"
-
-#: src/strings.rs:646
-msgid "Incoming video call ({duration})"
-msgstr "Входящий видеовызов ({duration})"
-
-#: src/strings.rs:651
-msgid "Incoming call ({duration})"
-msgstr "Входящий вызов ({duration})"
-
-#: src/strings.rs:656
-msgid "Incoming video call"
-msgstr "Входящий видеовызов"
-
-#: src/strings.rs:658 src/ui/window.rs:143
-msgid "Incoming call"
-msgstr "Входящий вызов"
-
-#: src/strings.rs:665 src/strings.rs:682
-msgid "{sender} created the group \"{title}\""
-msgstr "{sender} создал(а) группу \"{title}\""
-
-#: src/strings.rs:677
-msgid "Channel created"
-msgstr "Канал создан"
-
-#: src/strings.rs:696
-msgid "Channel renamed to \"{title}\""
-msgstr "Название канала изменено на \"{title}\""
-
-#: src/strings.rs:701
-msgid "{sender} changed the group name to \"{title}\""
-msgstr "Название группы изменено на \"{title}\""
-
-#: src/strings.rs:711
-msgid "Channel photo changed"
-msgstr "Фото канала изменено"
-
-#: src/strings.rs:715
-msgid "{sender} changed the group photo"
-msgstr "{sender} изменил(а) фото группы"
-
-#: src/strings.rs:723
-msgid "Channel photo removed"
-msgstr "Фото канала удалено"
-
-#: src/strings.rs:727
-msgid "{sender} removed the group photo"
-msgstr "{sender} удалил(а) фото группы"
-
-#: src/strings.rs:738 src/strings.rs:773
-msgid "{sender} joined the group"
-msgstr "{sender} теперь в группе"
-
-#: src/strings.rs:743
-msgid "{sender} added {first_user} and {second_user}"
-msgstr "{sender} добавил(а) {first_user} и {second_user}"
-
-#: src/strings.rs:757
-msgid "{sender} added {users}"
-msgstr "{sender} добавил(а) {users}"
-
-#: src/strings.rs:766
-msgid "{sender} joined the group via invite link"
-msgstr "{sender} вступил(а) в группу по ссылке-приглашению"
-
-#: src/strings.rs:780
-msgid "{sender} left the group"
-msgstr "{sender} покинул(а) группу"
-
-#: src/strings.rs:785
-msgid "{sender} removed {user}"
-msgstr "{sender} удалил(а) {user}"
-
-#: src/strings.rs:810
-msgid "{sender} scored {points} in {game}"
-msgstr "{sender} набрал(а) {points} очков в {game}"
-
-#: src/strings.rs:819
-msgid "{sender} scored {points}"
-msgstr "{sender} набрал(а) {points} очков"
-
-#: src/strings.rs:847
-msgid "{sender} pinned \"{text}\""
-msgstr "{sender} закрепил(а) \"{text}\""
-
-#: src/strings.rs:849
-msgid "{sender} pinned a GIF"
-msgstr "{sender} закрепил(а) GIF"
-
-#: src/strings.rs:850
-msgid "{sender} pinned an audio file"
-msgstr "{sender} закрепил(а) аудиофайл"
-
-#: src/strings.rs:851
-msgid "{sender} pinned a file"
-msgstr "{sender} закрепил(а) файл"
-
-#: src/strings.rs:852
-msgid "{sender} pinned a photo"
-msgstr "{sender} закрепил(а) фото"
-
-#: src/strings.rs:853
-msgid "{sender} pinned a sticker"
-msgstr "{sender} закрепил(а) стикер"
-
-#: src/strings.rs:854
-msgid "{sender} pinned a video"
-msgstr "{sender} закрепил(а) видео"
-
-#: src/strings.rs:855
-msgid "{sender} pinned a video message"
-msgstr "{sender} закрепил(а) видеосообщение"
-
-#: src/strings.rs:856
-msgid "{sender} pinned a voice message"
-msgstr "{sender} закрепил(а) аудиосообщение"
-
-#: src/strings.rs:857 src/strings.rs:859
-msgid "{sender} pinned a message"
-msgstr "{sender} закрепил(а) сообщение"
-
-#: src/strings.rs:868
-msgid "{sender} joined Telegram"
-msgstr "{sender} теперь в Telegram"
-
-#: src/ui/components/map.blp:29
+#: src/ui/components/map.blp:31
 msgid "Map data by OpenStreetMap"
 msgstr "Картографические данные OpenStreetMap"
 
@@ -815,7 +1023,7 @@ msgstr "Страна"
 msgid "Phone Number"
 msgstr "Номер телефона"
 
-#: src/ui/components/phone_number_input.rs:310
+#: src/ui/components/phone_number_input.rs:324
 msgid "You entered an invalid country code."
 msgstr "Вы ввели недействительный код страны."
 
@@ -828,67 +1036,67 @@ msgid "Code"
 msgstr "Код"
 
 #: src/ui/login/code.blp:56 src/ui/login/password.blp:72
-#: src/ui/login/password.blp:202 src/ui/login/phone_number.blp:49
+#: src/ui/login/password.blp:202 src/ui/login/phone_number.blp:56
 #: src/ui/login/registration.blp:64
 msgid "_Next"
 msgstr "_Далее"
 
-#: src/ui/login/code.rs:117
+#: src/ui/login/code.rs:116
 msgid "Send code via {type} (may still arrive within {countdown} seconds)"
 msgstr ""
 "Отправить код через {type} (код может прийти в течение {countdown} секунд)"
 
-#: src/ui/login/code.rs:122
+#: src/ui/login/code.rs:121
 msgid "Send code via {type}"
 msgstr "Отправить код через {type}"
 
-#: src/ui/login/code.rs:147
+#: src/ui/login/code.rs:146
 msgid "The code will arrive to you via {type}."
 msgstr "Код поступит к вам через {type}."
 
-#: src/ui/login/code.rs:184
+#: src/ui/login/code.rs:183
 msgid "Failed to authenticate: {error}"
 msgstr "Не удалось пройти аутентификацию: {error}"
 
-#: src/ui/login/code.rs:198
+#: src/ui/login/code.rs:197
 msgid "Failed to resend auth code: {error}"
 msgstr "Не удалось повторно отправить код авторизации: {error}"
 
 #. Translators: This is an authentication method
-#: src/ui/login/code.rs:228
+#: src/ui/login/code.rs:223
 msgid "Telegram"
 msgstr "Telegram"
 
 #. Translators: This is an authentication method
-#: src/ui/login/code.rs:230
+#: src/ui/login/code.rs:225
 msgid "SMS"
 msgstr "SMS"
 
 #. Translators: This is an authentication method
-#: src/ui/login/code.rs:232
+#: src/ui/login/code.rs:227
 msgid "Call"
 msgstr "Вызов"
 
 #. Translators: This is an authentication method
-#: src/ui/login/code.rs:234
+#: src/ui/login/code.rs:229
 msgid "Flash Call"
 msgstr "Быстрый вызов"
 
 #. Translators: This is an authentication method
-#: src/ui/login/code.rs:236
+#: src/ui/login/code.rs:231
 msgid "Missed Call"
 msgstr "Пропущенный вызов"
 
 #. Translators: This is an authentication method
-#: src/ui/login/code.rs:238
+#: src/ui/login/code.rs:233
 msgid "Fragment"
 msgstr "Fragment"
 
-#: src/ui/login/mod.rs:116
+#: src/ui/login/mod.rs:148
 msgid "Reset Registration Process?"
 msgstr "Сбросить процесс регистрации?"
 
-#: src/ui/login/mod.rs:117
+#: src/ui/login/mod.rs:150
 msgid ""
 "If you reset the registration process, the previous progress will be "
 "irrevocably lost."
@@ -896,12 +1104,13 @@ msgstr ""
 "Если сбросить процесс регистрации, то предыдущий прогресс будет безвозвратно "
 "утерян."
 
-#: src/ui/login/mod.rs:128 src/ui/login/password.rs:242
-#: src/ui/session/row.rs:110
+#: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
+#: src/ui/session/content/chat_action_bar/mod.rs:393
+#: src/ui/session/content/chat_history.rs:1607 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr "_Отменить"
 
-#: src/ui/login/mod.rs:129
+#: src/ui/login/mod.rs:153
 msgid "_Reset"
 msgstr "_Сбросить"
 
@@ -923,7 +1132,7 @@ msgstr "Войти используя свой номер телефона"
 msgid "Enter Your Password"
 msgstr "Введите пароль"
 
-#: src/ui/login/password.blp:40
+#: src/ui/login/password.blp:40 src/ui/proxy_editor.blp:73
 msgid "Password"
 msgstr "Пароль"
 
@@ -951,7 +1160,7 @@ msgstr ""
 msgid "_Send Code"
 msgstr "_Отправить код"
 
-#: src/ui/login/password.blp:150 src/ui/login/password.rs:243
+#: src/ui/login/password.blp:150 src/ui/login/password.rs:240
 msgid "_Delete Account"
 msgstr "_Удалить учетную запись"
 
@@ -963,19 +1172,19 @@ msgstr "Введите код, отправленный вам на электр
 msgid "Unable to access your e-mail?"
 msgstr "Нет доступа к своей электронной почте?"
 
-#: src/ui/login/password.rs:198
+#: src/ui/login/password.rs:199
 msgid "Failed to verify password: {error}"
 msgstr "Не удалось проверить пароль: {error}"
 
-#: src/ui/login/password.rs:222
+#: src/ui/login/password.rs:223
 msgid "Failed to recover password: {error}"
 msgstr "Не удалось восстановить пароль: {error}"
 
-#: src/ui/login/password.rs:234
+#: src/ui/login/password.rs:235
 msgid "Warning"
 msgstr "Предупреждение"
 
-#: src/ui/login/password.rs:236
+#: src/ui/login/password.rs:237
 msgid ""
 "You will lose all your chats and messages, along with any media and files "
 "you shared!\n"
@@ -987,27 +1196,27 @@ msgstr ""
 "\n"
 "Точно удалить учетную запись?"
 
-#: src/ui/login/password.rs:269
+#: src/ui/login/password.rs:272
 msgid "Failed to delete account: {error}"
 msgstr "Не удалось удалить учетную запись: {error}"
 
-#: src/ui/login/password.rs:294
+#: src/ui/login/password.rs:301
 msgid "Code expired. A new one has been sent you."
 msgstr "Срок действия кода истек. Вам отправлен новый."
 
-#: src/ui/login/password.rs:299
+#: src/ui/login/password.rs:306
 msgid "Code expired. Could not sent a new one: {error}"
 msgstr "Срок действия кода истек. Не удалось отправить новый: {error}"
 
-#: src/ui/login/password.rs:307
+#: src/ui/login/password.rs:314
 msgid "Failed to send password code: {error}"
 msgstr "Не удалось отправить код пароля: {error}"
 
-#: src/ui/login/password.rs:316
+#: src/ui/login/password.rs:323
 msgid "Sorry"
 msgstr "Извините"
 
-#: src/ui/login/password.rs:318
+#: src/ui/login/password.rs:325
 msgid ""
 "If you can't restore access to the e-mail, your remaining options are either "
 "to remember your password or to delete and then recreate your account."
@@ -1015,31 +1224,34 @@ msgstr ""
 "Если вы не можете восстановить доступ к электронной почте, то вам остается "
 "либо вспомнить пароль, либо удалить и создать учетную запись заново."
 
-#: src/ui/login/password.rs:323 src/ui/login/registration.rs:173
+#: src/ui/login/password.rs:329 src/ui/login/registration.rs:172
 msgid "_OK"
 msgstr "_ОК"
 
-#: src/ui/login/phone_number.blp:24
+msgid "Proxy"
+msgstr "Прокси"
+
+#: src/ui/login/phone_number.blp:31
 msgid "Welcome"
 msgstr "Добро пожаловать"
 
-#: src/ui/login/phone_number.blp:66
+#: src/ui/login/phone_number.blp:73
 msgid "Quick login using QR code"
 msgstr "Быстрая авторизация с помощью QR-кода"
 
-#: src/ui/login/phone_number.rs:125
+#: src/ui/login/phone_number.rs:134
 msgid "Failed to load country codes: {error}"
 msgstr "Не удалось загрузить коды стран: {error}"
 
-#: src/ui/login/phone_number.rs:177 src/ui/session/row.rs:126
+#: src/ui/login/phone_number.rs:196 src/ui/session/row.rs:210
 msgid "Failed to log out: {error}"
 msgstr "Не удалось выйти: {error}"
 
-#: src/ui/login/phone_number.rs:209
+#: src/ui/login/phone_number.rs:229
 msgid "Failed to use phone number: {error}"
 msgstr "Не удалось использовать телефонный номер: {error}"
 
-#: src/ui/login/phone_number.rs:233
+#: src/ui/login/phone_number.rs:253
 msgid "Failed to request QR code: {error}"
 msgstr "Не удалось запросить QR-код: {error}"
 
@@ -1067,27 +1279,119 @@ msgstr ""
 msgid "Failed to register account: {error}"
 msgstr "Не удалось зарегистрировать учетную запись: {error}"
 
-#: src/ui/login/registration.rs:168
+#: src/ui/login/registration.rs:167
 msgid "Do you accept the Terms of Service?"
 msgstr "Принимаете ли вы условия предоставления услуг?"
 
-#: src/ui/login/registration.rs:169 src/ui/session/content/chat_history.rs:227
-#: src/ui/session/content/message_row/mod.rs:182
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:657
+#: src/ui/session/content/message_row/mod.rs:427
 msgid "_No"
 msgstr "_Нет"
 
-#: src/ui/login/registration.rs:169 src/ui/session/content/chat_history.rs:227
-#: src/ui/session/content/message_row/mod.rs:182
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:658
+#: src/ui/session/content/message_row/mod.rs:428
 msgid "_Yes"
 msgstr "_Да"
 
-#: src/ui/login/registration.rs:172
+#: src/ui/login/registration.rs:171
 msgid "Terms of Service"
 msgstr "Условия предоставления услуг"
 
-#: src/ui/session/contacts_window/mod.ui:3
-msgid "Contacts"
-msgstr "Контакты"
+msgid "Add Proxy"
+msgstr "Добавить прокси"
+
+msgid "_Save"
+msgstr "_Сохранить"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "MTProto"
+msgstr "MTProto"
+
+msgid "SOCKS5"
+msgstr "SOCKS5"
+
+msgid "HTTP"
+msgstr "HTTP"
+
+msgid "Server"
+msgstr "Сервер"
+
+msgid "Port"
+msgstr "Порт"
+
+msgid "Secret"
+msgstr "Секрет"
+
+#: src/ui/proxy_editor.blp:69 src/ui/session/content/chat_info_window.rs:177
+msgid "Username"
+msgstr "Имя пользователя"
+
+msgid "Proxy Name"
+msgstr "Название прокси"
+
+msgid "Edit Proxy"
+msgstr "Изменить прокси"
+
+msgid "Could not save the proxy"
+msgstr "Не удалось сохранить прокси"
+
+msgid "Edit"
+msgstr "Изменить"
+
+msgid "Check"
+msgstr "Проверить"
+
+msgid "Remove"
+msgstr "Удалить"
+
+msgid "Available ({ping} ms)"
+msgstr "Доступен ({ping} мс)"
+
+#: src/ui/proxy_row.rs:181
+msgid "Unavailable"
+msgstr "Недоступен"
+
+msgid "Don't Use Proxy"
+msgstr "Не использовать прокси"
+
+msgid "Use Proxy"
+msgstr "Использовать прокси"
+
+msgid "Automatic Switching"
+msgstr "Автоматическое переключение"
+
+msgid "Try the next proxy from the list when the connection stays down for:"
+msgstr ""
+"Пробовать следующий прокси из списка, если соединение отсутствует более:"
+
+msgid "Switch Deadline"
+msgstr "Срок переключения"
+
+msgid "Proxies"
+msgstr "Прокси"
+
+msgid "Off"
+msgstr "Выключено"
+
+msgid "5 seconds"
+msgstr "5 секунд"
+
+msgid "10 seconds"
+msgstr "10 секунд"
+
+msgid "15 seconds"
+msgstr "15 секунд"
+
+msgid "30 seconds"
+msgstr "30 секунд"
+
+msgid "60 seconds"
+msgstr "60 секунд"
+
+msgid "Add a proxy first"
+msgstr "Сначала добавьте прокси"
 
 #: src/ui/session/content/chat_action_bar.blp:71
 msgid "Message"
@@ -1097,159 +1401,214 @@ msgstr "Сообщение"
 msgid "Unblock"
 msgstr "Разблокировать"
 
-#: src/ui/session/content/chat_action_bar.blp:134
+msgid "Delete Chat"
+msgstr "Удалить чат"
+
+#: src/ui/session/content/chat_action_bar.blp:150
 msgid "Join"
 msgstr "Присоединиться"
 
-#: src/ui/session/content/chat_action_bar.rs:119
+#: src/ui/session/content/chat_action_bar/mod.rs:116
 msgid "Failed to join chat: {error}"
 msgstr "Не удалось присоединиться к чату: {error}"
 
-#: src/ui/session/content/chat_action_bar.rs:369
-#: src/ui/session/content/chat_action_bar.rs:386
-msgid "Unknown"
-msgstr "Неизвестно"
+msgid "Delete chat?"
+msgstr "Удалить чат?"
 
-#: src/ui/session/content/chat_action_bar.rs:371
-#: src/ui/session/content/chat_action_bar.rs:388
-msgid "Deleted Message"
-msgstr "Удалённое сообщение"
+msgid "This will permanently delete the chat for you."
+msgstr "Это безвозвратно удалит чат для вас."
 
-#: src/ui/session/content/chat_action_bar.rs:382
-msgid "Edit Message"
-msgstr "Изменить сообщение"
+msgid "_Delete"
+msgstr "_Удалить"
 
-#: src/ui/session/content/chat_action_bar.rs:477
+#: src/ui/session/content/chat_action_bar/mod.rs:417
 msgid "Images"
 msgstr "Изображения"
 
-#: src/ui/session/content/chat_action_bar.rs:796
+msgid "Could not open the selected file"
+msgstr "Не удалось открыть выбранный файл"
+
+msgid "A message can't be empty"
+msgstr "Сообщение не может быть пустым"
+
+#: src/ui/session/content/chat_action_bar/mod.rs:675
 msgid "Unmute"
 msgstr "Вкл. звук"
 
-#: src/ui/session/content/chat_action_bar.rs:798
+#: src/ui/session/content/chat_action_bar/mod.rs:677
 msgid "Mute"
 msgstr "Убрать звук"
 
-#: src/ui/session/content/chat_history.rs:224
+#: src/ui/session/content/chat_history.rs:655
 msgid "Leave chat?"
 msgstr "Покинуть чат?"
 
-#: src/ui/session/content/chat_history.rs:225
+#: src/ui/session/content/chat_history.rs:656
 msgid "Do you want to leave this chat?"
 msgstr "Вы точно хотите покинуть этот чат?"
 
-#: src/ui/session/content/chat_history.ui:67
+msgid "{n} selected"
+msgstr "Выбрано: {n}"
+
+msgid "Delete Messages"
+msgstr "Удалить сообщения"
+
+msgid "Delete the selected messages?"
+msgstr "Удалить выбранные сообщения?"
+
+msgid "Pinned panel was hidden"
+msgstr "Панель закреплённых сообщений скрыта"
+
+msgid "Show"
+msgstr "Показать"
+
+msgid "Pinned Message #{n}"
+msgstr "Закреплённое сообщение №{n}"
+
+msgid "Pinned Message"
+msgstr "Закреплённое сообщение"
+
+msgid "{n} Pinned Messages"
+msgstr "Закреплённых сообщений: {n}"
+
+msgid "All Pinned Messages"
+msgstr "Все закреплённые сообщения"
+
+msgid "Unpin for Everyone"
+msgstr "Открепить для всех"
+
+msgid "Hide Pinned Panel"
+msgstr "Скрыть панель закреплённых"
+
+msgid "Forward"
+msgstr "Переслать"
+
+msgid "Copy Text"
+msgstr "Скопировать текст"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Clear Selection"
+msgstr "Снять выделение"
+
+msgid "Back"
+msgstr "Назад"
+
+#: src/ui/session/content/chat_history.ui:366
 msgid "Scroll to bottom"
 msgstr "Прокрутить донизу"
 
-#: src/ui/session/content/chat_history.ui:145
+#: src/ui/session/content/chat_history.ui:447
 msgid "View Info"
 msgstr "Посмотреть информацию"
 
-#: src/ui/session/content/chat_history.ui:149
+msgid "Show Pinned Panel"
+msgstr "Показать панель закреплённых"
+
+#: src/ui/session/content/chat_history.ui:456
 msgid "Leave Chat"
 msgstr "Покинуть чат"
 
 #. Translators: This is a date format in the day divider without the year
-#: src/ui/session/content/chat_history_row.rs:119
+#: src/ui/session/content/chat_history_row.rs:157
 msgid "%B %e"
 msgstr "%e %B"
 
 #. Translators: This is a date format in the day divider with the year
-#: src/ui/session/content/chat_history_row.rs:122
+#: src/ui/session/content/chat_history_row.rs:160
 msgid "%B %e, %Y"
 msgstr "%e %B, %Y"
 
-#: src/ui/session/content/chat_info_window.rs:132
+msgid "Unread messages"
+msgstr "Непрочитанные сообщения"
+
+#: src/ui/session/content/chat_info_window.rs:157
 msgid "bot"
 msgstr "бот"
 
-#: src/ui/session/content/chat_info_window.rs:145
+#: src/ui/session/content/chat_info_window.rs:170
 msgid "Mobile"
 msgstr "Мобильный"
 
-#: src/ui/session/content/chat_info_window.rs:152
-msgid "Username"
-msgstr "Имя пользователя"
-
-#: src/ui/session/content/chat_info_window.rs:169
-#: src/ui/session/content/chat_info_window.rs:215
+#: src/ui/session/content/chat_info_window.rs:194
+#: src/ui/session/content/chat_info_window.rs:245
 msgid "{num} member"
 msgid_plural "{num} members"
 msgstr[0] "{num} участник"
 msgstr[1] "{num} участника"
 msgstr[2] "{num} участников"
 
-#: src/ui/session/content/chat_info_window.rs:198
-#: src/ui/session/content/chat_info_window.rs:254
+#: src/ui/session/content/chat_info_window.rs:228
+#: src/ui/session/content/chat_info_window.rs:289
 msgid "Description"
 msgstr "Описание"
 
-#: src/ui/session/content/chat_info_window.rs:226
+#: src/ui/session/content/chat_info_window.rs:256
 msgid "Link"
 msgstr "Ссылка"
 
-#: src/ui/session/content/chat_info_window.rs:272
+#: src/ui/session/content/chat_info_window.rs:313
+#: src/ui/session/content/message_row/label.rs:456
 msgid "Copied to clipboard"
 msgstr "Cкопировано в буфер обмена"
 
-#: src/ui/session/content/message_menu.blp:6
-msgid "_Reply"
-msgstr "_Ответить"
+msgid "Forwarded from {name}"
+msgstr "Переслано от {name}"
 
-#: src/ui/session/content/message_menu.blp:12
-msgid "_Edit"
-msgstr "_Изменить"
-
-#: src/ui/session/content/message_menu.blp:18
-msgid "Delete for Ever_yone"
-msgstr "Удалить для _всех"
-
-#: src/ui/session/content/message_menu.blp:24
-msgid "_Delete for Me"
-msgstr "Удалить для _меня"
-
-#: src/ui/session/content/message_row/indicators.rs:248
+#: src/ui/session/content/message_row/indicators.rs:324
 msgid "edited"
 msgstr "изменено"
 
-#: src/ui/session/content/message_row/indicators.rs:256
+#: src/ui/session/content/message_row/indicators.rs:332
 msgid "sponsored"
 msgstr "спонсировано"
 
-#: src/ui/session/content/message_row/location.rs:139
-#: src/ui/session/content/message_row/location.rs:148
+msgid "Code copied to clipboard"
+msgstr "Код скопирован в буфер обмена"
+
+#: src/ui/session/content/message_row/location.rs:186
+#: src/ui/session/content/message_row/location.rs:204
 msgid "updated just now"
 msgstr "обновлено только что"
 
-#: src/ui/session/content/message_row/location.rs:152
+#: src/ui/session/content/message_row/location.rs:208
 msgid "updated an hour ago"
 msgstr "обновлено час назад"
 
-#: src/ui/session/content/message_row/location.rs:155
+#: src/ui/session/content/message_row/location.rs:211
 msgid "updated {hours} hours and {minutes} minutes ago"
 msgstr "обновлено {hours} часа(-ов) и {minutes} минут(ы) назад"
 
-#: src/ui/session/content/message_row/mod.rs:170
+#: src/ui/session/content/message_row/mod.rs:419
 msgid "Do you want to delete this message for <b>everyone</b>?"
 msgstr "Вы хотите удалить это сообщение для <b>всех</b>?"
 
-#: src/ui/session/content/message_row/mod.rs:172
+#: src/ui/session/content/message_row/mod.rs:421
 msgid "Do you want to delete this message?"
 msgstr "Вы хотите удалить это сообщение?"
 
-#: src/ui/session/content/message_row/mod.rs:176
-msgid "Confirm model::Message Deletion"
-msgstr "Подтвердить модель::Удаление сообщения"
+msgid "Confirm Message Deletion"
+msgstr "Подтвердить удаление сообщения"
 
-#: src/ui/session/content/message_row/reply.rs:70
+msgid "Send Message"
+msgstr "Отправить сообщение"
+
+#: src/ui/session/content/message_row/reply.rs:75
 msgid "Loading…"
 msgstr "Загрузка…"
 
-#: src/ui/session/content/message_row/text.rs:134
-msgid "This message is unsupported"
-msgstr "Это сообщение не поддерживается"
+msgid "Deleted message"
+msgstr "Удалённое сообщение"
+
+msgid "Story"
+msgstr "История"
+
+msgid ""
+"This message is not supported by your version of Paper Plane. Please update."
+msgstr ""
+"Это сообщение не поддерживается вашей версией Paper Plane. Пожалуйста, "
+"обновитесь."
 
 #: src/ui/session/content/mod.blp:22
 msgid "No Chat Selected"
@@ -1263,48 +1622,110 @@ msgstr "Выберите чат, чтобы начать обмен сообще
 msgid "Send Image"
 msgstr "Отправить изображение"
 
-#: src/ui/session/content/send_media_window.blp:23
+#: src/ui/session/content/send_media_window.blp:31
 msgid "Caption"
 msgstr "Подпись"
 
-#: src/ui/session/content/send_media_window.blp:30
+#: src/ui/session/content/send_media_window.blp:38
 msgid "Send"
 msgstr "Отправить"
 
-#: src/ui/session/content/send_media_window.blp:41
+#: src/ui/session/content/send_media_window.blp:50
 msgid "Send as _File"
 msgstr "Отправить как _файл"
 
-#: src/ui/session/mod.blp:15 src/ui/session/sidebar/mod.ui:38
-#: src/ui/session/sidebar/search/section_row.rs:124
+#: src/ui/session/mod.blp:15 src/ui/session/sidebar/mod.blp:36
+#: src/ui/session/sidebar/mod.blp:62 src/ui/session/sidebar/mod.blp:86
+#: src/ui/session/sidebar/search/section_row.rs:125
 msgid "Chats"
 msgstr "Чаты"
 
-#: src/ui/session/mod.blp:26
+#: src/ui/session/mod.blp:35
 msgid "Content"
 msgstr "Содержимое"
 
-#: src/ui/session/preferences_window.blp:10
-msgid "Follow System Colors"
-msgstr "Использовать системную тему"
+msgid "General"
+msgstr "Основные"
+
+msgid "Notifications"
+msgstr "Уведомления"
+
+msgid "Enable Notifications"
+msgstr "Включить уведомления"
+
+msgid "Show desktop notifications for new messages"
+msgstr "Показывать уведомления рабочего стола о новых сообщениях"
 
 #: src/ui/session/preferences_window.blp:19
-msgid "Dark Theme"
-msgstr "Тёмная тема"
-
-#: src/ui/session/preferences_window.blp:29
 msgid "Storage"
 msgstr "Хранилище"
 
-#: src/ui/session/preferences_window.blp:32
+#: src/ui/session/preferences_window.blp:22
 msgid "Cache Size"
 msgstr "Размер кеша"
 
-#: src/ui/session/preferences_window.blp:42
+#: src/ui/session/preferences_window.blp:32
 msgid "Clear Cache"
 msgstr "Очистить кеш"
 
-#: src/ui/session/preferences_window.rs:211
+msgid "Design"
+msgstr "Оформление"
+
+#: src/ui/session/preferences_window.blp:48
+msgid "Follow System Colors"
+msgstr "Использовать системную тему"
+
+#: src/ui/session/preferences_window.blp:57
+msgid "Dark Theme"
+msgstr "Тёмная тема"
+
+msgid "Sidebar"
+msgstr "Сайдбар"
+
+msgid "Vertical Folders"
+msgstr "Вертикальные папки"
+
+msgid "Show chat folders as a rail on the far left of the sidebar"
+msgstr "Показывать папки чатов вертикальной панелью у левого края сайдбара"
+
+msgid "Features"
+msgstr "Функции"
+
+msgid "Debug Options"
+msgstr "Параметры отладки"
+
+msgid "Developer tools for troubleshooting and bug reports"
+msgstr "Инструменты разработчика для устранения неполадок и отчётов об ошибках"
+
+msgid "Enable Debug Options"
+msgstr "Включить параметры отладки"
+
+msgid ""
+"Adds \"Copy Debug Entry\" to the message menu, which copies a message's raw "
+"data for bug reports"
+msgstr ""
+"Добавляет «Скопировать отладочную запись» в меню сообщения; копирует "
+"исходные данные сообщения для отчётов об ошибках"
+
+msgid "About"
+msgstr "О приложении"
+
+msgid "A Telegram client for the GNOME desktop"
+msgstr "Клиент Telegram для рабочего стола GNOME"
+
+msgid "Version"
+msgstr "Версия"
+
+msgid "Website"
+msgstr "Веб-сайт"
+
+msgid "Report an Issue"
+msgstr "Сообщить о проблеме"
+
+msgid "About Paper Plane"
+msgstr "О Paper Plane"
+
+#: src/ui/session/preferences_window.rs:262
 msgid "Cache cleared"
 msgstr "Кеш очищен"
 
@@ -1312,79 +1733,86 @@ msgstr "Кеш очищен"
 msgid "Logout"
 msgstr "Выход"
 
-#: src/ui/session/row.rs:99
+#: src/ui/session/row.rs:188
 msgid "Log out <i>{display_name}</i>"
 msgstr "Выход <i>{display_name}</i>"
 
-#: src/ui/session/row.rs:105
+#: src/ui/session/row.rs:194
 msgid "Are you sure you want to log out?"
 msgstr "Вы уверены, что хотите выйти?"
 
-#: src/ui/session/row.rs:111
+#: src/ui/session/row.rs:196
 msgid "_Log out"
 msgstr "_Выйти"
 
-#: src/ui/session/sidebar/mod.ui:7
+#: src/ui/session/sidebar/mod.blp:7
 msgid "_Contacts"
 msgstr "_Контакты"
 
-#: src/ui/session/sidebar/mod.ui:13
+#: src/ui/session/sidebar/mod.blp:14
 msgid "_Preferences"
 msgstr "_Параметры"
 
-#: src/ui/session/sidebar/mod.ui:17
+#: src/ui/session/sidebar/mod.blp:19
 msgid "_Keyboard Shortcuts"
 msgstr "_Комбинации клавиш"
 
-#: src/ui/session/sidebar/mod.ui:21
+#: src/ui/session/sidebar/mod.blp:24
 msgid "_About Paper Plane"
 msgstr "_О приложении"
 
-#: src/ui/session/sidebar/mod.ui:148 src/ui/session/sidebar/search/mod.ui:16
+msgid "Archive"
+msgstr "Архив"
+
+#: src/ui/session/sidebar/mod.blp:183 src/ui/session/sidebar/search/mod.blp:11
 msgid "Search"
 msgstr "Поиск"
 
-#: src/ui/session/sidebar/mod.ui:165
+#: src/ui/session/sidebar/mod.blp:194
 msgid "Sessions"
 msgstr "Сеансы"
 
-#: src/ui/session/sidebar/row.rs:414
-msgid "Draft:"
-msgstr "Черновик:"
+msgid "Archived Chats"
+msgstr "Архивные чаты"
 
-#: src/ui/session/sidebar/row.rs:597
-msgid "You"
-msgstr "Вы"
+msgid "_Archive"
+msgstr "_Архив"
 
-#: src/ui/session/sidebar/row_menu.blp:6
+msgid "_Unarchive"
+msgstr "_Убрать из архива"
+
+#: src/ui/session/sidebar/row_menu.blp:18
 msgid "_Pin"
 msgstr "_Закрепить"
 
-#: src/ui/session/sidebar/row_menu.blp:12
+#: src/ui/session/sidebar/row_menu.blp:24
 msgid "_Unpin"
 msgstr "_Открепить"
 
-#: src/ui/session/sidebar/row_menu.blp:18
+#: src/ui/session/sidebar/row_menu.blp:30
 msgid "_Mark as Unread"
 msgstr "Пометить как _непрочитанное"
 
-#: src/ui/session/sidebar/row_menu.blp:24
+#: src/ui/session/sidebar/row_menu.blp:36
 msgid "Mark as _Read"
 msgstr "Пометить как _прочитанное"
 
-#: src/ui/session/sidebar/search/mod.ui:79
+msgid "Open in Separate _Window"
+msgstr "Открыть в отдельном _окне"
+
+#: src/ui/session/sidebar/search/mod.blp:55
 msgid "No Search Results"
 msgstr "Нет результатов"
 
-#: src/ui/session/sidebar/search/mod.ui:80
+#: src/ui/session/sidebar/search/mod.blp:56
 msgid "Try a different search."
 msgstr "Попробуйте снова."
 
-#: src/ui/session/sidebar/search/section_row.rs:127
+#: src/ui/session/sidebar/search/section_row.rs:128
 msgid "Global Search"
 msgstr "Глобальный поиск"
 
-#: src/ui/session/sidebar/search/section_row.rs:130
+#: src/ui/session/sidebar/search/section_row.rs:131
 msgid "Recent"
 msgstr "Недавний"
 
@@ -1400,13 +1828,62 @@ msgstr "_Тестовый Сервер"
 msgid "New Session"
 msgstr "Новый сеанс"
 
-#: src/ui/proxy_row.rs
-msgid "Available ({} ms)"
-msgstr "Доступен ({} мс)"
+#~ msgid ""
+#~ "Added registered categories to te desktop file to fix a build error on "
+#~ "Flathub."
+#~ msgstr ""
+#~ "Добавлены зарегистрированные категории в файл desktop для исправления "
+#~ "ошибки сборки на Flathub."
 
-#: src/ui/proxy_row.rs
-msgid "Unavailable"
-msgstr "Недоступен"
+#~ msgid ""
+#~ "OpenStreetMap® is open data, licensed under the                 <a href="
+#~ "\"https://opendatacommons.org/licenses/odbl\">                Open Data "
+#~ "Commons Open Database License </a> (ODbL) by the                 <a href="
+#~ "\"https://osmfoundation.org\">aOpenStreetMap Foundation</a> (OSMF)."
+#~ msgstr ""
+#~ "OpenStreetMap® - это открытые данные, лицензированные в соответствии с <a "
+#~ "href=\"https://opendatacommons.org/licenses/odbl\">лицензией открытых баз "
+#~ "данных Open Data Commons </a> (ODbL) организацией <a href=\"https://"
+#~ "osmfoundation.org\">aOpenStreetMap Foundation</a> (OSMF)."
+
+#~ msgid "Contacts"
+#~ msgstr "Контакты"
+
+#~ msgid "Unknown"
+#~ msgstr "Неизвестно"
+
+#~ msgid "Deleted Message"
+#~ msgstr "Удалённое сообщение"
+
+#~ msgid "Edit Message"
+#~ msgstr "Изменить сообщение"
+
+#~ msgid "_Reply"
+#~ msgstr "_Ответить"
+
+#~ msgid "_Edit"
+#~ msgstr "_Изменить"
+
+#~ msgid "Delete for Ever_yone"
+#~ msgstr "Удалить для _всех"
+
+#~ msgid "_Delete for Me"
+#~ msgstr "Удалить для _меня"
+
+#~ msgid "Confirm model::Message Deletion"
+#~ msgstr "Подтвердить модель::Удаление сообщения"
+
+#~ msgid "This message is unsupported"
+#~ msgstr "Это сообщение не поддерживается"
+
+#~ msgid "Draft:"
+#~ msgstr "Черновик:"
+
+#~ msgid "You"
+#~ msgstr "Вы"
+
+#~ msgid "Available ({} ms)"
+#~ msgstr "Доступен ({} мс)"
 
 #~ msgid "A Telegram client optimized for the GNOME desktop"
 #~ msgstr "Клиент Telegram, оптимизированный для рабочего стола GNOME"
