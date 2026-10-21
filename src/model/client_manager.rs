@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;
 use std::sync::OnceLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -24,6 +26,11 @@ use crate::utils;
 /// backlog remains, so bursts don't freeze the UI.
 const UPDATE_BATCH_BEFORE_YIELD: u32 = 8;
 
+/// Set once the application is shutting down: the receive thread stops after
+/// its current poll round so clients can be destroyed while libtdjson is
+/// still fully alive.
+static TD_EXITING: AtomicBool = AtomicBool::new(false);
+
 mod imp {
     use super::*;
 
@@ -31,6 +38,7 @@ mod imp {
     pub(crate) struct ClientManager {
         pub(super) clients: RefCell<IndexMap<ClientId, model::Client>>,
         pub(super) pending_updates: RefCell<PendingUpdates<tdlib::enums::Update>>,
+        pub(super) td_thread: RefCell<Option<thread::JoinHandle<()>>>,
     }
 
     #[glib::object_subclass]
@@ -253,6 +261,9 @@ impl ClientManager {
         let mut list = self.imp().clients.borrow_mut();
         if let Some((position, _, _)) = list.shift_remove_full(&client.id()) {
             drop(list);
+            // Retire the TDLib instance too (actual destruction happens at
+            // shutdown, once the receive loop can no longer race it).
+            tdlib::destroy_client(client.id());
             self.items_changed(position as u32, 1, 0);
             self.emit_by_name::<()>("client-removed", &[&client]);
         }
@@ -291,8 +302,13 @@ impl ClientManager {
             }
         ));
 
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             loop {
+                // On shutdown, stop taking updates so the main thread can
+                // close the clients without this thread racing `td_receive`.
+                if TD_EXITING.load(Ordering::Relaxed) {
+                    break;
+                }
                 if let Some((update, client_id)) = tdlib::receive() {
                     // The channel is unbounded, so this never actually blocks; it
                     // just hands the update to the main loop. Pushing directly (rather
@@ -304,6 +320,24 @@ impl ClientManager {
                 }
             }
         });
+        *self.imp().td_thread.borrow_mut() = Some(handle);
+    }
+
+    /// Final teardown, called from the application's `shutdown` handler while
+    /// libtdjson is still fully alive: stops the receive thread, then retires
+    /// and destroys every client so the process can exit without live TDLib
+    /// connections. (Exiting via the deprecated global client instead aborts
+    /// inside TDLib's static destructors.)
+    pub(crate) fn shutdown(&self) {
+        TD_EXITING.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.imp().td_thread.borrow_mut().take() {
+            let _ = handle.join();
+        }
+        let ids: Vec<ClientId> = self.imp().clients.borrow().keys().copied().collect();
+        for id in ids {
+            tdlib::destroy_client(id);
+        }
+        tdlib::destroy_pending_clients();
     }
 }
 

@@ -28,13 +28,27 @@ pub fn create_client() -> i32 {
     tdjson::create_client()
 }
 
+/// Retire a client created by [`create_client`]: it stops receiving updates
+/// and its responses are no longer polled. The underlying TDLib instance is
+/// destroyed by [`destroy_pending_clients`].
+pub fn destroy_client(client_id: i32) {
+    tdjson::destroy_client(client_id)
+}
+
+/// Destroys the TDLib instances of all retired clients, blocking until each
+/// is fully released. Must be called only after [`receive`] is no longer in
+/// use (i.e. the receive loop has stopped), because TDLib's own teardown
+/// needs to read the "client released" response off the instance itself.
+pub fn destroy_pending_clients() {
+    tdjson::destroy_pending_clients()
+}
+
 /// Receive a single update or response from TdLib. If it's an update, it
 /// returns a tuple with the `Update` and the associated `client_id`.
 /// Note that to start receiving updates for a client you need to send
 /// at least a request with it first.
 pub fn receive() -> Option<(Update, i32)> {
-    let response = tdjson::receive(2.0);
-    if let Some(response_str) = response {
+    if let Some((response_str, client_id)) = tdjson::receive(2.0) {
         let response: Value = serde_json::from_str(&response_str).unwrap();
 
         match response.get("@extra") {
@@ -42,7 +56,6 @@ pub fn receive() -> Option<(Update, i32)> {
                 OBSERVER.notify(response);
             }
             None => {
-                let client_id = response["@client_id"].as_i64().unwrap() as i32;
                 match serde_json::from_value(response) {
                     Ok(update) => {
                         return Some((update, client_id));
