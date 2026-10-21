@@ -71,6 +71,11 @@ mod imp {
             self.disconnect_active_client_handler();
             self.popover_menu.unparent();
             self.dispose_template();
+            // The unnamed template root child is not tracked by
+            // dispose_template(); leaving it attached warns on finalize.
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
         }
     }
 

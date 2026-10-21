@@ -90,9 +90,22 @@ mod imp {
             obj.load_color_scheme();
             obj.setup_automation();
         }
+
+        fn shutdown(&self) {
+            self.parent_shutdown();
+
+            // Close the TDLib clients while libtdjson is still fully alive.
+            // Exiting with live connections makes TDLib's static destructors
+            // abort (CHECK in the session/pollable-fd teardown) or race the
+            // receive thread, which is the intermittent crash on window close.
+            if let Some(client_manager) = self.client_manager.get() {
+                client_manager.shutdown();
+            }
+        }
     }
 
     impl GtkApplicationImpl for Application {}
+
     impl AdwApplicationImpl for Application {}
 }
 

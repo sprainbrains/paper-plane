@@ -63,6 +63,11 @@ mod imp {
         fn dispose(&self) {
             self.disconnect_marked_as_unread_handler();
             self.dispose_template();
+            // The unnamed template root child is not tracked by
+            // dispose_template(); leaving it attached warns on finalize.
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
         }
     }
 
