@@ -1400,6 +1400,10 @@ msgstr "_Тестовый Сервер"
 msgid "New Session"
 msgstr "Новый сеанс"
 
+#: src/ui/session/sidebar/chat_list.blp
+msgid "Loading chats…"
+msgstr "Загрузка чатов…"
+
 #: src/ui/proxy_row.rs
 msgid "Available ({} ms)"
 msgstr "Доступен ({} мс)"
