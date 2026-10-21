@@ -1,35 +1,77 @@
 using Gtk 4.0;
+using Adw 1;
 
 template $PaplSidebarChatList: Widget {
   layout-manager: BinLayout {};
 
   notify::chat-list => $on_notify_chat_list();
 
-  ScrolledWindow {
+  Stack stack {
     vexpand: true;
-    hscrollbar-policy: never;
+    transition-type: crossfade;
+    transition-duration: 150;
 
-    ListView {
-      single-click-activate: true;
+    StackPage list {
+      name: "list";
 
-      activate => $list_activate() swapped;
+      child: ScrolledWindow {
+        vexpand: true;
+        hscrollbar-policy: never;
 
-      model: $PaplSidebarSelection selection {
-        model: bind template.chat-list;
-        hide-selection: bind template.compact;
-      };
+        ListView {
+          single-click-activate: true;
 
-      factory: BuilderListItemFactory {
-        template ListItem {
-          child: $PaplSidebarRow {
-            item: bind template.item;
+          activate => $list_activate() swapped;
+
+          model: $PaplSidebarSelection selection {
+            model: bind template.chat-list;
+            hide-selection: bind template.compact;
           };
+
+          factory: BuilderListItemFactory {
+            template ListItem {
+              child: $PaplSidebarRow {
+                item: bind template.item;
+              };
+            }
+          };
+
+          styles [
+            "navigation-sidebar",
+          ]
         }
       };
+    }
 
-      styles [
-        "navigation-sidebar",
-      ]
+    /* Preload shown while a folder's first chats are still on their way, so a
+       fresh start never greets the user with an empty pane. */
+    StackPage loading {
+      name: "loading";
+
+      child: Box {
+        orientation: vertical;
+        valign: center;
+        halign: center;
+        spacing: 12;
+
+        styles ["dim-label"]
+
+        Image {
+          pixel-size: 64;
+          icon-name: "all-chats-symbolic";
+          accessible-role: presentation;
+        }
+
+        Label {
+          label: _("Loading chats…");
+        }
+
+        Adw.Spinner {
+          halign: center;
+          width-request: 24;
+          height-request: 24;
+        }
+      };
     }
   }
 }

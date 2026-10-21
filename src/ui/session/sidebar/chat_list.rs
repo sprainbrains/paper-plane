@@ -20,6 +20,9 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/chat_list.ui")]
     pub(crate) struct ChatList {
         pub(super) marked_as_unread_handler: RefCell<Option<(model::Chat, glib::SignalHandlerId)>>,
+        /// Subscriptions to the bound model list that drive the loading
+        /// placeholder (its `loading` property and `items-changed`).
+        pub(super) placeholder_handlers: RefCell<Vec<glib::SignalHandlerId>>,
         #[property(get, set = Self::set_selected_chat, nullable, explicit_notify)]
         pub(super) selected_chat: glib::WeakRef<model::Chat>,
         #[property(get, set)]
@@ -28,6 +31,8 @@ mod imp {
         pub(super) compact: Cell<bool>,
         #[template_child]
         pub(super) selection: TemplateChild<ui::SidebarSelection>,
+        #[template_child]
+        pub(super) stack: TemplateChild<gtk::Stack>,
     }
 
     #[glib::object_subclass]
@@ -60,8 +65,18 @@ mod imp {
             self.derived_property(id, pspec)
         }
 
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            // The template's property assignments run before the pages exist,
+            // so pick the initial page here: while the session and folder list
+            // are still attaching there is nothing bound to show yet.
+            self.update_placeholder();
+        }
+
         fn dispose(&self) {
             self.disconnect_marked_as_unread_handler();
+            self.disconnect_placeholder_handlers();
             self.dispose_template();
             // The unnamed template root child is not tracked by
             // dispose_template(); leaving it attached warns on finalize.
@@ -79,6 +94,28 @@ mod imp {
             if let Some((chat, handler)) = self.marked_as_unread_handler.take() {
                 chat.disconnect(handler);
             }
+        }
+
+        fn disconnect_placeholder_handlers(&self) {
+            if let Some(list) = self.obj().chat_list() {
+                for handler in self.placeholder_handlers.borrow_mut().drain(..) {
+                    list.disconnect(handler);
+                }
+            } else {
+                self.placeholder_handlers.borrow_mut().clear();
+            }
+        }
+
+        /// Show the preload page whenever the pane has nothing to show yet:
+        /// no list bound (session/folder still attaching) or a list still
+        /// fetching before its first chats arrive.
+        fn update_placeholder(&self) {
+            let loading_and_empty = match self.obj().chat_list() {
+                None => true,
+                Some(list) => list.loading() && list.n_items() == 0,
+            };
+            self.stack
+                .set_visible_child_name(if loading_and_empty { "loading" } else { "list" });
         }
 
         pub(crate) fn set_selected_chat(&self, selected_chat: Option<&model::Chat>) {
@@ -132,13 +169,30 @@ mod imp {
         fn on_notify_chat_list(&self) {
             let obj = self.obj();
 
+            self.disconnect_placeholder_handlers();
+
             // Lazily load the chats of whichever list just became visible. `fetch`
             // is idempotent (it loads each list only once), so switching folders
             // back and forth is cheap, and folders that are never opened are never
             // loaded.
             if let Some(chat_list) = obj.chat_list() {
                 chat_list.fetch();
+                let handlers = [
+                    chat_list.connect_loading_notify(clone!(
+                        #[weak(rename_to = widget)]
+                        obj,
+                        move |_| widget.imp().update_placeholder()
+                    )),
+                    chat_list.connect_items_changed(clone!(
+                        #[weak(rename_to = widget)]
+                        obj,
+                        move |_, _, _, _| widget.imp().update_placeholder()
+                    )),
+                ];
+                self.placeholder_handlers.borrow_mut().extend(handlers);
             }
+
+            self.update_placeholder();
 
             self.selection
                 .set_selected_chat(obj.selected_chat().as_ref());
