@@ -894,17 +894,26 @@ impl ChatHistory {
                         }
                     }
 
-                    adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
+                    // If the chat has unread messages, place an "Unread messages"
+                    // divider and open at the first unread message instead of pinning
+                    // to the bottom. Load older messages until the read/unread
+                    // boundary is in range (capped, so a huge backlog doesn't load
+                    // forever).
+                    //
+                    // When that jump is the plan, don't pin to the bottom first: the
+                    // pin latches `sticky`, every search batch then re-triggers
+                    // `scroll_down()`, and the in-flight auto-scroll lands after the
+                    // jump and yanks the view back to the newest message.
+                    let wants_unread_jump = unread_count > 0 && last_read_inbox_message_id != 0;
+                    if !wants_unread_jump {
+                        adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
+                    }
 
                     scrollbar.set_visible(true);
                     imp.is_loading_messages.set(false);
 
-                    // If the chat has unread messages, place an "Unread messages" divider
-                    // and open at the first unread message instead of pinning to the
-                    // bottom. Load older messages until the read/unread boundary is in
-                    // range (capped, so a huge backlog doesn't load forever).
                     let mut jumped = false;
-                    if unread_count > 0 && last_read_inbox_message_id != 0 {
+                    if wants_unread_jump {
                         let mut guard = 0;
                         while !model.insert_unread_divider(last_read_inbox_message_id) && guard < 40
                         {
@@ -918,6 +927,11 @@ impl ChatHistory {
                             }
                         }
                         if let Some(position) = obj.unread_divider_position() {
+                            // Drop any auto-scroll still in flight from the search
+                            // batches so it cannot finish at the bottom and re-latch
+                            // `sticky` over the jump (its completion handler would
+                            // pin sticky back on).
+                            imp.is_auto_scrolling.set(false);
                             obj.set_sticky(false);
                             imp.list_view
                                 .scroll_to(position, gtk::ListScrollFlags::empty(), None);
@@ -927,6 +941,7 @@ impl ChatHistory {
 
                     if !jumped {
                         obj.set_sticky(true);
+                        obj.scroll_down();
                     }
 
                     obj.view_messages();
@@ -986,6 +1001,20 @@ impl ChatHistory {
             out,
             "is_loading_messages: {}",
             imp.is_loading_messages.get()
+        );
+        let _ = writeln!(out, "sticky: {}", self.sticky());
+        if let Some(chat) = chat.as_ref() {
+            let _ = writeln!(
+                out,
+                "unread_count: {}, last_read_inbox: {}",
+                chat.unread_count(),
+                chat.last_read_inbox_message_id()
+            );
+        }
+        let _ = writeln!(
+            out,
+            "unread divider at: {:?}",
+            self.unread_divider_position()
         );
         let _ = writeln!(
             out,
