@@ -2707,17 +2707,22 @@ impl ChatHistory {
                     if !obj.is_current_history(generation, chat_id, &model) {
                         return;
                     }
-                    if result.is_ok() {
-                        obj.set_sticky(true);
-                        glib::idle_add_local_once(clone!(
-                            #[weak]
-                            obj,
-                            move || {
-                                if obj.is_current_history(generation, chat_id, &model) {
-                                    obj.scroll_down();
+                    match result {
+                        Ok(()) => {
+                            obj.set_sticky(true);
+                            glib::idle_add_local_once(clone!(
+                                #[weak]
+                                obj,
+                                move || {
+                                    if obj.is_current_history(generation, chat_id, &model) {
+                                        obj.scroll_down();
+                                    }
                                 }
-                            }
-                        ));
+                            ));
+                        }
+                        Err(e) => {
+                            log::warn!("Couldn't reload history to the newest message: {e}");
+                        }
                     }
                 }
             ));
