@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-22 19:50+0300\n"
+"POT-Creation-Date: 2026-10-22 21:05+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1077,7 +1077,7 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1801 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1807 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr ""
 
@@ -1298,7 +1298,7 @@ msgstr ""
 msgid "Secret"
 msgstr ""
 
-#: src/ui/proxy_editor.blp:69 src/ui/session/content/chat_info_window.rs:211
+#: src/ui/proxy_editor.blp:69 src/ui/session/content/chat_info_window.rs:221
 msgid "Username"
 msgstr ""
 
@@ -1415,7 +1415,7 @@ msgid "This will permanently delete the chat for you."
 msgstr ""
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1802
+#: src/ui/session/content/chat_history.rs:1808
 msgid "_Delete"
 msgstr ""
 
@@ -1449,37 +1449,37 @@ msgstr ""
 msgid "Do you want to leave this chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1680
+#: src/ui/session/content/chat_history.rs:1686
 msgid "{n} selected"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1799
+#: src/ui/session/content/chat_history.rs:1805
 msgid "Delete Messages"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1800
+#: src/ui/session/content/chat_history.rs:1806
 msgid "Delete the selected messages?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2427
+#: src/ui/session/content/chat_history.rs:2433
 msgid "Pinned panel was hidden"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2428
+#: src/ui/session/content/chat_history.rs:2434
 msgid "Show"
 msgstr ""
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2553
+#: src/ui/session/content/chat_history.rs:2559
 msgid "Pinned Message #{n}"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2555
+#: src/ui/session/content/chat_history.rs:2561
 #: src/ui/session/content/chat_history.ui:142
 msgid "Pinned Message"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2613
+#: src/ui/session/content/chat_history.rs:2619
 msgid "{n} Pinned Messages"
 msgstr ""
 
@@ -1555,39 +1555,48 @@ msgstr ""
 msgid "Unread messages"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:162
+#: src/ui/session/content/chat_info_window.rs:164
 msgid "Chat with user"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:163
+#: src/ui/session/content/chat_info_window.rs:165
+#: src/ui/session/content/chat_info_window.rs:170
+msgid "Chat with group"
+msgstr ""
+
+#: src/ui/session/content/chat_info_window.rs:168
+msgid "Chat with channel"
+msgstr ""
+
+#: src/ui/session/content/chat_info_window.rs:176
 msgid "Open chat"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:191
+#: src/ui/session/content/chat_info_window.rs:201
 msgid "bot"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:204
+#: src/ui/session/content/chat_info_window.rs:214
 msgid "Mobile"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:229
-#: src/ui/session/content/chat_info_window.rs:281
+#: src/ui/session/content/chat_info_window.rs:239
+#: src/ui/session/content/chat_info_window.rs:291
 msgid "{num} member"
 msgid_plural "{num} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/session/content/chat_info_window.rs:264
-#: src/ui/session/content/chat_info_window.rs:326
+#: src/ui/session/content/chat_info_window.rs:274
+#: src/ui/session/content/chat_info_window.rs:336
 msgid "Description"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:292
+#: src/ui/session/content/chat_info_window.rs:302
 msgid "Link"
 msgstr ""
 
-#: src/ui/session/content/chat_info_window.rs:350
+#: src/ui/session/content/chat_info_window.rs:360
 #: src/ui/session/content/message_row/label.rs:456
 msgid "Copied to clipboard"
 msgstr ""
@@ -1632,7 +1641,7 @@ msgstr ""
 msgid "Copy Debug Entry"
 msgstr ""
 
-#: src/ui/session/content/message_row/bubble.rs:522
+#: src/ui/session/content/message_row/bubble.rs:520
 msgid "Forwarded from {name}"
 msgstr ""
 

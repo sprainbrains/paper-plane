@@ -200,6 +200,9 @@ impl Application {
             },
         );
         self.add_auto_action("auto-show-proxies", None, |app, _| app.auto_show_proxies());
+        self.add_auto_action("auto-about", None, |app, _| {
+            app.activate_action("about", None);
+        });
     }
 
     /// Adds a `SimpleAction` that forwards to `handler`, receiving the
@@ -236,15 +239,14 @@ impl Application {
             .and_downcast::<model::ClientStateSession>()
     }
 
-    /// Renders the current window to `<output_dir>/screenshot.png`. An open
-    /// chat info window takes priority over the main window (it is a separate
-    /// top-level the main-window snapshot cannot see).
+    /// Renders the current window to `<output_dir>/screenshot.png`. A dialog
+    /// top-level (chat info, about, …) takes priority over the main window,
+    /// whose snapshot cannot see separate windows anyway.
     fn auto_screenshot(&self) {
-        let window = gtk::Window::list_toplevels()
+        let widget = gtk::Window::list_toplevels()
             .into_iter()
-            .find(|w| w.is::<ui::ChatInfoWindow>())
+            .find(|w| !w.is::<ui::Window>() && w.is_visible())
             .unwrap_or_else(|| self.main_window().upcast());
-        let widget = window.upcast_ref::<gtk::Widget>();
 
         let width = widget.width();
         let height = widget.height();
@@ -258,7 +260,7 @@ impl Application {
             return;
         };
 
-        let paintable = gtk::WidgetPaintable::new(Some(widget));
+        let paintable = gtk::WidgetPaintable::new(Some(&widget));
         let snapshot = gtk::Snapshot::new();
         paintable.snapshot(&snapshot, width as f64, height as f64);
         let Some(node) = snapshot.to_node() else {

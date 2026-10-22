@@ -150,9 +150,11 @@ impl ChatInfoWindow {
         }
     }
 
-    /// Adds an activatable "Chat with user" / "Open chat" row with a trailing
-    /// chevron (the About-window menu style): closes this window and switches
-    /// to the chat, remembering the current one for the header back arrow.
+    /// Adds an activatable row styled like the About-window section rows: the
+    /// title names the target ("Chat with user" / "Chat with group" / "Chat
+    /// with channel"), the value is the action ("Open chat"), trailed by the
+    /// same `go-next` arrow. Activating it closes this window and switches to
+    /// the chat, remembering the current one for the header back arrow.
     fn add_open_chat_row(&self) {
         let Some(chat) = self.chat() else {
             return;
@@ -160,14 +162,22 @@ impl ChatInfoWindow {
         let chat_id = chat.id();
         let title = match chat.chat_type() {
             model::ChatType::Private(_) | model::ChatType::Secret(_) => gettext("Chat with user"),
-            _ => gettext("Open chat"),
+            model::ChatType::BasicGroup(_) => gettext("Chat with group"),
+            model::ChatType::Supergroup(supergroup) => {
+                if supergroup.is_channel() {
+                    gettext("Chat with channel")
+                } else {
+                    gettext("Chat with group")
+                }
+            }
         };
         let row = adw::ActionRow::builder()
             .title(&title)
+            .subtitle(gettext("Open chat"))
             .activatable(true)
             .build();
         row.add_css_class("property");
-        row.add_suffix(&gtk::Image::from_icon_name("pan-end-symbolic"));
+        row.add_suffix(&gtk::Image::from_icon_name("go-next-symbolic"));
         row.connect_activated(clone!(
             #[weak(rename_to = obj)]
             self,
@@ -368,7 +378,7 @@ impl ChatInfoWindow {
         let mut child = self.imp().info_list.first_child();
         while let Some(widget) = child {
             if let Some(row) = widget.downcast_ref::<adw::ActionRow>() {
-                let has_chevron = has_descendant_icon(row, "pan-end-symbolic");
+                let has_chevron = has_descendant_icon(row, "go-next-symbolic");
                 let _ = writeln!(
                     out,
                     "row title={:?} activatable={} chevron={}",
