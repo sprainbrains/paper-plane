@@ -860,11 +860,24 @@ impl ChatHistory {
 
                     let adj = imp.list_view.vadjustment().unwrap();
 
-                    // Prefill the viewport: keep loading the next older batch until the
-                    // loaded window is taller than the visible area, then pin the view to
-                    // the newest end (the bottom).
-                    while adj.upper() <= adj.page_size() {
-                        let result = model.load_older_messages(2).await;
+                    // Prefill the viewport: seed a full first page, then keep loading
+                    // older batches until the loaded window is taller than the visible
+                    // area, and pin the view to the newest end (the bottom).
+                    //
+                    // The adjustment's extents only refresh during a layout pass, so
+                    // they cannot be trusted before the new model has been laid out:
+                    // right after a chat switch they still describe the *previous*
+                    // chat (a stale tall upper used to skip this loop entirely,
+                    // leaving the fresh chat blank), and while the window is unmapped
+                    // no layout runs at all (frozen page-sized extents used to keep
+                    // the loop pulling the entire history). Always load the first
+                    // page unconditionally, and extend only while the view is mapped.
+                    let mut first_page = true;
+                    while first_page
+                        || (imp.list_view.is_mapped() && adj.upper() <= adj.page_size())
+                    {
+                        first_page = false;
+                        let result = model.load_older_messages(30).await;
                         if !obj.is_current_history(generation, chat_id, &model) {
                             return;
                         }
