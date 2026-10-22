@@ -343,9 +343,11 @@ impl MessageBubble {
             return;
         };
         match info.origin() {
-            model::MessageForwardOrigin::User(user) => session.select_chat(user.id()),
+            model::MessageForwardOrigin::User(user) => session.select_chat_with_return(user.id()),
             model::MessageForwardOrigin::Chat { chat }
-            | model::MessageForwardOrigin::Channel { chat } => session.select_chat(chat.id()),
+            | model::MessageForwardOrigin::Channel { chat } => {
+                session.select_chat_with_return(chat.id())
+            }
             _ => {}
         }
     }

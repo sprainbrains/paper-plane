@@ -380,6 +380,55 @@ impl Session {
         }
     }
 
+    /// Switches to `chat_id` remembering the currently open chat as the place to
+    /// return to: the header shows a back arrow until the user navigates away
+    /// normally. Used by jumps that originate inside a chat (the chat info
+    /// window's open row, forward headers, avatar popovers).
+    pub(crate) fn select_chat_with_return(&self, chat_id: ChatId) {
+        if let Some(current) = self.imp().content.chat()
+            && current.id() != chat_id
+        {
+            self.imp().content.arm_return_to(current.id(), chat_id);
+        }
+        self.select_chat(chat_id);
+    }
+
+    /// Opens the chat info window for `chat_id`, creating the private chat first
+    /// when needed. Mention links use this instead of jumping straight into the
+    /// chat, so the current conversation is never left by surprise.
+    pub(crate) fn show_chat_info(&self, chat_id: ChatId) {
+        let Some(model) = self.model() else {
+            log::warn!("show_chat_info: no session model");
+            return;
+        };
+        if let Some(chat) = model.try_chat(chat_id) {
+            self.present_chat_info(&chat);
+            return;
+        }
+        let client_id = model.client_().id();
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                match tdlib::functions::create_private_chat(chat_id, true, client_id).await {
+                    Ok(tdlib::enums::Chat::Chat(chat)) => {
+                        let model = obj.model().unwrap();
+                        match model.try_chat(chat.id) {
+                            Some(chat) => obj.present_chat_info(&chat),
+                            None => obj.select_chat(chat_id),
+                        }
+                    }
+                    Err(e) => utils::show_toast(&obj, e.message),
+                }
+            }
+        ));
+    }
+
+    fn present_chat_info(&self, chat: &model::Chat) {
+        let parent = self.root().and_then(|r| r.downcast().ok());
+        ui::ChatInfoWindow::new(&parent, chat).present();
+    }
+
     pub(crate) fn handle_paste_action(&self) {
         self.imp().content.handle_paste_action();
     }

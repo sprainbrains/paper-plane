@@ -1058,7 +1058,7 @@ fn show_avatar_profile(avatar: &ui::Avatar) {
         popover,
         move |_| {
             if let Some(session) = utils::ancestor::<_, ui::Session>(&avatar) {
-                session.select_chat(user_id);
+                session.select_chat_with_return(user_id);
             }
             popover.popdown();
         }

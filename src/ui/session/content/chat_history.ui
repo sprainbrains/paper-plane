@@ -13,6 +13,22 @@
             <child>
               <object class="AdwHeaderBar">
                 <child type="start">
+                  <object class="GtkButton" id="back_button">
+                    <property name="visible">False</property>
+                    <property name="valign">center</property>
+                    <property name="action-name">chat-history.go-back</property>
+                    <property name="tooltip-text" translatable="yes">Back</property>
+                    <child>
+                      <object class="GtkImage">
+                        <property name="icon-name">pan-start-symbolic</property>
+                      </object>
+                    </child>
+                    <style>
+                      <class name="flat"/>
+                    </style>
+                  </object>
+                </child>
+                <child type="start">
                   <object class="PaplAvatar" id="header_avatar">
                     <property name="size">28</property>
                     <property name="valign">center</property>

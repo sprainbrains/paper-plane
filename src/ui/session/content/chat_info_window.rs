@@ -14,6 +14,7 @@ use crate::expressions;
 use crate::i18n::ngettext_f;
 use crate::model;
 use crate::strings;
+use crate::ui;
 use crate::utils;
 
 mod imp {
@@ -149,6 +150,39 @@ impl ChatInfoWindow {
         }
     }
 
+    /// Adds an activatable "Chat with user" / "Open chat" row with a trailing
+    /// chevron (the About-window menu style): closes this window and switches
+    /// to the chat, remembering the current one for the header back arrow.
+    fn add_open_chat_row(&self) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let chat_id = chat.id();
+        let title = match chat.chat_type() {
+            model::ChatType::Private(_) | model::ChatType::Secret(_) => gettext("Chat with user"),
+            _ => gettext("Open chat"),
+        };
+        let row = adw::ActionRow::builder()
+            .title(&title)
+            .activatable(true)
+            .build();
+        row.add_css_class("property");
+        row.add_suffix(&gtk::Image::from_icon_name("pan-end-symbolic"));
+        row.connect_activated(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| {
+                if let Some(parent) = obj.transient_for()
+                    && let Some(session) = utils::descendant::<_, ui::Session>(&parent)
+                {
+                    session.select_chat_with_return(chat_id);
+                }
+                obj.close();
+            }
+        ));
+        self.imp().info_list.append(&row);
+    }
+
     fn setup_user_info(&self, user: &model::User) {
         let imp = self.imp();
 
@@ -179,6 +213,7 @@ impl ChatInfoWindow {
             imp.info_list.append(&row);
         }
 
+        self.add_open_chat_row();
         self.update_info_list_visibility();
     }
 
@@ -199,6 +234,7 @@ impl ChatInfoWindow {
             }))
             .bind(&*imp.subtitle_label, "text", Some(basic_group));
 
+        self.add_open_chat_row();
         self.update_info_list_visibility();
 
         // Full info
@@ -260,6 +296,7 @@ impl ChatInfoWindow {
             imp.info_list.append(&row);
         }
 
+        self.add_open_chat_row();
         self.update_info_list_visibility();
 
         // Full info
@@ -319,6 +356,31 @@ impl ChatInfoWindow {
     pub(crate) fn chat(&self) -> Option<&model::Chat> {
         self.imp().chat.get()
     }
+
+    /// Snapshot of the info window's rows (title + whether it carries the
+    /// trailing chevron) for the Devel automation bridge, so the "Chat with
+    /// user"/"Open chat" row can be verified headlessly.
+    pub(crate) fn debug_state(&self) -> String {
+        use std::fmt::Write;
+
+        let mut out = String::new();
+        let _ = writeln!(out, "chat: {:?}", self.chat().map(|c| (c.id(), c.title())));
+        let mut child = self.imp().info_list.first_child();
+        while let Some(widget) = child {
+            if let Some(row) = widget.downcast_ref::<adw::ActionRow>() {
+                let has_chevron = has_descendant_icon(row, "pan-end-symbolic");
+                let _ = writeln!(
+                    out,
+                    "row title={:?} activatable={} chevron={}",
+                    row.title(),
+                    row.is_activatable(),
+                    has_chevron
+                );
+            }
+            child = widget.next_sibling();
+        }
+        out
+    }
 }
 
 fn new_property_row(title: &str, subtitle: &str) -> adw::ActionRow {
@@ -328,4 +390,23 @@ fn new_property_row(title: &str, subtitle: &str) -> adw::ActionRow {
         .build();
     row.add_css_class("property");
     row
+}
+
+/// Whether `root`'s widget tree contains an image with this icon name. Used to
+/// confirm the "Chat with user" row rendered its trailing chevron.
+fn has_descendant_icon(root: &impl IsA<gtk::Widget>, icon_name: &str) -> bool {
+    let mut stack = vec![root.as_ref().clone()];
+    while let Some(widget) = stack.pop() {
+        if let Some(image) = widget.downcast_ref::<gtk::Image>()
+            && image.icon_name().as_deref() == Some(icon_name)
+        {
+            return true;
+        }
+        let mut child = widget.first_child();
+        while let Some(c) = child {
+            stack.push(c.clone());
+            child = c.next_sibling();
+        }
+    }
+    false
 }
