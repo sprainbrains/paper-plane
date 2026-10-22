@@ -860,89 +860,141 @@ impl ChatHistory {
 
                     let adj = imp.list_view.vadjustment().unwrap();
 
-                    // Prefill the viewport: seed a full first page, then keep loading
-                    // older batches until the loaded window is taller than the visible
-                    // area, and pin the view to the newest end (the bottom).
-                    //
-                    // The adjustment's extents only refresh during a layout pass, so
-                    // they cannot be trusted before the new model has been laid out:
-                    // right after a chat switch they still describe the *previous*
-                    // chat (a stale tall upper used to skip this loop entirely,
-                    // leaving the fresh chat blank), and while the window is unmapped
-                    // no layout runs at all (frozen page-sized extents used to keep
-                    // the loop pulling the entire history). Always load the first
-                    // page unconditionally, and extend only while the view is mapped.
-                    let mut first_page = true;
-                    while first_page
-                        || (imp.list_view.is_mapped() && adj.upper() <= adj.page_size())
-                    {
-                        first_page = false;
-                        let result = model.load_older_messages(30).await;
-                        if !obj.is_current_history(generation, chat_id, &model) {
-                            return;
-                        }
-                        match result {
-                            Ok(can_load_more) => {
-                                if !can_load_more {
-                                    break;
-                                }
-                            }
-                            Err(e) => {
-                                log::warn!("Couldn't load initial history messages: {e}");
-                                break;
-                            }
-                        }
-                    }
-
-                    // If the chat has unread messages, place an "Unread messages"
-                    // divider and open at the first unread message instead of pinning
-                    // to the bottom. Load older messages until the read/unread
-                    // boundary is in range (capped, so a huge backlog doesn't load
-                    // forever).
-                    //
-                    // When that jump is the plan, don't pin to the bottom first: the
-                    // pin latches `sticky`, every search batch then re-triggers
-                    // `scroll_down()`, and the in-flight auto-scroll lands after the
-                    // jump and yanks the view back to the newest message.
+                    // Chats with unread messages open at the first unread one, not at
+                    // the newest end: anchor the history window *around* the read
+                    // boundary in a single request (the same jump machinery
+                    // `reveal_message` uses). Walking the backlog batch-wise from the
+                    // newest end both fails on long chats (the capped search never
+                    // reaches the boundary) and briefly maps the newest messages,
+                    // which `view_messages()` would then mark as read.
                     let wants_unread_jump = unread_count > 0 && last_read_inbox_message_id != 0;
-                    if !wants_unread_jump {
-                        adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
-                    }
-
-                    scrollbar.set_visible(true);
-                    imp.is_loading_messages.set(false);
-
-                    let mut jumped = false;
+                    let mut anchored = false;
                     if wants_unread_jump {
-                        let mut guard = 0;
-                        while !model.insert_unread_divider(last_read_inbox_message_id) && guard < 40
-                        {
-                            let result = model.load_older_messages(10).await;
+                        // A scroll-edge load may be in flight; wait it out rather than
+                        // fall back to the newest end.
+                        let mut attempt = 0;
+                        loop {
+                            let result =
+                                model.load_around_message(last_read_inbox_message_id).await;
                             if !obj.is_current_history(generation, chat_id, &model) {
                                 return;
                             }
                             match result {
-                                Ok(true) => guard += 1,
-                                _ => break,
+                                Ok(()) => {
+                                    anchored = true;
+                                    break;
+                                }
+                                Err(model::ChatHistoryError::AlreadyLoading) if attempt < 30 => {
+                                    attempt += 1;
+                                    glib::timeout_future(std::time::Duration::from_millis(100))
+                                        .await;
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "Couldn't anchor the history at the first unread: {e}"
+                                    );
+                                    break;
+                                }
                             }
                         }
-                        if let Some(position) = obj.unread_divider_position() {
-                            // Drop any auto-scroll still in flight from the search
-                            // batches so it cannot finish at the bottom and re-latch
-                            // `sticky` over the jump (its completion handler would
-                            // pin sticky back on).
+                    }
+
+                    if !anchored {
+                        // Prefill the viewport from the newest end: seed a full first
+                        // page, then keep loading older batches until the loaded window
+                        // is taller than the visible area.
+                        //
+                        // The adjustment's extents only refresh during a layout pass, so
+                        // they cannot be trusted before the new model has been laid out:
+                        // right after a chat switch they still describe the *previous*
+                        // chat (a stale tall upper used to skip this loop entirely,
+                        // leaving the fresh chat blank), and while the window is unmapped
+                        // no layout runs at all (frozen page-sized extents used to keep
+                        // the loop pulling the entire history). Always load the first
+                        // page unconditionally, and extend only while the view is mapped.
+                        let mut first_page = true;
+                        while first_page
+                            || (imp.list_view.is_mapped() && adj.upper() <= adj.page_size())
+                        {
+                            first_page = false;
+                            let result = model.load_older_messages(30).await;
+                            if !obj.is_current_history(generation, chat_id, &model) {
+                                return;
+                            }
+                            match result {
+                                Ok(can_load_more) => {
+                                    if !can_load_more {
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("Couldn't load initial history messages: {e}");
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    let mut jumped = false;
+                    if wants_unread_jump {
+                        // The anchored window straddles the read boundary, so the
+                        // divider lands at once; the capped walk only runs when the
+                        // anchor failed and the window came from the newest end.
+                        if !model.insert_unread_divider(last_read_inbox_message_id) {
+                            let mut guard = 0;
+                            while !model.insert_unread_divider(last_read_inbox_message_id)
+                                && guard < 40
+                            {
+                                let result = model.load_older_messages(10).await;
+                                if !obj.is_current_history(generation, chat_id, &model) {
+                                    return;
+                                }
+                                match result {
+                                    Ok(true) => guard += 1,
+                                    _ => break,
+                                }
+                            }
+                        }
+                        if obj.unread_divider_position().is_some() {
+                            // Drop any auto-scroll still in flight so it cannot finish
+                            // at the bottom and re-latch `sticky` over the jump, and
+                            // forget what the transient pre-jump layout had mapped:
+                            // only the rows the user actually sees should be marked as
+                            // read.
                             imp.is_auto_scrolling.set(false);
+                            imp.viewed_message_ids.borrow_mut().clear();
+                            imp.viewed_message_ids_changed.set(false);
                             obj.set_sticky(false);
-                            imp.list_view
-                                .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+                            // Let the list realise the fresh window before scrolling to
+                            // the divider (the one-idle delay `reveal_message` uses).
+                            glib::idle_add_local_once(clone!(
+                                #[weak]
+                                obj,
+                                move || {
+                                    if !obj.is_current_chat(generation, chat_id) {
+                                        return;
+                                    }
+                                    if let Some(position) = obj.unread_divider_position() {
+                                        obj.imp().list_view.scroll_to(
+                                            position,
+                                            gtk::ListScrollFlags::empty(),
+                                            None,
+                                        );
+                                    }
+                                }
+                            ));
                             jumped = true;
                         }
                     }
 
                     if !jumped {
+                        adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
                         obj.set_sticky(true);
                         obj.scroll_down();
                     }
+
+                    scrollbar.set_visible(true);
+                    imp.is_loading_messages.set(false);
 
                     obj.view_messages();
                 }
