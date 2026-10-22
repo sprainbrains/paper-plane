@@ -190,6 +190,12 @@ impl Content {
         self.imp().chat_history.scroll_to_latest();
     }
 
+    /// Arms the header back arrow for the next switch to `to_chat` (see
+    /// `ChatHistory::arm_return_to`).
+    pub(crate) fn arm_return_to(&self, from_chat: i64, to_chat: i64) {
+        self.imp().chat_history.arm_return_to(from_chat, to_chat);
+    }
+
     fn set_chat(&self, chat: Option<&model::Chat>) {
         if self.chat().as_ref() == chat {
             return;

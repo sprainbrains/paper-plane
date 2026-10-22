@@ -80,6 +80,9 @@ impl Application {
         self.add_auto_action("auto-inspect-history", None, |app, _| {
             app.auto_inspect_history();
         });
+        self.add_auto_action("auto-inspect-user-info", None, |app, _| {
+            app.auto_inspect_user_info();
+        });
         self.add_auto_action("auto-scroll-latest", None, |app, _| {
             app.auto_scroll_latest();
         });
@@ -154,6 +157,24 @@ impl Application {
             };
             app.auto_open_chat(chat_id);
         });
+        self.add_auto_action("auto-user-info", Some(glib::VariantTy::INT64), |app, p| {
+            let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
+                log::warn!("auto-user-info: missing or invalid parameters");
+                return;
+            };
+            app.auto_user_info(chat_id);
+        });
+        self.add_auto_action(
+            "auto-chat-with-return",
+            Some(glib::VariantTy::INT64),
+            |app, p| {
+                let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
+                    log::warn!("auto-chat-with-return: missing or invalid parameters");
+                    return;
+                };
+                app.auto_chat_with_return(chat_id);
+            },
+        );
         self.add_auto_action(
             "auto-send-text",
             Some(glib::VariantTy::new("(xs)").unwrap()),
@@ -215,9 +236,14 @@ impl Application {
             .and_downcast::<model::ClientStateSession>()
     }
 
-    /// Renders the current window to `<output_dir>/screenshot.png`.
+    /// Renders the current window to `<output_dir>/screenshot.png`. An open
+    /// chat info window takes priority over the main window (it is a separate
+    /// top-level the main-window snapshot cannot see).
     fn auto_screenshot(&self) {
-        let window = self.main_window();
+        let window = gtk::Window::list_toplevels()
+            .into_iter()
+            .find(|w| w.is::<ui::ChatInfoWindow>())
+            .unwrap_or_else(|| self.main_window().upcast());
         let widget = window.upcast_ref::<gtk::Widget>();
 
         let width = widget.width();
@@ -263,6 +289,25 @@ impl Application {
         if let Err(e) = std::fs::write(&path, history.debug_state()) {
             log::warn!(
                 "auto-inspect-history: failed to write {}: {e:?}",
+                path.display()
+            );
+        }
+    }
+
+    /// Dumps the currently open chat info window's rows to
+    /// `<output_dir>/user_info.txt`, or reports that none is open.
+    fn auto_inspect_user_info(&self) {
+        // The info window is a plain top-level (not app-registered), so walk
+        // GTK's global toplevel list instead of `Application::windows`.
+        let found = gtk::Window::list_toplevels()
+            .into_iter()
+            .find_map(|window| window.downcast::<ui::ChatInfoWindow>().ok())
+            .map(|info| info.debug_state());
+        let path = output_dir().join("user_info.txt");
+        let text = found.unwrap_or_else(|| "no chat info window open\n".to_string());
+        if let Err(e) = std::fs::write(&path, text) {
+            log::warn!(
+                "auto-inspect-user-info: failed to write {}: {e:?}",
                 path.display()
             );
         }
@@ -421,6 +466,29 @@ impl Application {
             return;
         };
         session.scroll_content_to_latest();
+    }
+
+    /// Opens a chat's info window, exactly as clicking an @mention link does
+    /// (via `Session::show_chat_info`), so the row and its chevron can be
+    /// screenshotted headlessly.
+    fn auto_user_info(&self, chat_id: ChatId) {
+        let window = self.main_window();
+        let Some(session) = utils::descendant::<_, ui::Session>(&window) else {
+            log::warn!("auto-user-info: no active session view");
+            return;
+        };
+        session.show_chat_info(chat_id);
+    }
+
+    /// Performs the same switch the info window's "Chat with user" row does:
+    /// opens `chat_id` and arms the header back arrow from the current chat.
+    fn auto_chat_with_return(&self, chat_id: ChatId) {
+        let window = self.main_window();
+        let Some(session) = utils::descendant::<_, ui::Session>(&window) else {
+            log::warn!("auto-chat-with-return: no active session view");
+            return;
+        };
+        session.select_chat_with_return(chat_id);
     }
 
     /// Opens the active client's proxy window, mirroring the sidebar shield.

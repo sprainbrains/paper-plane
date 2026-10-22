@@ -437,7 +437,7 @@ impl MessageLabel {
                 utils::spawn(async move {
                     let client_id = session.model().unwrap().client_().id();
                     match tdlib::functions::search_public_chat(username, client_id).await {
-                        Ok(tdlib::enums::Chat::Chat(chat)) => session.select_chat(chat.id),
+                        Ok(tdlib::enums::Chat::Chat(chat)) => session.show_chat_info(chat.id),
                         Err(e) => utils::show_toast(&session, e.message),
                     }
                 });
@@ -447,7 +447,7 @@ impl MessageLabel {
                 user_id.parse::<i64>(),
                 utils::ancestor::<_, ui::Session>(self),
             ) {
-                session.select_chat(user_id);
+                session.show_chat_info(user_id);
             }
         } else if let Some(command) = uri.strip_prefix("command:") {
             self.send_bot_command(command.to_string());

@@ -89,6 +89,12 @@ mod imp {
         pub(super) chat_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) model: RefCell<Option<model::ChatHistoryModel>>,
         pub(super) generation: Cell<u64>,
+        /// When set, the header shows a back arrow to this chat: the current
+        /// chat was opened from within it (mention info window, forward header).
+        pub(super) return_chat: Cell<Option<i64>>,
+        /// (from, to) armed by `Session::select_chat_with_return` before the
+        /// switch; the next real `set_chat` claims it if it lands on `to`.
+        pub(super) pending_return: Cell<Option<(i64, i64)>>,
         pub(super) message_menu: OnceCell<ui::MessageMenu>,
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
@@ -131,6 +137,8 @@ mod imp {
         pub(super) selection_count_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) window_title: TemplateChild<adw::WindowTitle>,
+        #[template_child]
+        pub(super) back_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub(super) header_avatar: TemplateChild<ui::Avatar>,
         #[template_child]
@@ -201,6 +209,9 @@ mod imp {
             });
             klass.install_action("chat-history.scroll-down", None, move |widget, _, _| {
                 widget.scroll_down();
+            });
+            klass.install_action("chat-history.go-back", None, move |widget, _, _| {
+                widget.go_back();
             });
             klass.install_action(
                 "chat-history.reply",
@@ -761,6 +772,16 @@ impl ChatHistory {
         }
 
         let imp = self.imp();
+        // The back arrow only exists for chats opened from within another chat:
+        // the switch armed at request time claims the pending return when it
+        // actually lands; any other switch (sidebar, search, …) clears it.
+        let pending = imp.pending_return.take();
+        let return_to = match pending {
+            Some((from, to)) if chat.is_some_and(|chat| chat.id() == to) => Some(from),
+            _ => None,
+        };
+        imp.return_chat.set(return_to);
+        imp.back_button.set_visible(return_to.is_some());
         imp.generation.set(imp.generation.get().wrapping_add(1));
         imp.is_loading_messages.set(false);
         imp.scrolled_window.vscrollbar().set_visible(true);
@@ -1067,6 +1088,12 @@ impl ChatHistory {
             out,
             "unread divider at: {:?}",
             self.unread_divider_position()
+        );
+        let _ = writeln!(
+            out,
+            "return_chat: {:?} back_button_visible: {}",
+            imp.return_chat.get(),
+            imp.back_button.is_visible()
         );
         let _ = writeln!(
             out,
@@ -2740,6 +2767,23 @@ impl ChatHistory {
     pub(crate) fn scroll_to_latest(&self) {
         self.set_sticky(true);
         self.scroll_down();
+    }
+
+    /// Marks the next switch to `to_chat` as a jump from `from_chat`, arming the
+    /// header back arrow once the switch actually lands (see `set_chat`).
+    pub(crate) fn arm_return_to(&self, from_chat: i64, to_chat: i64) {
+        self.imp().pending_return.set(Some((from_chat, to_chat)));
+    }
+
+    /// Returns to the chat this one was opened from (header back arrow). The
+    /// switch clears `return_chat` and hides the arrow.
+    pub(crate) fn go_back(&self) {
+        let Some(from) = self.imp().return_chat.get() else {
+            return;
+        };
+        if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
+            session.select_chat(from);
+        }
     }
 
     pub(crate) fn view_messages(&self) {
