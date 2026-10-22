@@ -278,7 +278,12 @@ impl Application {
         for i in 0..list.n_items() {
             if let Some(item) = list.item(i).and_downcast::<model::ChatListItem>() {
                 let chat = item.chat_();
-                out.push_str(&format!("{}\t{}\n", chat.id(), chat.title()));
+                out.push_str(&format!(
+                    "{}\t{}\t(unread {})\n",
+                    chat.id(),
+                    chat.title(),
+                    chat.unread_count()
+                ));
             }
         }
 
