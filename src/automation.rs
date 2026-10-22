@@ -80,6 +80,9 @@ impl Application {
         self.add_auto_action("auto-inspect-history", None, |app, _| {
             app.auto_inspect_history();
         });
+        self.add_auto_action("auto-scroll-latest", None, |app, _| {
+            app.auto_scroll_latest();
+        });
         self.add_auto_action("auto-list-chats", None, |app, _| app.auto_list_chats());
         self.add_auto_action(
             "auto-list-messages",
@@ -407,6 +410,17 @@ impl Application {
             return;
         };
         self.main_window().select_chat(client_id, chat_id);
+    }
+
+    /// Mirrors re-activating the already-open chat in the sidebar: drops the
+    /// history view to its newest message through the same session path.
+    fn auto_scroll_latest(&self) {
+        let window = self.main_window();
+        let Some(session) = utils::descendant::<_, ui::Session>(&window) else {
+            log::warn!("auto-scroll-latest: no active session view");
+            return;
+        };
+        session.scroll_content_to_latest();
     }
 
     /// Opens the active client's proxy window, mirroring the sidebar shield.

@@ -258,7 +258,40 @@ impl ChatHistoryModel {
         self.upcast_ref::<gio::ListModel>()
             .items_changed(0, removed as u32, 0);
         imp.newest_loaded.set(true);
-        self.load_older_messages(30).await.map(|_| ())
+        // A single request can come back short: TDLib serves the messages it
+        // already has in memory and streams the rest from its database
+        // asynchronously, so right after a jump the newest page may hold only a
+        // couple of items. Accepting that left a few bubbles stretched across the
+        // top of an otherwise empty view; keep pulling until the window holds a
+        // full page (more than any viewport shows) or the history runs out.
+        let mut empty_retries = 0;
+        for _ in 0..10 {
+            if imp.list.borrow().len() >= 30 {
+                return Ok(());
+            }
+            match self.load_older_messages(30).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    // An empty newest page in a chat that does have messages is
+                    // a failed server fetch, not the end of history; give the
+                    // connection a moment and try again a few times.
+                    if empty_retries < 3
+                        && self.chat().and_then(|c| c.last_message()).is_some()
+                        && imp.list.borrow().is_empty()
+                    {
+                        empty_retries += 1;
+                        glib::timeout_future(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                    break;
+                }
+                Err(ChatHistoryError::AlreadyLoading) => {
+                    glib::timeout_future(std::time::Duration::from_millis(100)).await;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
     }
 
     fn emit_items_changed_with_dividers(&self, position: u32, removed: u32, added: u32) {
