@@ -142,6 +142,7 @@ src/ui/session/row.blp
 src/ui/session/row.rs
 src/ui/session/sidebar/avatar.blp
 src/ui/session/sidebar/avatar.rs
+src/ui/session/sidebar/chat_list.blp
 src/ui/session/sidebar/mini_thumbnail.rs
 src/ui/session/sidebar/mod.blp
 src/ui/session/sidebar/mod.rs

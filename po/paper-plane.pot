@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 21:38+0300\n"
+"POT-Creation-Date: 2026-10-22 15:18+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1841,6 +1841,10 @@ msgstr ""
 msgid "_Log out"
 msgstr ""
 
+#: src/ui/session/sidebar/chat_list.blp:66
+msgid "Loading chats…"
+msgstr ""
+
 #: src/ui/session/sidebar/mod.blp:7
 msgid "_Contacts"
 msgstr ""
@@ -1937,14 +1941,14 @@ msgstr ""
 msgid "{hours} h {seconds} s"
 msgstr ""
 
-#: src/utils/markup.rs:375
+#: src/utils/markup.rs:378
 msgid "{minutes} min {seconds} s"
 msgstr ""
 
-#: src/utils/markup.rs:379
+#: src/utils/markup.rs:385
 msgid "{minutes} min"
 msgstr ""
 
-#: src/utils/markup.rs:382
+#: src/utils/markup.rs:388
 msgid "{seconds} s"
 msgstr ""

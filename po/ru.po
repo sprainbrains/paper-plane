@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 21:38+0300\n"
+"POT-Creation-Date: 2026-10-22 15:18+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -1938,6 +1938,10 @@ msgstr "Вы уверены, что хотите выйти?"
 msgid "_Log out"
 msgstr "_Выйти"
 
+#: src/ui/session/sidebar/chat_list.blp:66
+msgid "Loading chats…"
+msgstr "Загрузка чатов…"
+
 #: src/ui/session/sidebar/mod.blp:7
 msgid "_Contacts"
 msgstr "_Контакты"
@@ -2034,20 +2038,17 @@ msgstr "{hours} ч {minutes} мин {seconds} с"
 msgid "{hours} h {seconds} s"
 msgstr "{hours} ч {seconds} с"
 
-#: src/utils/markup.rs:375
+#: src/utils/markup.rs:378
 msgid "{minutes} min {seconds} s"
 msgstr "{minutes} мин {seconds} с"
 
-#: src/utils/markup.rs:379
+#: src/utils/markup.rs:385
 msgid "{minutes} min"
 msgstr "{minutes} мин"
 
-#: src/utils/markup.rs:382
+#: src/utils/markup.rs:388
 msgid "{seconds} s"
 msgstr "{seconds} с"
-
-#~ msgid "Loading chats…"
-#~ msgstr "Загрузка чатов…"
 
 #~ msgid ""
 #~ "Added registered categories to te desktop file to fix a build error on "
