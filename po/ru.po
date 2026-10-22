@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 20:30+0300\n"
+"POT-Creation-Date: 2026-10-21 21:38+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -474,54 +474,59 @@ msgstr ""
 msgid "Incoming call"
 msgstr "Входящий вызов"
 
-#: src/expressions.rs:21 src/ui/session/sidebar/search/item_row.rs:101
+#: src/expressions.rs:22 src/ui/session/sidebar/search/item_row.rs:101
 #: src/ui/session/sidebar/search/mod.rs:193
 msgid "Saved Messages"
 msgstr "Избранное"
 
-#: src/expressions.rs:23 src/expressions.rs:45 src/strings/user.rs:9
+#: src/expressions.rs:24 src/expressions.rs:46 src/strings/user.rs:9
 msgid "Deleted Account"
 msgstr "Удаленная учетная запись"
 
-#: src/expressions.rs:89 src/expressions.rs:94 src/expressions.rs:110
+#: src/expressions.rs:90 src/expressions.rs:95 src/expressions.rs:111
 msgid "The admins of this group have restricted you from writing here"
 msgstr "Администраторы группы запретили Вам писать в ней"
 
 #. Translators: This is a time representation, without seconds.
 #. Here you may want to change to a 24-hours representation, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:101 src/ui/session/content/message_row/indicators.rs:314
+#: src/expressions.rs:102 src/ui/session/content/message_row/indicators.rs:314
 msgid "%l:%M %p"
 msgstr "%H:%M"
 
 #. Translators: This is a date and time representation, without seconds.
 #. Here you may want to change to a 24-hours representation and change order, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:106
+#: src/expressions.rs:107
 msgid "%B %e, %Y %l:%M %p"
 msgstr "%e %B, %Y %H:%M"
 
-#: src/expressions.rs:123
+#: src/expressions.rs:113
+msgid ""
+"The admins of this group have restricted you from writing here until {date}"
+msgstr "Администраторы группы запретили Вам писать в ней до {date}"
+
+#: src/expressions.rs:124
 msgid "Writing messages isn't allowed in this group."
 msgstr "В этой группе запрещено отправлять сообщения."
 
-#: src/main.rs:186
+#: src/main.rs:166
 msgid "Prints application version"
 msgstr "Вывести версию приложения"
 
-#: src/main.rs:195
+#: src/main.rs:175
 msgid "Specify the minimum log level"
 msgstr "Указать минимальный уровень журнала"
 
-#: src/main.rs:204
+#: src/main.rs:184
 msgid "Override the builtin client id"
 msgstr "Переопределить встроенный client id"
 
-#: src/main.rs:213
+#: src/main.rs:193
 msgid "Override the builtin client secret"
 msgstr "Переопределить встроенный client secret"
 
-#: src/main.rs:222
+#: src/main.rs:202
 msgid "Whether to use a test data center on first account"
 msgstr ""
 "Использовать ли тестовый центр обработки данных на первой учетной записи"
@@ -1400,7 +1405,7 @@ msgstr "Изменить прокси"
 msgid "Could not save the proxy"
 msgstr "Не удалось сохранить прокси"
 
-#: src/ui/proxy_row.blp:37
+#: src/ui/proxy_row.blp:37 src/ui/session/content/message_menu.rs:69
 msgid "Edit"
 msgstr "Изменить"
 
@@ -1584,12 +1589,14 @@ msgstr "Скрыть панель закреплённых"
 
 #: src/ui/session/content/chat_history.ui:197
 #: src/ui/session/content/chat_history.ui:201
+#: src/ui/session/content/message_menu.rs:33
 #: src/ui/session/content/message_row/mod.rs:612
 msgid "Forward"
 msgstr "Переслать"
 
 #: src/ui/session/content/chat_history.ui:214
 #: src/ui/session/content/chat_history.ui:218
+#: src/ui/session/content/message_menu.rs:45
 #: src/ui/session/content/message_row/mod.rs:616
 msgid "Copy Text"
 msgstr "Скопировать текст"
@@ -1669,6 +1676,46 @@ msgstr "Ссылка"
 msgid "Copied to clipboard"
 msgstr "Cкопировано в буфер обмена"
 
+#: src/ui/session/content/message_menu.rs:27
+msgid "Reply"
+msgstr "Ответить"
+
+#: src/ui/session/content/message_menu.rs:39
+msgid "Select"
+msgstr "Выделить"
+
+#: src/ui/session/content/message_menu.rs:51
+msgid "Copy Link"
+msgstr "Скопировать ссылку"
+
+#: src/ui/session/content/message_menu.rs:57
+msgid "Pin"
+msgstr "Закрепить"
+
+#: src/ui/session/content/message_menu.rs:63
+msgid "Unpin"
+msgstr "Открепить"
+
+#: src/ui/session/content/message_menu.rs:75
+msgid "Open"
+msgstr "Открыть"
+
+#: src/ui/session/content/message_menu.rs:81
+msgid "Show Sticker Pack"
+msgstr "Показать набор стикеров"
+
+#: src/ui/session/content/message_menu.rs:87
+msgid "Delete for Everyone"
+msgstr "Удалить для всех"
+
+#: src/ui/session/content/message_menu.rs:93
+msgid "Delete for Me"
+msgstr "Удалить у меня"
+
+#: src/ui/session/content/message_menu.rs:102
+msgid "Copy Debug Entry"
+msgstr "Скопировать отладочную запись"
+
 #: src/ui/session/content/message_row/bubble.rs:518
 msgid "Forwarded from {name}"
 msgstr "Переслано от {name}"
@@ -1690,11 +1737,15 @@ msgstr "Код скопирован в буфер обмена"
 msgid "updated just now"
 msgstr "обновлено только что"
 
-#: src/ui/session/content/message_row/location.rs:208
+#: src/ui/session/content/message_row/location.rs:207
+msgid "updated {minutes} minutes ago"
+msgstr "обновлено {minutes} мин назад"
+
+#: src/ui/session/content/message_row/location.rs:211
 msgid "updated an hour ago"
 msgstr "обновлено час назад"
 
-#: src/ui/session/content/message_row/location.rs:211
+#: src/ui/session/content/message_row/location.rs:214
 msgid "updated {hours} hours and {minutes} minutes ago"
 msgstr "обновлено {hours} часа(-ов) и {minutes} минут(ы) назад"
 
@@ -1975,8 +2026,28 @@ msgstr "_Тестовый Сервер"
 msgid "New Session"
 msgstr "Новый сеанс"
 
-msgid "Loading chats…"
-msgstr "Загрузка чатов…"
+#: src/utils/markup.rs:356
+msgid "{hours} h {minutes} min {seconds} s"
+msgstr "{hours} ч {minutes} мин {seconds} с"
+
+#: src/utils/markup.rs:365
+msgid "{hours} h {seconds} s"
+msgstr "{hours} ч {seconds} с"
+
+#: src/utils/markup.rs:375
+msgid "{minutes} min {seconds} s"
+msgstr "{minutes} мин {seconds} с"
+
+#: src/utils/markup.rs:379
+msgid "{minutes} min"
+msgstr "{minutes} мин"
+
+#: src/utils/markup.rs:382
+msgid "{seconds} s"
+msgstr "{seconds} с"
+
+#~ msgid "Loading chats…"
+#~ msgstr "Загрузка чатов…"
 
 #~ msgid ""
 #~ "Added registered categories to te desktop file to fix a build error on "

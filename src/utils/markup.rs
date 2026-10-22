@@ -2,6 +2,8 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
+use crate::i18n::gettext_f;
+
 fn protocol_re() -> &'static Regex {
     static PROTOCOL_RE: OnceLock<Regex> = OnceLock::new();
     PROTOCOL_RE.get_or_init(|| Regex::new(r"^\w+://").unwrap())
@@ -26,33 +28,6 @@ pub(crate) fn freplace(s: String, args: &[(&str, &str)]) -> String {
         s = s.replace(&format!("{{{k}}}"), v);
     }
     s
-}
-
-/// Replace successive `{}` placeholders in `msg` with `args`, left to right.
-///
-/// Unlike a naive `replacen` loop, substituted text is never rescanned, so an
-/// argument value that itself contains `{}` cannot capture a later argument.
-/// Surplus placeholders are left as literal `{}`; surplus arguments are ignored.
-pub(crate) fn positional_replace(msg: String, args: &[String]) -> String {
-    let mut result = String::with_capacity(msg.len());
-    let mut rest = msg.as_str();
-    let mut args = args.iter();
-
-    while let Some(pos) = rest.find("{}") {
-        result.push_str(&rest[..pos]);
-        match args.next() {
-            Some(arg) => result.push_str(arg),
-            None => {
-                // No argument left for this placeholder; keep the rest verbatim.
-                result.push_str(rest);
-                return result;
-            }
-        }
-        rest = &rest[pos + 2..];
-    }
-
-    result.push_str(rest);
-    result
 }
 
 pub(crate) fn linkify(text: &str) -> String {
@@ -377,21 +352,40 @@ pub(crate) fn human_friendly_duration(mut seconds: i32) -> String {
         let minutes = seconds / 60;
         if minutes > 0 {
             seconds %= 60;
-            gettext!("{} h {} min {} s", hours, minutes, seconds)
+            gettext_f(
+                "{hours} h {minutes} min {seconds} s",
+                &[
+                    ("hours", &hours.to_string()),
+                    ("minutes", &minutes.to_string()),
+                    ("seconds", &seconds.to_string()),
+                ],
+            )
         } else {
-            gettext!("{} h {} s", hours, seconds)
+            gettext_f(
+                "{hours} h {seconds} s",
+                &[
+                    ("hours", &hours.to_string()),
+                    ("seconds", &seconds.to_string()),
+                ],
+            )
         }
     } else {
         let minutes = seconds / 60;
         if minutes > 0 {
             seconds %= 60;
             if seconds > 0 {
-                gettext!("{} min {} s", minutes, seconds)
+                gettext_f(
+                    "{minutes} min {seconds} s",
+                    &[
+                        ("minutes", &minutes.to_string()),
+                        ("seconds", &seconds.to_string()),
+                    ],
+                )
             } else {
-                gettext!("{} min", minutes)
+                gettext_f("{minutes} min", &[("minutes", &minutes.to_string())])
             }
         } else {
-            gettext!("{} s", seconds)
+            gettext_f("{seconds} s", &[("seconds", &seconds.to_string())])
         }
     }
 }

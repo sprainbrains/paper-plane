@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-21 20:30+0300\n"
+"POT-Creation-Date: 2026-10-21 21:38+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -401,54 +401,59 @@ msgstr ""
 msgid "Incoming call"
 msgstr ""
 
-#: src/expressions.rs:21 src/ui/session/sidebar/search/item_row.rs:101
+#: src/expressions.rs:22 src/ui/session/sidebar/search/item_row.rs:101
 #: src/ui/session/sidebar/search/mod.rs:193
 msgid "Saved Messages"
 msgstr ""
 
-#: src/expressions.rs:23 src/expressions.rs:45 src/strings/user.rs:9
+#: src/expressions.rs:24 src/expressions.rs:46 src/strings/user.rs:9
 msgid "Deleted Account"
 msgstr ""
 
-#: src/expressions.rs:89 src/expressions.rs:94 src/expressions.rs:110
+#: src/expressions.rs:90 src/expressions.rs:95 src/expressions.rs:111
 msgid "The admins of this group have restricted you from writing here"
 msgstr ""
 
 #. Translators: This is a time representation, without seconds.
 #. Here you may want to change to a 24-hours representation, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:101 src/ui/session/content/message_row/indicators.rs:314
+#: src/expressions.rs:102 src/ui/session/content/message_row/indicators.rs:314
 msgid "%l:%M %p"
 msgstr ""
 
 #. Translators: This is a date and time representation, without seconds.
 #. Here you may want to change to a 24-hours representation and change order, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:106
+#: src/expressions.rs:107
 msgid "%B %e, %Y %l:%M %p"
 msgstr ""
 
-#: src/expressions.rs:123
+#: src/expressions.rs:113
+msgid ""
+"The admins of this group have restricted you from writing here until {date}"
+msgstr ""
+
+#: src/expressions.rs:124
 msgid "Writing messages isn't allowed in this group."
 msgstr ""
 
-#: src/main.rs:186
+#: src/main.rs:166
 msgid "Prints application version"
 msgstr ""
 
-#: src/main.rs:195
+#: src/main.rs:175
 msgid "Specify the minimum log level"
 msgstr ""
 
-#: src/main.rs:204
+#: src/main.rs:184
 msgid "Override the builtin client id"
 msgstr ""
 
-#: src/main.rs:213
+#: src/main.rs:193
 msgid "Override the builtin client secret"
 msgstr ""
 
-#: src/main.rs:222
+#: src/main.rs:202
 msgid "Whether to use a test data center on first account"
 msgstr ""
 
@@ -1309,7 +1314,7 @@ msgstr ""
 msgid "Could not save the proxy"
 msgstr ""
 
-#: src/ui/proxy_row.blp:37
+#: src/ui/proxy_row.blp:37 src/ui/session/content/message_menu.rs:69
 msgid "Edit"
 msgstr ""
 
@@ -1492,12 +1497,14 @@ msgstr ""
 
 #: src/ui/session/content/chat_history.ui:197
 #: src/ui/session/content/chat_history.ui:201
+#: src/ui/session/content/message_menu.rs:33
 #: src/ui/session/content/message_row/mod.rs:612
 msgid "Forward"
 msgstr ""
 
 #: src/ui/session/content/chat_history.ui:214
 #: src/ui/session/content/chat_history.ui:218
+#: src/ui/session/content/message_menu.rs:45
 #: src/ui/session/content/message_row/mod.rs:616
 msgid "Copy Text"
 msgstr ""
@@ -1576,6 +1583,46 @@ msgstr ""
 msgid "Copied to clipboard"
 msgstr ""
 
+#: src/ui/session/content/message_menu.rs:27
+msgid "Reply"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:39
+msgid "Select"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:51
+msgid "Copy Link"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:57
+msgid "Pin"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:63
+msgid "Unpin"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:75
+msgid "Open"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:81
+msgid "Show Sticker Pack"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:87
+msgid "Delete for Everyone"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:93
+msgid "Delete for Me"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:102
+msgid "Copy Debug Entry"
+msgstr ""
+
 #: src/ui/session/content/message_row/bubble.rs:518
 msgid "Forwarded from {name}"
 msgstr ""
@@ -1597,11 +1644,15 @@ msgstr ""
 msgid "updated just now"
 msgstr ""
 
-#: src/ui/session/content/message_row/location.rs:208
-msgid "updated an hour ago"
+#: src/ui/session/content/message_row/location.rs:207
+msgid "updated {minutes} minutes ago"
 msgstr ""
 
 #: src/ui/session/content/message_row/location.rs:211
+msgid "updated an hour ago"
+msgstr ""
+
+#: src/ui/session/content/message_row/location.rs:214
 msgid "updated {hours} hours and {minutes} minutes ago"
 msgstr ""
 
@@ -1876,4 +1927,24 @@ msgstr ""
 
 #: src/ui/session/switcher.blp:41
 msgid "New Session"
+msgstr ""
+
+#: src/utils/markup.rs:356
+msgid "{hours} h {minutes} min {seconds} s"
+msgstr ""
+
+#: src/utils/markup.rs:365
+msgid "{hours} h {seconds} s"
+msgstr ""
+
+#: src/utils/markup.rs:375
+msgid "{minutes} min {seconds} s"
+msgstr ""
+
+#: src/utils/markup.rs:379
+msgid "{minutes} min"
+msgstr ""
+
+#: src/utils/markup.rs:382
+msgid "{seconds} s"
 msgstr ""

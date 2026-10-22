@@ -203,7 +203,10 @@ impl MessageLocation {
                                         obj.imp().last_updated_label.set_label(&if minutes <= 1 {
                                             gettext("updated just now")
                                         } else if minutes < 60 {
-                                            gettext!("updated {} minutes ago", minutes)
+                                            gettext_f(
+                                                "updated {minutes} minutes ago",
+                                                &[("minutes", &minutes.to_string())],
+                                            )
                                         } else if minutes == 60 {
                                             gettext("updated an hour ago")
                                         } else {

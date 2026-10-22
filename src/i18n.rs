@@ -22,3 +22,10 @@ pub fn ngettext_f(msgid: &str, msgid_plural: &str, n: u32, args: &[(&str, &str)]
     let s = ngettext(msgid, msgid_plural, n);
     utils::freplace(s, args)
 }
+
+/// Marks a string literal for extraction by `xgettext` without translating it
+/// at the call site. For tables that store msgids and translate them later
+/// with `gettext()`; registered as a keyword in `po/meson.build`.
+pub(crate) const fn gettext_noop(s: &'static str) -> &'static str {
+    s
+}

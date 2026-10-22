@@ -4,6 +4,7 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
+use crate::i18n::gettext_noop;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -23,73 +24,73 @@ const PRIMARY: &[MenuEntry] = &[
     MenuEntry {
         action: "message-row.reply",
         icon: "mail-reply-sender-symbolic",
-        label: "Reply",
+        label: gettext_noop("Reply"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.forward",
         icon: "mail-forward-symbolic",
-        label: "Forward",
+        label: gettext_noop("Forward"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.select",
         icon: "checkbox-checked-symbolic",
-        label: "Select",
+        label: gettext_noop("Select"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.copy",
         icon: "edit-copy-symbolic",
-        label: "Copy Text",
+        label: gettext_noop("Copy Text"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.copy-link",
         icon: "chain-link-symbolic",
-        label: "Copy Link",
+        label: gettext_noop("Copy Link"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.pin",
         icon: "view-pin-symbolic",
-        label: "Pin",
+        label: gettext_noop("Pin"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.unpin",
         icon: "pin-crossed-symbolic",
-        label: "Unpin",
+        label: gettext_noop("Unpin"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.edit",
         icon: "edit-symbolic",
-        label: "Edit",
+        label: gettext_noop("Edit"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.open",
         icon: "find-location-symbolic",
-        label: "Open",
+        label: gettext_noop("Open"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.show-sticker-pack",
         icon: "emoji-symbols-symbolic",
-        label: "Show Sticker Pack",
+        label: gettext_noop("Show Sticker Pack"),
         destructive: false,
     },
     MenuEntry {
         action: "message-row.revoke-delete",
         icon: "user-trash-symbolic",
-        label: "Delete for Everyone",
+        label: gettext_noop("Delete for Everyone"),
         destructive: true,
     },
     MenuEntry {
         action: "message-row.delete",
         icon: "user-trash-symbolic",
-        label: "Delete for Me",
+        label: gettext_noop("Delete for Me"),
         destructive: true,
     },
 ];
@@ -98,7 +99,7 @@ const PRIMARY: &[MenuEntry] = &[
 const SECONDARY: &[MenuEntry] = &[MenuEntry {
     action: "message-row.copy-debug",
     icon: "view-reveal-symbolic",
-    label: "Copy Debug Entry",
+    label: gettext_noop("Copy Debug Entry"),
     destructive: false,
 }];
 
