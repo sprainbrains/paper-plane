@@ -954,6 +954,85 @@ impl ChatHistory {
         self.imp().model.borrow().clone()
     }
 
+    /// Snapshot of every layer between the model and the screen (chat binding,
+    /// item counts, list view allocation, scroll adjustment, realised rows).
+    /// Used by the Devel automation bridge to diagnose blank histories.
+    pub(crate) fn debug_state(&self) -> String {
+        use std::fmt::Write;
+
+        let imp = self.imp();
+        let mut out = String::new();
+        let chat = self.chat();
+        let _ = writeln!(
+            out,
+            "chat: {:?}",
+            chat.as_ref().map(|c| (c.id(), c.title()))
+        );
+        let _ = writeln!(out, "generation: {}", imp.generation.get());
+        let _ = writeln!(
+            out,
+            "is_loading_messages: {}",
+            imp.is_loading_messages.get()
+        );
+        let _ = writeln!(
+            out,
+            "history_model n_items: {:?}",
+            self.history_model().map(|m| m.n_items())
+        );
+        let list_view = &*imp.list_view;
+        let _ = writeln!(
+            out,
+            "list_view: mapped={} visible={} bounds={:?}",
+            list_view.is_mapped(),
+            list_view.is_visible(),
+            list_view.bounds()
+        );
+        let _ = writeln!(
+            out,
+            "list model n_items: {:?}",
+            list_view.model().map(|m| m.n_items())
+        );
+        if let Some(adj) = list_view.vadjustment() {
+            let _ = writeln!(
+                out,
+                "vadj: lower={} value={} upper={} page_size={}",
+                adj.lower(),
+                adj.value(),
+                adj.upper(),
+                adj.page_size()
+            );
+        }
+        let _ = writeln!(
+            out,
+            "scrolled_window: mapped={} bounds={:?}",
+            imp.scrolled_window.is_mapped(),
+            imp.scrolled_window.bounds()
+        );
+        let mut rows = Vec::new();
+        let mut child = list_view.first_child();
+        while let Some(widget) = child {
+            let name = widget.type_().name().to_string();
+            if name.contains("ListItem") {
+                let _ = writeln!(
+                    out,
+                    "row {name}: visible={} mapped={} bounds={:?} position={:?}",
+                    widget.is_visible(),
+                    widget.is_mapped(),
+                    widget.bounds(),
+                    widget
+                        .find_property("position")
+                        .map(|_| widget.property::<i32>("position")),
+                );
+                rows.push(name);
+            } else {
+                let _ = writeln!(out, "child {name}: bounds={:?}", widget.bounds());
+            }
+            child = widget.next_sibling();
+        }
+        let _ = writeln!(out, "list item rows found: {}", rows.len());
+        out
+    }
+
     fn is_current_history(
         &self,
         generation: u64,

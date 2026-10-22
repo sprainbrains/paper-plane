@@ -77,6 +77,9 @@ impl Application {
 
         // Observation.
         self.add_auto_action("auto-screenshot", None, |app, _| app.auto_screenshot());
+        self.add_auto_action("auto-inspect-history", None, |app, _| {
+            app.auto_inspect_history();
+        });
         self.add_auto_action("auto-list-chats", None, |app, _| app.auto_list_chats());
         self.add_auto_action(
             "auto-list-messages",
@@ -241,6 +244,24 @@ impl Application {
         match std::fs::write(&path, bytes.as_ref()) {
             Ok(()) => log::info!("auto-screenshot: wrote {}", path.display()),
             Err(e) => log::warn!("auto-screenshot: failed to write {}: {e:?}", path.display()),
+        }
+    }
+
+    /// Dumps the open chat's message-list state (model counts, list view
+    /// allocation, scroll adjustment, realised rows) to
+    /// `<output_dir>/history.txt`.
+    fn auto_inspect_history(&self) {
+        let window = self.main_window();
+        let Some(history) = utils::descendant::<_, ui::ChatHistory>(&window) else {
+            log::warn!("auto-inspect-history: no chat history widget");
+            return;
+        };
+        let path = output_dir().join("history.txt");
+        if let Err(e) = std::fs::write(&path, history.debug_state()) {
+            log::warn!(
+                "auto-inspect-history: failed to write {}: {e:?}",
+                path.display()
+            );
         }
     }
 
