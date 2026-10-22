@@ -162,4 +162,5 @@ src/ui/session/switcher.rs
 src/ui/window.blp
 src/ui/window.rs
 src/utils/mod.rs
+src/utils/markup.rs
 src/utils/proxy_link.rs

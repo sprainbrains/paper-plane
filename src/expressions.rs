@@ -4,6 +4,7 @@ use gtk::glib;
 use gtk::glib::closure;
 use gtk::prelude::GObjectPropertyExpressionExt;
 
+use crate::i18n::gettext_f;
 use crate::model;
 
 /// Creates an expression that produces the display name of a chat. This will either produce the
@@ -108,9 +109,9 @@ fn restriction_label_expression<T: StaticType, V: ToValue>(value: &V) -> gtk::Ex
 
                             date.format(&format).map_or_else(
                                 |_| gettext("The admins of this group have restricted you from writing here"),
-                                |date| gettext!(
-                                    "The admins of this group have restricted you from writing here until {}",
-                                    date
+                                |date| gettext_f(
+                                    "The admins of this group have restricted you from writing here until {date}",
+                                    &[("date", date.as_ref())],
                                 ),
                             )
                         }
