@@ -74,6 +74,46 @@ fn captioned_media_caption(
     }
 }
 
+/// Edge of one album cell in logical pixels. Shared by the chat bubble grid
+/// (`message_row::album`) and the send-media preview grid.
+pub(crate) const ALBUM_CELL_SIZE: i32 = 140;
+/// Gap between album cells; mirrors the grid spacing in both templates.
+pub(crate) const ALBUM_CELL_SPACING: i32 = 2;
+
+/// Grid placements `(col, row, width, height)` for an album of `n` members,
+/// in member order. Even counts fill a plain two-column grid; odd counts give
+/// the first member a tall cell spanning the top two rows (the layout
+/// Telegram apps use).
+pub(crate) fn album_placements(n: usize) -> Vec<(i32, i32, i32, i32)> {
+    let mut cells = Vec::new();
+    if n == 0 {
+        return cells;
+    }
+    if n % 2 == 1 {
+        cells.push((0, 0, 1, 2));
+    }
+    let mut placed = cells.len();
+    let mut row = 0;
+    while placed < n {
+        for col in 0..2 {
+            // The tall first cell owns column 0 of the top two rows.
+            if n % 2 == 1 && col == 0 && row < 2 {
+                continue;
+            }
+            cells.push((col, row, 1, 1));
+            placed += 1;
+            if placed == n {
+                break;
+            }
+        }
+        row += 1;
+    }
+    cells
+}
+
+/// TDLib groups at most ten messages into one album.
+pub(crate) const ALBUM_MAX_MEMBERS: usize = 10;
+
 mod imp {
     use super::*;
 

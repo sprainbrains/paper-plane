@@ -10,47 +10,13 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
+use super::super::ALBUM_CELL_SIZE;
+use super::super::ALBUM_CELL_SPACING;
+use super::super::album_placements;
 use super::base::MessageHandler;
 use crate::model;
 use crate::ui;
 use crate::utils;
-
-/// Edge of one album cell in logical pixels; the grid is always two columns
-/// of squares, so the bubble keeps a stable, compact width.
-const CELL_SIZE: i32 = 140;
-/// Gap between cells; mirrors the grid spacing in the template.
-const CELL_SPACING: i32 = 2;
-
-/// Grid placements `(col, row, width, height)` for an album of `n` members,
-/// in member order. Even counts fill a plain two-column grid; odd counts give
-/// the first member a tall cell spanning the top two rows (the layout
-/// Telegram apps use).
-fn album_placements(n: usize) -> Vec<(i32, i32, i32, i32)> {
-    let mut cells = Vec::new();
-    if n == 0 {
-        return cells;
-    }
-    if n % 2 == 1 {
-        cells.push((0, 0, 1, 2));
-    }
-    let mut placed = cells.len();
-    let mut row = 0;
-    while placed < n {
-        for col in 0..2 {
-            // The tall first cell owns column 0 of the top two rows.
-            if n % 2 == 1 && col == 0 && row < 2 {
-                continue;
-            }
-            cells.push((col, row, 1, 1));
-            placed += 1;
-            if placed == n {
-                break;
-            }
-        }
-        row += 1;
-    }
-    cells
-}
 
 /// The photo file best matching a `target_px` square cell: the smallest
 /// available size that still covers it, falling back to the largest one.
@@ -270,14 +236,14 @@ impl MessageAlbum {
         let scale = self.scale_factor().max(1);
         for (member, (col, row, w, h)) in members.iter().zip(placements) {
             let width = if w == 2 {
-                CELL_SIZE * 2 + CELL_SPACING
+                ALBUM_CELL_SIZE * 2 + ALBUM_CELL_SPACING
             } else {
-                CELL_SIZE
+                ALBUM_CELL_SIZE
             };
             let height = if h == 2 {
-                CELL_SIZE * 2 + CELL_SPACING
+                ALBUM_CELL_SIZE * 2 + ALBUM_CELL_SPACING
             } else {
-                CELL_SIZE
+                ALBUM_CELL_SIZE
             };
             let target_px = width * scale;
             let cell = self.build_cell(member, width, height, target_px);

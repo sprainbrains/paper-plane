@@ -235,6 +235,23 @@ impl Application {
         self.add_auto_action("auto-mention-select", None, |app, _| {
             app.auto_mention_select();
         });
+        self.add_auto_action("auto-close-send-window", None, |app, _| {
+            app.auto_close_send_window();
+        });
+        self.add_auto_action(
+            "auto-type-caption",
+            Some(glib::VariantTy::STRING),
+            |app, p| {
+                let Some(text) = p.and_then(glib::Variant::get::<String>) else {
+                    log::warn!("auto-type-caption: missing or invalid parameters");
+                    return;
+                };
+                app.auto_type_caption(text);
+            },
+        );
+        self.add_auto_action("auto-send-open-window", None, |app, _| {
+            app.auto_send_open_window();
+        });
         self.add_auto_action(
             "auto-media-window",
             Some(glib::VariantTy::new("(xas)").unwrap()),
@@ -551,6 +568,43 @@ impl Application {
         };
         let chat = session.chat(chat_id);
         ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0).present();
+    }
+
+    /// Types text into the open send-media window's caption entry, so the
+    /// mention popup behaviour there can be exercised headlessly.
+    fn auto_type_caption(&self, text: String) {
+        let found = gtk::Window::list_toplevels()
+            .into_iter()
+            .find_map(|w| w.downcast::<ui::SendMediaWindow>().ok());
+        match found {
+            Some(w) => w.focus_caption_and_type(&text),
+            None => log::warn!("auto-type-caption: no send window open"),
+        }
+    }
+
+    /// Closes an open send-media window, mirroring the title-bar X button.
+    fn auto_close_send_window(&self) {
+        let found = gtk::Window::list_toplevels()
+            .into_iter()
+            .find_map(|w| w.downcast::<ui::SendMediaWindow>().ok());
+        match found {
+            Some(w) => w.close(),
+            None => log::warn!("auto-close-send-window: no send window open"),
+        }
+    }
+
+    /// Presses Send on the open send-media window, mirroring the button.
+    fn auto_send_open_window(&self) {
+        let found = gtk::Window::list_toplevels()
+            .into_iter()
+            .find_map(|w| w.downcast::<ui::SendMediaWindow>().ok());
+        match found {
+            Some(w) => {
+                w.activate_action("send-media-window.send-message", None)
+                    .unwrap();
+            }
+            None => log::warn!("auto-send-open-window: no send window open"),
+        }
     }
 
     /// Deletes one message through TDLib, driving the same

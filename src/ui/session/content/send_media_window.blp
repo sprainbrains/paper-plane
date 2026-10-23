@@ -19,10 +19,25 @@ template $PaplSendMediaWindow : Adw.Window {
       HeaderBar {}
 
       Overlay {
-        // The first plain child is the overlay's main child (the picture);
-        // only `[overlay]`-marked children become layers. Without this the
-        // window sized itself to nothing and showed no preview.
-        Picture picture {}
+        // Single file: one big preview. Several files: the same album grid
+        // the chat bubble uses, so the dialog previews what will be sent.
+        Box {
+          orientation: vertical;
+          vexpand: true;
+
+          Picture picture {
+            vexpand: true;
+            visible: false;
+          }
+
+          Grid preview_grid {
+            halign: center;
+            valign: center;
+            row-spacing: 2;
+            column-spacing: 2;
+            visible: false;
+          }
+        }
 
         [overlay]
         Label file_count_label {

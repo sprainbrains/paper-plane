@@ -224,7 +224,13 @@ mod imp {
             self.text_view.add_controller(key_events);
 
             let popup = ui::MentionPopup::new();
-            popup.set_parent(&*self.text_view);
+            // Parent to the overlay, not the text view: GtkTextView tracks its
+            // own child list, and a foreign widget (the popover) parented
+            // directly to it sends GTK into a warning/resize loop when the
+            // view is destroyed with the popup open (e.g. a closed send-media
+            // window). The overlay hosts children properly, and the popup
+            // still positions above the whole entry.
+            popup.set_parent(&*self.overlay);
             popup.set_position(gtk::PositionType::Top);
             popup.connect_candidate_activated(clone!(
                 #[weak]
