@@ -19,9 +19,12 @@ template $PaplSendMediaWindow : Adw.Window {
       HeaderBar {}
 
       Overlay {
+        // The first plain child is the overlay's main child (the picture);
+        // only `[overlay]`-marked children become layers. Without this the
+        // window sized itself to nothing and showed no preview.
         Picture picture {}
 
-        // Shown when several files were picked and will go out as one album.
+        [overlay]
         Label file_count_label {
           visible: false;
           halign: end;

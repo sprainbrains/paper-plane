@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 20:09+0300\n"
+"POT-Creation-Date: 2026-10-23 20:51+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -1822,15 +1822,15 @@ msgstr "Выберите чат, чтобы начать обмен сообще
 msgid "Send Image"
 msgstr "Отправить изображение"
 
-#: src/ui/session/content/send_media_window.blp:44
+#: src/ui/session/content/send_media_window.blp:47
 msgid "Caption"
 msgstr "Подпись"
 
-#: src/ui/session/content/send_media_window.blp:51
+#: src/ui/session/content/send_media_window.blp:54
 msgid "Send"
 msgstr "Отправить"
 
-#: src/ui/session/content/send_media_window.blp:63
+#: src/ui/session/content/send_media_window.blp:66
 msgid "Send as _File"
 msgstr "Отправить как _файл"
 

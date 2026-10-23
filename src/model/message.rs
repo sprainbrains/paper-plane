@@ -125,10 +125,15 @@ impl Message {
             // TODO: `can_be_edited`/`can_be_deleted_only_for_self`/
             // `can_be_deleted_for_all_users` were removed from `message` in newer
             // TDLib; they now come from `getMessageProperties`. Until that async
-            // lookup is wired up, approximate from `is_outgoing`.
+            // lookup is wired up, approximate from `is_outgoing` — except that a
+            // chat with oneself has no "everyone", so revoke-delete never applies
+            // to Saved Messages.
             .property("can-be-edited", td_message.is_outgoing)
             .property("can-be-deleted-only-for-self", true)
-            .property("can-be-deleted-for-all-users", td_message.is_outgoing)
+            .property(
+                "can-be-deleted-for-all-users",
+                td_message.is_outgoing && !chat.is_own_chat(),
+            )
             .property(
                 "sending-state",
                 td_message
@@ -187,8 +192,9 @@ impl Message {
             imp.can_be_deleted_only_for_self.set(true);
             self.notify_can_be_deleted_only_for_self();
         }
-        if self.can_be_deleted_for_all_users() != td_message.is_outgoing {
-            imp.can_be_deleted_for_all_users.set(td_message.is_outgoing);
+        let can_revoke = td_message.is_outgoing && !self.chat_().is_own_chat();
+        if self.can_be_deleted_for_all_users() != can_revoke {
+            imp.can_be_deleted_for_all_users.set(can_revoke);
             self.notify_can_be_deleted_for_all_users();
         }
 

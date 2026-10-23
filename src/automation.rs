@@ -235,6 +235,18 @@ impl Application {
         self.add_auto_action("auto-mention-select", None, |app, _| {
             app.auto_mention_select();
         });
+        self.add_auto_action(
+            "auto-media-window",
+            Some(glib::VariantTy::new("(xas)").unwrap()),
+            |app, p| {
+                let Some((chat_id, paths)) = p.and_then(glib::Variant::get::<(i64, Vec<String>)>)
+                else {
+                    log::warn!("auto-media-window: missing or invalid parameters");
+                    return;
+                };
+                app.auto_media_window(chat_id, paths);
+            },
+        );
         self.add_auto_action("auto-composer-send", None, |app, _| {
             app.auto_composer_send();
         });
@@ -525,6 +537,20 @@ impl Application {
             return;
         };
         self.main_window().select_chat(client_id, chat_id);
+    }
+
+    /// Opens the send-media window with the given files but does not send, so
+    /// the preview and window state can be screenshotted.
+    fn auto_media_window(&self, chat_id: ChatId, paths: Vec<String>) {
+        let window = self.main_window();
+        let Some(session) =
+            utils::descendant::<_, ui::Session>(&window).and_then(|session| session.model())
+        else {
+            log::warn!("auto-media-window: no active session");
+            return;
+        };
+        let chat = session.chat(chat_id);
+        ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0).present();
     }
 
     /// Deletes one message through TDLib, driving the same
