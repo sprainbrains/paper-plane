@@ -27,6 +27,7 @@ pub(crate) use self::content::ChatHistoryRow;
 pub(crate) use self::content::ChatInfoWindow;
 pub(crate) use self::content::Content;
 pub(crate) use self::content::ContentPicker;
+pub(crate) use self::content::DocumentRow;
 pub(crate) use self::content::EventRow;
 pub(crate) use self::content::ForwardWindow;
 pub(crate) use self::content::MediaPicture;

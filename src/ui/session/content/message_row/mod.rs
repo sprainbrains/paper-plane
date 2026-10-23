@@ -38,6 +38,7 @@ pub(crate) use self::base::MessageBase;
 pub(crate) use self::base::MessageBaseExt;
 pub(crate) use self::base::MessageBaseImpl;
 pub(crate) use self::bubble::MessageBubble;
+pub(crate) use self::document::DocumentRow;
 pub(crate) use self::document::MessageDocument;
 pub(crate) use self::document::StatusIndicator as MessageDocumentStatusIndicator;
 pub(crate) use self::indicators::MessageIndicators;

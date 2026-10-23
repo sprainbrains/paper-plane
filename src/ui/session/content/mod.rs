@@ -32,6 +32,7 @@ pub(crate) use self::forward_window::ForwardWindow;
 pub(crate) use self::media_viewer::MediaViewer;
 pub(crate) use self::message_menu::MessageMenu;
 pub(crate) use self::message_menu_reactions::MessageMenuReactions;
+pub(crate) use self::message_row::DocumentRow;
 pub(crate) use self::message_row::MediaPicture;
 pub(crate) use self::message_row::MessageAlbum;
 pub(crate) use self::message_row::MessageAudio;

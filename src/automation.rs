@@ -288,7 +288,19 @@ impl Application {
                     log::warn!("auto-send-album: missing or invalid parameters");
                     return;
                 };
-                app.auto_send_album(chat_id, paths);
+                app.auto_send_album(chat_id, paths, false);
+            },
+        );
+        self.add_auto_action(
+            "auto-send-album-as-file",
+            Some(glib::VariantTy::new("(xas)").unwrap()),
+            |app, p| {
+                let Some((chat_id, paths)) = p.and_then(glib::Variant::get::<(i64, Vec<String>)>)
+                else {
+                    log::warn!("auto-send-album-as-file: missing or invalid parameters");
+                    return;
+                };
+                app.auto_send_album(chat_id, paths, true);
             },
         );
         self.add_auto_action("auto-about", None, |app, _| {
@@ -624,9 +636,10 @@ impl Application {
         });
     }
 
-    /// Opens the send-media window with the given files and presses Send, so
-    /// the multi-file album path (picker -> sendMessageAlbum) runs headlessly.
-    fn auto_send_album(&self, chat_id: ChatId, paths: Vec<String>) {
+    /// Opens the send-media window with the given files and presses Send (or
+    /// Send-as-file), so the multi-file album path (picker -> sendMessageAlbum)
+    /// runs headlessly.
+    fn auto_send_album(&self, chat_id: ChatId, paths: Vec<String>, as_file: bool) {
         let window = self.main_window();
         let Some(session) = utils::descendant::<_, ui::Session>(&window) else {
             log::warn!("auto-send-album: no active session view");
@@ -643,9 +656,12 @@ impl Application {
         let chat = model.chat(chat_id);
         let send_window =
             ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0);
-        send_window
-            .activate_action("send-media-window.send-message", None)
-            .unwrap();
+        let action = if as_file {
+            "send-media-window.send-as-file"
+        } else {
+            "send-media-window.send-message"
+        };
+        send_window.activate_action(action, None).unwrap();
     }
 
     /// Mirrors re-activating the already-open chat in the sidebar: drops the

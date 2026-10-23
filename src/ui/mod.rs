@@ -52,6 +52,7 @@ pub(crate) use self::session::ContactRow;
 pub(crate) use self::session::ContactsWindow;
 pub(crate) use self::session::Content;
 pub(crate) use self::session::ContentPicker;
+pub(crate) use self::session::DocumentRow;
 pub(crate) use self::session::EventRow;
 pub(crate) use self::session::ForwardWindow;
 pub(crate) use self::session::MediaPicture;
@@ -135,6 +136,7 @@ pub(crate) fn init() {
     MapWindow::static_type();
     MediaPicture::static_type();
     MediaViewer::static_type();
+    DocumentRow::static_type();
     MessageAlbum::static_type();
     MessageBase::static_type();
     MessageBubble::static_type();
