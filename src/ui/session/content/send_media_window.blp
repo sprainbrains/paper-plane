@@ -18,7 +18,20 @@ template $PaplSendMediaWindow : Adw.Window {
       [top]
       HeaderBar {}
 
-      Picture picture {}
+      Overlay {
+        Picture picture {}
+
+        // Shown when several files were picked and will go out as one album.
+        Label file_count_label {
+          visible: false;
+          halign: end;
+          valign: start;
+          margin-top: 12;
+          margin-end: 12;
+
+          styles ["media-count-badge"]
+        }
+      }
 
       [bottom]
       Adw.Clamp {

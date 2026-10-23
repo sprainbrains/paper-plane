@@ -238,6 +238,18 @@ impl Application {
         self.add_auto_action("auto-composer-send", None, |app, _| {
             app.auto_composer_send();
         });
+        self.add_auto_action(
+            "auto-send-album",
+            Some(glib::VariantTy::new("(xas)").unwrap()),
+            |app, p| {
+                let Some((chat_id, paths)) = p.and_then(glib::Variant::get::<(i64, Vec<String>)>)
+                else {
+                    log::warn!("auto-send-album: missing or invalid parameters");
+                    return;
+                };
+                app.auto_send_album(chat_id, paths);
+            },
+        );
         self.add_auto_action("auto-about", None, |app, _| {
             app.activate_action("about", None);
         });
@@ -501,6 +513,30 @@ impl Application {
             return;
         };
         self.main_window().select_chat(client_id, chat_id);
+    }
+
+    /// Opens the send-media window with the given files and presses Send, so
+    /// the multi-file album path (picker -> sendMessageAlbum) runs headlessly.
+    fn auto_send_album(&self, chat_id: ChatId, paths: Vec<String>) {
+        let window = self.main_window();
+        let Some(session) = utils::descendant::<_, ui::Session>(&window) else {
+            log::warn!("auto-send-album: no active session view");
+            return;
+        };
+        if paths.is_empty() {
+            log::warn!("auto-send-album: no files given");
+            return;
+        }
+        let Some(model) = session.model() else {
+            log::warn!("auto-send-album: session has no model yet");
+            return;
+        };
+        let chat = model.chat(chat_id);
+        let send_window =
+            ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0);
+        send_window
+            .activate_action("send-media-window.send-message", None)
+            .unwrap();
     }
 
     /// Mirrors re-activating the already-open chat in the sidebar: drops the

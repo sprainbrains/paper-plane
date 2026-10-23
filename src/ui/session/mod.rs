@@ -31,6 +31,7 @@ pub(crate) use self::content::EventRow;
 pub(crate) use self::content::ForwardWindow;
 pub(crate) use self::content::MediaPicture;
 pub(crate) use self::content::MediaViewer;
+pub(crate) use self::content::MessageAlbum;
 pub(crate) use self::content::MessageAudio;
 pub(crate) use self::content::MessageBase;
 pub(crate) use self::content::MessageBaseExt;

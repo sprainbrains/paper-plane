@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 18:43+0300\n"
+"POT-Creation-Date: 2026-10-23 19:48+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -1156,7 +1156,7 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1803 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1783 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr "_Отменить"
 
@@ -1335,13 +1335,13 @@ msgstr "Не удалось зарегистрировать учетную за
 msgid "Do you accept the Terms of Service?"
 msgstr "Принимаете ли вы условия предоставления услуг?"
 
-#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:668
-#: src/ui/session/content/message_row/mod.rs:427
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:634
+#: src/ui/session/content/message_row/mod.rs:422
 msgid "_No"
 msgstr "_Нет"
 
-#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:669
-#: src/ui/session/content/message_row/mod.rs:428
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:635
+#: src/ui/session/content/message_row/mod.rs:423
 msgid "_Yes"
 msgstr "_Да"
 
@@ -1515,7 +1515,7 @@ msgid "This will permanently delete the chat for you."
 msgstr "Это безвозвратно удалит чат для вас."
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1804
+#: src/ui/session/content/chat_history.rs:1784
 msgid "_Delete"
 msgstr "_Удалить"
 
@@ -1523,63 +1523,63 @@ msgstr "_Удалить"
 msgid "Images"
 msgstr "Изображения"
 
-#: src/ui/session/content/chat_action_bar/mod.rs:431
+#: src/ui/session/content/chat_action_bar/mod.rs:438
 msgid "Could not open the selected file"
 msgstr "Не удалось открыть выбранный файл"
 
 #. Telegram rejects empty edits; keep the edit state so the user can
 #. fix it, and tell them why nothing happened.
-#: src/ui/session/content/chat_action_bar/mod.rs:465
+#: src/ui/session/content/chat_action_bar/mod.rs:472
 msgid "A message can't be empty"
 msgstr "Сообщение не может быть пустым"
 
-#: src/ui/session/content/chat_action_bar/mod.rs:675
+#: src/ui/session/content/chat_action_bar/mod.rs:682
 msgid "Unmute"
 msgstr "Вкл. звук"
 
-#: src/ui/session/content/chat_action_bar/mod.rs:677
+#: src/ui/session/content/chat_action_bar/mod.rs:684
 msgid "Mute"
 msgstr "Убрать звук"
 
-#: src/ui/session/content/chat_history.rs:666
+#: src/ui/session/content/chat_history.rs:632
 msgid "Leave chat?"
 msgstr "Покинуть чат?"
 
-#: src/ui/session/content/chat_history.rs:667
+#: src/ui/session/content/chat_history.rs:633
 msgid "Do you want to leave this chat?"
 msgstr "Вы точно хотите покинуть этот чат?"
 
-#: src/ui/session/content/chat_history.rs:1682
+#: src/ui/session/content/chat_history.rs:1662
 msgid "{n} selected"
 msgstr "Выбрано: {n}"
 
-#: src/ui/session/content/chat_history.rs:1801
+#: src/ui/session/content/chat_history.rs:1781
 msgid "Delete Messages"
 msgstr "Удалить сообщения"
 
-#: src/ui/session/content/chat_history.rs:1802
+#: src/ui/session/content/chat_history.rs:1782
 msgid "Delete the selected messages?"
 msgstr "Удалить выбранные сообщения?"
 
-#: src/ui/session/content/chat_history.rs:2429
+#: src/ui/session/content/chat_history.rs:2414
 msgid "Pinned panel was hidden"
 msgstr "Панель закреплённых сообщений скрыта"
 
-#: src/ui/session/content/chat_history.rs:2430
+#: src/ui/session/content/chat_history.rs:2415
 msgid "Show"
 msgstr "Показать"
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2555
+#: src/ui/session/content/chat_history.rs:2540
 msgid "Pinned Message #{n}"
 msgstr "Закреплённое сообщение №{n}"
 
-#: src/ui/session/content/chat_history.rs:2557
+#: src/ui/session/content/chat_history.rs:2542
 #: src/ui/session/content/chat_history.ui:142
 msgid "Pinned Message"
 msgstr "Закреплённое сообщение"
 
-#: src/ui/session/content/chat_history.rs:2615
+#: src/ui/session/content/chat_history.rs:2600
 msgid "{n} Pinned Messages"
 msgstr "Закреплённых сообщений: {n}"
 
@@ -1603,25 +1603,25 @@ msgstr "Скрыть панель закреплённых"
 #: src/ui/session/content/chat_history.ui:213
 #: src/ui/session/content/chat_history.ui:217
 #: src/ui/session/content/message_menu.rs:33
-#: src/ui/session/content/message_row/mod.rs:612
+#: src/ui/session/content/message_row/mod.rs:629
 msgid "Forward"
 msgstr "Переслать"
 
 #: src/ui/session/content/chat_history.ui:230
 #: src/ui/session/content/chat_history.ui:234
 #: src/ui/session/content/message_menu.rs:45
-#: src/ui/session/content/message_row/mod.rs:616
+#: src/ui/session/content/message_row/mod.rs:633
 msgid "Copy Text"
 msgstr "Скопировать текст"
 
 #: src/ui/session/content/chat_history.ui:247
 #: src/ui/session/content/chat_history.ui:251
-#: src/ui/session/content/message_row/mod.rs:620
+#: src/ui/session/content/message_row/mod.rs:637
 msgid "Delete"
 msgstr "Удалить"
 
 #: src/ui/session/content/chat_history.ui:276
-#: src/ui/session/content/message_row/mod.rs:624
+#: src/ui/session/content/message_row/mod.rs:641
 msgid "Clear Selection"
 msgstr "Снять выделение"
 
@@ -1642,16 +1642,16 @@ msgid "Leave Chat"
 msgstr "Покинуть чат"
 
 #. Translators: This is a date format in the day divider without the year
-#: src/ui/session/content/chat_history_row.rs:157
+#: src/ui/session/content/chat_history_row.rs:171
 msgid "%B %e"
 msgstr "%e %B"
 
 #. Translators: This is a date format in the day divider with the year
-#: src/ui/session/content/chat_history_row.rs:160
+#: src/ui/session/content/chat_history_row.rs:174
 msgid "%B %e, %Y"
 msgstr "%e %B, %Y"
 
-#: src/ui/session/content/chat_history_row.rs:169
+#: src/ui/session/content/chat_history_row.rs:183
 msgid "Unread messages"
 msgstr "Непрочитанные сообщения"
 
@@ -1775,19 +1775,19 @@ msgstr "обновлено час назад"
 msgid "updated {hours} hours and {minutes} minutes ago"
 msgstr "обновлено {hours} часа(-ов) и {minutes} минут(ы) назад"
 
-#: src/ui/session/content/message_row/mod.rs:419
+#: src/ui/session/content/message_row/mod.rs:414
 msgid "Do you want to delete this message for <b>everyone</b>?"
 msgstr "Вы хотите удалить это сообщение для <b>всех</b>?"
 
-#: src/ui/session/content/message_row/mod.rs:421
+#: src/ui/session/content/message_row/mod.rs:416
 msgid "Do you want to delete this message?"
 msgstr "Вы хотите удалить это сообщение?"
 
-#: src/ui/session/content/message_row/mod.rs:425
+#: src/ui/session/content/message_row/mod.rs:420
 msgid "Confirm Message Deletion"
 msgstr "Подтвердить удаление сообщения"
 
-#: src/ui/session/content/message_row/mod.rs:1049
+#: src/ui/session/content/message_row/mod.rs:1076
 msgid "Send Message"
 msgstr "Отправить сообщение"
 
@@ -1822,15 +1822,15 @@ msgstr "Выберите чат, чтобы начать обмен сообще
 msgid "Send Image"
 msgstr "Отправить изображение"
 
-#: src/ui/session/content/send_media_window.blp:31
+#: src/ui/session/content/send_media_window.blp:44
 msgid "Caption"
 msgstr "Подпись"
 
-#: src/ui/session/content/send_media_window.blp:38
+#: src/ui/session/content/send_media_window.blp:51
 msgid "Send"
 msgstr "Отправить"
 
-#: src/ui/session/content/send_media_window.blp:50
+#: src/ui/session/content/send_media_window.blp:63
 msgid "Send as _File"
 msgstr "Отправить как _файл"
 

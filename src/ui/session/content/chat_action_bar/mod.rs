@@ -422,20 +422,27 @@ impl ChatActionBar {
         filters.append(&filter);
         dialog.set_filters(Some(&filters));
 
-        if let Ok(file) = dialog.open_future(Some(&parent)).await {
+        if let Ok(files) = dialog.open_multiple_future(Some(&parent)).await {
             // Portal/non-local files have no path, and paths need not be UTF-8.
-            let Some(path) = file
-                .path()
-                .and_then(|path| path.to_str().map(str::to_owned))
-            else {
+            let mut paths: Vec<String> = Vec::new();
+            for index in 0..files.n_items() {
+                if let Some(file) = files.item(index).and_downcast::<gio::File>()
+                    && let Some(path) = file
+                        .path()
+                        .and_then(|path| path.to_str().map(str::to_owned))
+                {
+                    paths.push(path);
+                }
+            }
+            if paths.is_empty() {
                 utils::show_toast(self, gettext("Could not open the selected file"));
                 return;
-            };
+            }
             let Some(chat) = self.chat() else {
                 return;
             };
 
-            ui::SendMediaWindow::new(&parent, &chat, path, self.imp().state.get().replying())
+            ui::SendMediaWindow::new(&parent, &chat, paths, self.imp().state.get().replying())
                 .present();
         }
     }

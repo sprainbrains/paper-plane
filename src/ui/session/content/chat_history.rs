@@ -22,40 +22,6 @@ use crate::strings;
 use crate::ui;
 use crate::utils;
 
-/// Cover-crops `texture` into a `size`×`size` paintable (centred, aspect-filling),
-/// so a fixed-size preview can't inherit the texture's natural dimensions.
-fn cover_paintable(texture: &gdk::Texture, size: f32) -> Option<gdk::Paintable> {
-    let (tw, th) = (texture.width() as f32, texture.height() as f32);
-    if tw <= 0.0 || th <= 0.0 {
-        return None;
-    }
-    let snapshot = gtk::Snapshot::new();
-    let scale = (size / tw).max(size / th);
-    let (w, h) = (tw * scale, th * scale);
-    snapshot.push_clip(&graphene::Rect::new(0.0, 0.0, size, size));
-    snapshot.translate(&graphene::Point::new((size - w) / 2.0, (size - h) / 2.0));
-    texture
-        .upcast_ref::<gdk::Paintable>()
-        .snapshot(&snapshot, w as f64, h as f64);
-    snapshot.pop();
-    snapshot.to_paintable(Some(&graphene::Size::new(size, size)))
-}
-
-/// The inline mini preview of a message's media, when its content carries one.
-fn content_minithumbnail(
-    content: &tdlib::enums::MessageContent,
-) -> Option<&tdlib::types::Minithumbnail> {
-    use tdlib::enums::MessageContent::*;
-    match content {
-        MessagePhoto(data) => data.photo.minithumbnail.as_ref(),
-        MessageVideo(data) => data.video.minithumbnail.as_ref(),
-        MessageAnimation(data) => data.animation.minithumbnail.as_ref(),
-        MessageDocument(data) => data.document.minithumbnail.as_ref(),
-        MessageVideoNote(data) => data.video_note.minithumbnail.as_ref(),
-        _ => None,
-    }
-}
-
 /// Whether the gesture's current event came from a touchscreen. Selection dragging is
 /// mouse-only so touch input keeps kinetic-scrolling the list.
 fn is_touch(gesture: &gtk::GestureDrag) -> bool {
@@ -1663,13 +1629,27 @@ impl ChatHistory {
     }
 
     fn selected_ids(&self) -> Vec<i64> {
-        let mut ids: Vec<i64> = self
-            .imp()
-            .selected_message_ids
-            .borrow()
+        let selected = self.imp().selected_message_ids.borrow().clone();
+        let mut ids: Vec<i64> = Vec::new();
+        // Selecting an album selects all its members; walk the model once to
+        // expand primaries into full id sets.
+        if let Some(model) = self.history_model() {
+            for index in 0..model.n_items() {
+                if let Some(item) = model.item(index).and_downcast::<model::ChatHistoryItem>()
+                    && let Some(primary) = item.message()
+                    && selected.contains(&primary.id())
+                {
+                    ids.extend(item.messages().iter().map(|message| message.id()));
+                }
+            }
+        }
+        // Selections outside the loaded window (e.g. after a jump) still count.
+        let extras: Vec<i64> = selected
             .iter()
             .copied()
+            .filter(|id| !ids.contains(id))
             .collect();
+        ids.extend(extras);
         // TDLib's forward_messages/delete_messages require strictly increasing ids.
         ids.sort_unstable();
         ids
@@ -1841,8 +1821,13 @@ impl ChatHistory {
             model
                 .item(*pos)
                 .and_downcast::<model::ChatHistoryItem>()
-                .and_then(|item| item.message().map(|message| message.id()))
-                == Some(message_id)
+                // Any album member anchors the item: a reply to one photo of
+                // an album must scroll the whole album into view.
+                .is_some_and(|item| {
+                    item.messages()
+                        .iter()
+                        .any(|message| message.id() == message_id)
+                })
         })
     }
 
@@ -2560,14 +2545,14 @@ impl ChatHistory {
         // Cover-crop the minithumbnail into a fixed square paintable: a raw texture in
         // the GtkPicture would report its own (possibly tall) natural size and grow the
         // whole bar.
-        let paintable = content_minithumbnail(&message.content().0)
+        let paintable = utils::content_minithumbnail(&message.content().0)
             .and_then(|minithumbnail| {
                 gdk::Texture::from_bytes(&glib::Bytes::from_owned(glib::base64_decode(
                     &minithumbnail.data,
                 )))
                 .ok()
             })
-            .and_then(|texture| cover_paintable(&texture, 34.0));
+            .and_then(|texture| utils::cover_paintable(&texture, 34.0));
         imp.pinned_thumbnail.set_paintable(paintable.as_ref());
         imp.pinned_thumbnail.set_visible(paintable.is_some());
 

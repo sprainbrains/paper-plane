@@ -56,6 +56,7 @@ pub(crate) use self::session::EventRow;
 pub(crate) use self::session::ForwardWindow;
 pub(crate) use self::session::MediaPicture;
 pub(crate) use self::session::MediaViewer;
+pub(crate) use self::session::MessageAlbum;
 pub(crate) use self::session::MessageAudio;
 pub(crate) use self::session::MessageBase;
 pub(crate) use self::session::MessageBaseExt;
@@ -134,6 +135,7 @@ pub(crate) fn init() {
     MapWindow::static_type();
     MediaPicture::static_type();
     MediaViewer::static_type();
+    MessageAlbum::static_type();
     MessageBase::static_type();
     MessageBubble::static_type();
     MessageDocument::static_type();

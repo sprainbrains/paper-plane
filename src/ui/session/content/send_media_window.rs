@@ -10,6 +10,7 @@ use gtk::prelude::*;
 
 use crate::model;
 use crate::ui;
+use crate::utils;
 
 mod imp {
     use super::*;
@@ -18,13 +19,15 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/session/content/send_media_window.ui")]
     pub(crate) struct SendMediaWindow {
         pub(super) chat: glib::WeakRef<model::Chat>,
-        pub(super) path: OnceCell<String>,
+        pub(super) paths: RefCell<Vec<String>>,
         pub(super) reply_to: OnceCell<i64>,
         pub(super) emoji_chooser: RefCell<Option<gtk::EmojiChooser>>,
         #[template_child]
         pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
         #[template_child]
         pub(super) picture: TemplateChild<gtk::Picture>,
+        #[template_child]
+        pub(super) file_count_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) caption_entry: TemplateChild<ui::MessageEntry>,
     }
@@ -126,7 +129,7 @@ impl SendMediaWindow {
     pub(crate) fn new(
         parent: &gtk::Window,
         chat: &model::Chat,
-        path: String,
+        paths: Vec<String>,
         reply_to: i64,
     ) -> Self {
         let obj: Self = glib::Object::builder()
@@ -134,11 +137,19 @@ impl SendMediaWindow {
             .build();
         let imp = obj.imp();
 
-        imp.picture.set_filename(Some(&path));
+        // The first image previews the pick; the badge tells the rest will
+        // travel with it as one album.
+        if let Some(path) = paths.first() {
+            imp.picture.set_filename(Some(path));
+        }
+        if paths.len() > 1 {
+            imp.file_count_label.set_label(&paths.len().to_string());
+            imp.file_count_label.set_visible(true);
+        }
         imp.caption_entry.set_chat(Some(chat.clone()));
 
         imp.chat.set(Some(chat));
-        imp.path.set(path).unwrap();
+        imp.paths.replace(paths);
         imp.reply_to.set(reply_to).unwrap();
 
         obj
@@ -179,38 +190,48 @@ impl SendMediaWindow {
             return;
         };
 
-        let path = imp.path.get().unwrap().clone();
+        let paths = imp.paths.borrow().clone();
         let caption = imp.caption_entry.as_markdown().await;
-        let file = InputFile::Local(InputFileLocal { path });
 
-        // Fall back to sending as a document when the file couldn't be decoded as an
-        // image (`paintable()` is `None`), even if the user chose "send as photo".
-        let paintable = (!send_as_file).then(|| imp.picture.paintable()).flatten();
+        let mut contents: Vec<InputMessageContent> = Vec::with_capacity(paths.len());
+        for (index, path) in paths.iter().enumerate() {
+            let file = InputFile::Local(InputFileLocal { path: path.clone() });
+            // Fall back to sending as a document when the file couldn't be
+            // decoded as an image (`paintable()` is `None`), even if the user
+            // chose "send as photo".
+            let paintable = (!send_as_file)
+                .then(|| utils::decode_image_from_path(path).ok())
+                .flatten();
 
-        let content = match paintable {
-            Some(paintable) => InputMessageContent::InputMessagePhoto(InputMessagePhoto {
-                photo: tdlib::types::InputPhoto {
-                    photo: file,
-                    thumbnail: None,
-                    video: None,
-                    added_sticker_file_ids: vec![],
-                    width: paintable.intrinsic_width(),
-                    height: paintable.intrinsic_height(),
-                },
-                caption,
-                show_caption_above_media: false,
-                self_destruct_type: None,
-                has_spoiler: false,
-            }),
-            None => InputMessageContent::InputMessageDocument(InputMessageDocument {
-                document: tdlib::types::InputDocument {
-                    document: file,
-                    thumbnail: None,
-                    disable_content_type_detection: true,
-                },
-                caption,
-            }),
-        };
+            // The caption belongs to the album as a whole, so it rides on the
+            // first member only (the album's primary).
+            let caption = (index == 0).then(|| caption.clone()).flatten();
+
+            contents.push(match paintable {
+                Some(paintable) => InputMessageContent::InputMessagePhoto(InputMessagePhoto {
+                    photo: tdlib::types::InputPhoto {
+                        photo: file,
+                        thumbnail: None,
+                        video: None,
+                        added_sticker_file_ids: vec![],
+                        width: paintable.intrinsic_width(),
+                        height: paintable.intrinsic_height(),
+                    },
+                    caption,
+                    show_caption_above_media: false,
+                    self_destruct_type: None,
+                    has_spoiler: false,
+                }),
+                None => InputMessageContent::InputMessageDocument(InputMessageDocument {
+                    document: tdlib::types::InputDocument {
+                        document: file,
+                        thumbnail: None,
+                        disable_content_type_detection: true,
+                    },
+                    caption,
+                }),
+            });
+        }
 
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
@@ -225,10 +246,27 @@ impl SendMediaWindow {
             None
         };
 
-        match tdlib::functions::send_message(chat_id, None, reply_to, None, content, client_id)
+        // Several files go out as one album so every client groups them into a
+        // single bubble; a lone file keeps the plain send path.
+        let result = if contents.len() == 1 {
+            tdlib::functions::send_message(
+                chat_id,
+                None,
+                reply_to,
+                None,
+                contents.remove(0),
+                client_id,
+            )
             .await
-        {
-            Ok(_) => self.close(),
+            .map(|_| ())
+        } else {
+            tdlib::functions::send_message_album(chat_id, None, reply_to, None, contents, client_id)
+                .await
+                .map(|_| ())
+        };
+
+        match result {
+            Ok(()) => self.close(),
             Err(e) => imp.toast_overlay.add_toast(
                 adw::Toast::builder()
                     .title(e.message)

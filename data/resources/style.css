@@ -1127,3 +1127,12 @@ contentpicker.content-picker.reaction-mode separator {
 mediaviewer {
   background-color: rgba(0, 0, 0, 0.9);
 }
+
+/* Count badge on the send-media preview: how many files will travel in the album. */
+.media-count-badge {
+  border-radius: 9999px;
+  padding: 2px 10px;
+  background-color: alpha(black, 0.65);
+  color: white;
+  font-weight: bold;
+}
