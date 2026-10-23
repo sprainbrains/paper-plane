@@ -218,6 +218,26 @@ impl Application {
         self.add_auto_action("auto-proxy-check", None, |app, _| {
             app.auto_proxy_check();
         });
+        self.add_auto_action(
+            "auto-mention-type",
+            Some(glib::VariantTy::STRING),
+            |app, p| {
+                let Some(text) = p.and_then(glib::Variant::get::<String>) else {
+                    log::warn!("auto-mention-type: missing or invalid parameters");
+                    return;
+                };
+                app.auto_mention_type(text);
+            },
+        );
+        self.add_auto_action("auto-mention-inspect", None, |app, _| {
+            app.auto_mention_inspect();
+        });
+        self.add_auto_action("auto-mention-select", None, |app, _| {
+            app.auto_mention_select();
+        });
+        self.add_auto_action("auto-composer-send", None, |app, _| {
+            app.auto_composer_send();
+        });
         self.add_auto_action("auto-about", None, |app, _| {
             app.activate_action("about", None);
         });
@@ -265,11 +285,17 @@ impl Application {
             .into_iter()
             .find(|w| !w.is::<ui::Window>() && w.is_visible())
             .unwrap_or_else(|| self.main_window().upcast());
+        self.save_widget_png(widget.upcast_ref(), "screenshot.png");
+    }
 
+    /// Snapshots one widget through its own native's renderer and writes the
+    /// PNG to `<output_dir>/<file_name>`. Works for widgets on separate
+    /// surfaces (popovers), which the window snapshot cannot see.
+    fn save_widget_png(&self, widget: &gtk::Widget, file_name: &str) {
         let width = widget.width();
         let height = widget.height();
         if width <= 0 || height <= 0 {
-            log::warn!("auto-screenshot: window not realized yet ({width}x{height})");
+            log::warn!("auto-screenshot: widget not realized yet ({width}x{height})");
             return;
         }
 
@@ -278,7 +304,7 @@ impl Application {
             return;
         };
 
-        let paintable = gtk::WidgetPaintable::new(Some(&widget));
+        let paintable = gtk::WidgetPaintable::new(Some(widget));
         let snapshot = gtk::Snapshot::new();
         paintable.snapshot(&snapshot, width as f64, height as f64);
         let Some(node) = snapshot.to_node() else {
@@ -289,7 +315,7 @@ impl Application {
         let texture = renderer.render_texture(&node, None);
         let bytes = texture.save_to_png_bytes();
 
-        let path = output_dir().join("screenshot.png");
+        let path = output_dir().join(file_name);
         match std::fs::write(&path, bytes.as_ref()) {
             Ok(()) => log::info!("auto-screenshot: wrote {}", path.display()),
             Err(e) => log::warn!("auto-screenshot: failed to write {}: {e:?}", path.display()),
@@ -558,6 +584,67 @@ impl Application {
             Some(editor) => editor.check_connection(),
             None => log::warn!("auto-proxy-check: no proxy editor window"),
         }
+    }
+
+    /// The composer of the currently open chat, used by the mention actions.
+    fn message_entry(&self) -> Option<ui::MessageEntry> {
+        let window = self.main_window();
+        let entry = utils::descendant::<_, ui::MessageEntry>(&window);
+        if entry.is_none() {
+            log::warn!("mention actions: no message entry widget (no writable chat?)");
+        }
+        entry
+    }
+
+    /// Types `text` into the open chat's composer through the same buffer
+    /// path as the keyboard, so the mention popup triggers naturally.
+    fn auto_mention_type(&self, text: String) {
+        let Some(entry) = self.message_entry() else {
+            return;
+        };
+        entry.grab_focus();
+        entry.insert_at_cursor(&text);
+    }
+
+    /// Dumps the composer's mention state (popup, candidates, anchors,
+    /// entities) to `<output_dir>/mention.txt`, plus a PNG of the popup when
+    /// it is open (a popover lives on its own surface, invisible to the
+    /// window snapshot).
+    fn auto_mention_inspect(&self) {
+        let Some(entry) = self.message_entry() else {
+            return;
+        };
+        let path = output_dir().join("mention.txt");
+        if let Err(e) = std::fs::write(&path, entry.debug_mention_state()) {
+            log::warn!(
+                "auto-mention-inspect: failed to write {}: {e:?}",
+                path.display()
+            );
+        }
+        if let Some(popup) = entry.mention_popup().filter(|p| p.is_visible()) {
+            self.save_widget_png(popup.upcast_ref(), "mention_popup.png");
+        }
+    }
+
+    /// Picks the highlighted mention candidate, exactly as Enter in the popup
+    /// does.
+    fn auto_mention_select(&self) {
+        let Some(entry) = self.message_entry() else {
+            return;
+        };
+        entry.mention_activate_selected();
+    }
+
+    /// Presses the composer's send button (same action), so a message built
+    /// through the widget — mentions included — goes out over the real path.
+    fn auto_composer_send(&self) {
+        let window = self.main_window();
+        let Some(bar) = utils::descendant::<_, ui::ChatActionBar>(&window) else {
+            log::warn!("auto-composer-send: no chat action bar");
+            return;
+        };
+        bar.activate_action("chat-action-bar.send-message", None)
+            .unwrap();
     }
 
     fn auto_send_text(&self, chat_id: ChatId, text: String) {
