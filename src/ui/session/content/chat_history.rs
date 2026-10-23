@@ -1075,6 +1075,19 @@ impl ChatHistory {
             "list model n_items: {:?}",
             list_view.model().map(|m| m.n_items())
         );
+        if let Some(model) = self.history_model() {
+            let mut albums = 0;
+            for index in 0..model.n_items() {
+                if let Some(item) = model.item(index).and_downcast::<model::ChatHistoryItem>()
+                    && let Some(members) = item.album_members()
+                {
+                    albums += 1;
+                    let ids: Vec<i64> = members.iter().map(|m| m.id()).collect();
+                    let _ = writeln!(out, "album #{albums} at {index}: members {ids:?}");
+                }
+            }
+            let _ = writeln!(out, "albums: {albums}");
+        }
         if let Some(adj) = list_view.vadjustment() {
             let _ = writeln!(
                 out,
