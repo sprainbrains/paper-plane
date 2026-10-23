@@ -62,6 +62,15 @@ pub(crate) fn output_dir() -> std::path::PathBuf {
     dir
 }
 
+thread_local! {
+    /// The proxy editor last opened through `auto-proxy-editor`. An
+    /// `Adw.Dialog` is not a `Gtk::Window`, so it never appears in
+    /// `list_toplevels()`; the automation remembers it here to drive the
+    /// check button. Weak so a closed editor is not kept alive.
+    static LAST_PROXY_EDITOR: std::cell::RefCell<glib::WeakRef<ui::ProxyEditor>> =
+        std::cell::RefCell::new(glib::WeakRef::new());
+}
+
 impl Application {
     /// Registers the development-only automation actions. No-op on non-`Devel`
     /// builds.
@@ -203,6 +212,12 @@ impl Application {
             },
         );
         self.add_auto_action("auto-show-proxies", None, |app, _| app.auto_show_proxies());
+        self.add_auto_action("auto-proxy-editor", None, |app, _| {
+            app.auto_proxy_editor();
+        });
+        self.add_auto_action("auto-proxy-check", None, |app, _| {
+            app.auto_proxy_check();
+        });
         self.add_auto_action("auto-about", None, |app, _| {
             app.activate_action("about", None);
         });
@@ -515,6 +530,34 @@ impl Application {
             return;
         };
         ui::ProxyWindow::new(window.upcast_ref::<gtk::Window>(), &client);
+    }
+
+    /// Opens the proxy editor like the list's add/edit controls do (editing the
+    /// first proxy when one exists, else adding), so the check button can be
+    /// exercised headlessly. The editor is an `Adw.Dialog` (not a `Gtk::Window`),
+    /// so it is remembered here for `auto-proxy-check` to find.
+    fn auto_proxy_editor(&self) {
+        let window = self.main_window();
+        let Some(client) = window.client_manager_view().active_client() else {
+            log::warn!("auto-proxy-editor: no active client");
+            return;
+        };
+        let parent = window.upcast_ref::<gtk::Window>();
+        let editor = match client.proxies().item(0).and_downcast::<model::ProxyItem>() {
+            Some(item) => ui::ProxyEditor::for_edit(parent, &client, &item),
+            None => ui::ProxyEditor::for_add(parent, &client),
+        };
+        LAST_PROXY_EDITOR.with(|slot| slot.borrow_mut().set(Some(&editor)));
+    }
+
+    /// Presses the open proxy editor's "Check Connection" button (same
+    /// handler), so its result can be screenshotted.
+    fn auto_proxy_check(&self) {
+        let editor = LAST_PROXY_EDITOR.with(|slot| slot.borrow().upgrade());
+        match editor {
+            Some(editor) => editor.check_connection(),
+            None => log::warn!("auto-proxy-check: no proxy editor window"),
+        }
     }
 
     fn auto_send_text(&self, chat_id: ChatId, text: String) {

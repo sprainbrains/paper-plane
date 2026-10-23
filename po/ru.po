@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-22 21:05+0300\n"
+"POT-Creation-Date: 2026-10-23 16:18+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -1156,7 +1156,7 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1807 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1803 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr "_Отменить"
 
@@ -1349,7 +1349,7 @@ msgstr "_Да"
 msgid "Terms of Service"
 msgstr "Условия предоставления услуг"
 
-#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:191
+#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:205
 #: src/ui/proxy_window.blp:49
 msgid "Add Proxy"
 msgstr "Добавить прокси"
@@ -1397,11 +1397,27 @@ msgstr "Имя пользователя"
 msgid "Proxy Name"
 msgstr "Название прокси"
 
-#: src/ui/proxy_editor.rs:214
+#: src/ui/proxy_editor.blp:88
+msgid "Check Connection"
+msgstr "Проверить подключение"
+
+#: src/ui/proxy_editor.rs:228
 msgid "Edit Proxy"
 msgstr "Изменить прокси"
 
-#: src/ui/proxy_editor.rs:314
+#: src/ui/proxy_editor.rs:325
+msgid "Checking…"
+msgstr "Проверка…"
+
+#: src/ui/proxy_editor.rs:348 src/ui/proxy_row.rs:172
+msgid "Available ({ping} ms)"
+msgstr "Доступен ({ping} мс)"
+
+#: src/ui/proxy_editor.rs:354 src/ui/proxy_row.rs:180
+msgid "Unavailable"
+msgstr "Недоступен"
+
+#: src/ui/proxy_editor.rs:392
 msgid "Could not save the proxy"
 msgstr "Не удалось сохранить прокси"
 
@@ -1416,14 +1432,6 @@ msgstr "Проверить"
 #: src/ui/proxy_row.blp:51
 msgid "Remove"
 msgstr "Удалить"
-
-#: src/ui/proxy_row.rs:172
-msgid "Available ({ping} ms)"
-msgstr "Доступен ({ping} мс)"
-
-#: src/ui/proxy_row.rs:180
-msgid "Unavailable"
-msgstr "Недоступен"
 
 #: src/ui/proxy_window.blp:11
 msgid "Don't Use Proxy"
@@ -1507,7 +1515,7 @@ msgid "This will permanently delete the chat for you."
 msgstr "Это безвозвратно удалит чат для вас."
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1808
+#: src/ui/session/content/chat_history.rs:1804
 msgid "_Delete"
 msgstr "_Удалить"
 
@@ -1541,37 +1549,37 @@ msgstr "Покинуть чат?"
 msgid "Do you want to leave this chat?"
 msgstr "Вы точно хотите покинуть этот чат?"
 
-#: src/ui/session/content/chat_history.rs:1686
+#: src/ui/session/content/chat_history.rs:1682
 msgid "{n} selected"
 msgstr "Выбрано: {n}"
 
-#: src/ui/session/content/chat_history.rs:1805
+#: src/ui/session/content/chat_history.rs:1801
 msgid "Delete Messages"
 msgstr "Удалить сообщения"
 
-#: src/ui/session/content/chat_history.rs:1806
+#: src/ui/session/content/chat_history.rs:1802
 msgid "Delete the selected messages?"
 msgstr "Удалить выбранные сообщения?"
 
-#: src/ui/session/content/chat_history.rs:2433
+#: src/ui/session/content/chat_history.rs:2429
 msgid "Pinned panel was hidden"
 msgstr "Панель закреплённых сообщений скрыта"
 
-#: src/ui/session/content/chat_history.rs:2434
+#: src/ui/session/content/chat_history.rs:2430
 msgid "Show"
 msgstr "Показать"
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2559
+#: src/ui/session/content/chat_history.rs:2555
 msgid "Pinned Message #{n}"
 msgstr "Закреплённое сообщение №{n}"
 
-#: src/ui/session/content/chat_history.rs:2561
+#: src/ui/session/content/chat_history.rs:2557
 #: src/ui/session/content/chat_history.ui:142
 msgid "Pinned Message"
 msgstr "Закреплённое сообщение"
 
-#: src/ui/session/content/chat_history.rs:2619
+#: src/ui/session/content/chat_history.rs:2615
 msgid "{n} Pinned Messages"
 msgstr "Закреплённых сообщений: {n}"
 
