@@ -9,6 +9,10 @@ use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 
+use super::ALBUM_CELL_SIZE;
+use super::ALBUM_CELL_SPACING;
+use super::ALBUM_MAX_MEMBERS;
+use super::album_placements;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -27,6 +31,8 @@ mod imp {
         pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
         #[template_child]
         pub(super) picture: TemplateChild<gtk::Picture>,
+        #[template_child]
+        pub(super) preview_grid: TemplateChild<gtk::Grid>,
         #[template_child]
         pub(super) file_count_label: TemplateChild<gtk::Label>,
         #[template_child]
@@ -138,22 +144,85 @@ impl SendMediaWindow {
             .build();
         let imp = obj.imp();
 
-        // The first image previews the pick; the badge tells the rest will
-        // travel with it as one album.
-        if let Some(path) = paths.first() {
-            imp.picture.set_filename(Some(path));
-        }
-        if paths.len() > 1 {
-            imp.file_count_label.set_label(&paths.len().to_string());
-            imp.file_count_label.set_visible(true);
-        }
         imp.caption_entry.set_chat(Some(chat.clone()));
-
         imp.chat.set(Some(chat));
         imp.paths.replace(paths);
         imp.reply_to.set(reply_to).unwrap();
+        obj.update_preview();
 
         obj
+    }
+
+    /// One file previews as a large picture; several files preview as the same
+    /// album grid the chat bubble uses, so the dialog shows what will be sent.
+    /// Beyond the ten members an album holds, a `+N` badge marks how many are
+    /// hidden (they go out in a second album).
+    fn update_preview(&self) {
+        let imp = self.imp();
+        let paths = imp.paths.borrow().clone();
+
+        while let Some(child) = imp.preview_grid.first_child() {
+            imp.preview_grid.remove(&child);
+        }
+
+        if paths.len() == 1 {
+            imp.picture.set_filename(paths.first().map(String::as_str));
+            imp.picture.set_visible(true);
+            imp.preview_grid.set_visible(false);
+            imp.file_count_label.set_visible(false);
+            return;
+        }
+
+        imp.picture.set_visible(false);
+        imp.preview_grid.set_visible(true);
+
+        let shown = paths.len().min(ALBUM_MAX_MEMBERS);
+        let scale = self.scale_factor().max(1);
+        let target_px = ALBUM_CELL_SIZE * scale;
+        // Decode to small thumbnails and feed them as paintables. Doing it
+        // synchronously here (a one-time cost when the dialog opens) is
+        // deliberate: `set_filename` would load each full-resolution image and
+        // let its natural size inflate the window to thousands of pixels, and a
+        // background decode spawned from this synchronous action callback does
+        // not reliably resume on the main context.
+        for (path, (col, row, w, h)) in paths[..shown].iter().zip(album_placements(shown)) {
+            let cell = gtk::Picture::builder()
+                .content_fit(gtk::ContentFit::Cover)
+                .can_shrink(true)
+                .build();
+            let width = if w == 2 {
+                ALBUM_CELL_SIZE * 2 + ALBUM_CELL_SPACING
+            } else {
+                ALBUM_CELL_SIZE
+            };
+            let height = if h == 2 {
+                ALBUM_CELL_SIZE * 2 + ALBUM_CELL_SPACING
+            } else {
+                ALBUM_CELL_SIZE
+            };
+            cell.set_size_request(width, height);
+            if let Ok(texture) = utils::decode_image_from_path_at_size(path, Some(target_px as u32))
+            {
+                cell.set_paintable(Some(&texture));
+            }
+            imp.preview_grid.attach(&cell, col, row, w, h);
+        }
+
+        if paths.len() > shown {
+            imp.file_count_label
+                .set_label(&format!("+{}", paths.len() - shown));
+            imp.file_count_label.set_visible(true);
+        } else {
+            imp.file_count_label.set_visible(false);
+        }
+    }
+
+    /// Focuses the caption entry and inserts `text`, for driving the mention
+    /// popup in this window from the automation bridge.
+    pub(crate) fn focus_caption_and_type(&self, text: &str) {
+        let imp = self.imp();
+        imp.caption_entry.grab_focus();
+        imp.caption_entry.insert_at_cursor(text);
     }
 
     fn show_emoji_chooser(&self, parent: &impl IsA<gtk::Widget>) {
@@ -267,9 +336,11 @@ impl SendMediaWindow {
         };
 
         // Several files go out as one album so every client groups them into a
-        // single bubble; a lone file keeps the plain send path. Upload progress
-        // belongs to the chat bubble, so the window closes as soon as TDLib has
-        // accepted the message.
+        // single bubble; a lone file keeps the plain send path. TDLib caps an
+        // album at ten messages, so a bigger pick ships as consecutive albums
+        // (only the first carries the reply target). Upload progress belongs to
+        // the chat bubbles, so the window closes as soon as TDLib has accepted
+        // the messages.
         let result = if contents.len() == 1 {
             tdlib::functions::send_message(
                 chat_id,
@@ -282,9 +353,24 @@ impl SendMediaWindow {
             .await
             .map(|_| ())
         } else {
-            tdlib::functions::send_message_album(chat_id, None, reply_to, None, contents, client_id)
+            let mut reply_to = reply_to;
+            let mut failure = None;
+            for chunk in contents.chunks(ALBUM_MAX_MEMBERS) {
+                if let Err(e) = tdlib::functions::send_message_album(
+                    chat_id,
+                    None,
+                    reply_to.take(),
+                    None,
+                    chunk.to_vec(),
+                    client_id,
+                )
                 .await
-                .map(|_| ())
+                {
+                    failure = Some(e);
+                    break;
+                }
+            }
+            failure.map_or(Ok(()), Err)
         };
 
         match result {
