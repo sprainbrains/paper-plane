@@ -46,7 +46,9 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
 
-            // `GtkPopover:content` cannot be filled from a composite template,
+            self.obj().add_css_class("mention-popup");
+
+            // `GtkPopover:child` cannot be filled from a composite template,
             // so the candidate list is built here.
             let list_box = gtk::ListBox::builder()
                 .selection_mode(gtk::SelectionMode::Single)
