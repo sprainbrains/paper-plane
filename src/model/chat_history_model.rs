@@ -403,7 +403,9 @@ impl ChatHistoryModel {
             let mut seen_unread = false;
             let mut boundary = None;
             for (index, item) in list.iter().enumerate() {
-                if let model::ChatHistoryItemType::Message(message) = item.type_() {
+                // Albums count through their primary (oldest member): a mixed
+                // album stays on the unread side until its first message is read.
+                if let Some(message) = item.message() {
                     if message.id() > last_read_id {
                         seen_unread = true;
                     } else if seen_unread {
@@ -435,50 +437,83 @@ impl ChatHistoryModel {
     }
 
     fn push_front(&self, message: model::Message) {
-        self.imp()
-            .list
-            .borrow_mut()
-            .push_front(model::ChatHistoryItem::for_message(message));
-
-        self.emit_items_changed_with_dividers(0, 0, 1);
+        self.add_messages(vec![message], true);
     }
 
     fn append(&self, messages: Vec<model::Message>) {
-        let imp = self.imp();
-        let added = messages.len();
-
-        imp.list.borrow_mut().reserve(added);
-
-        for message in messages {
-            imp.list
-                .borrow_mut()
-                .push_back(model::ChatHistoryItem::for_message(message));
-        }
-
-        let index = imp.list.borrow().len() - added;
-        self.emit_items_changed_with_dividers(index as u32, 0, added as u32);
+        self.add_messages(messages, false);
     }
 
     /// Inserts newer messages (given newest → oldest) at the front of the window.
     fn prepend(&self, messages: Vec<model::Message>) {
-        let imp = self.imp();
-        let added = messages.len();
-        {
-            let mut list = imp.list.borrow_mut();
-            for message in messages.into_iter().rev() {
-                list.push_front(model::ChatHistoryItem::for_message(message));
-            }
+        self.add_messages(messages, true);
+    }
+
+    /// Inserts a newest-first batch of messages at the front (newer than the
+    /// window) or the back (older than it), collapsing consecutive members of
+    /// one media album into a single item — including across the batch
+    /// boundary, so albums arriving message by message or split over two
+    /// fetched pages still form one item.
+    fn add_messages(&self, messages: Vec<model::Message>, front: bool) {
+        if messages.is_empty() {
+            return;
         }
-        self.emit_items_changed_with_dividers(0, 0, added as u32);
+        let imp = self.imp();
+        let mut items = group_messages(messages);
+
+        let (position, removed, added) = {
+            let mut list = imp.list.borrow_mut();
+            let old_len = list.len();
+
+            // The batch item adjacent to the window may continue an album that
+            // the boundary item started (or vice versa).
+            let mut removed = 0;
+            let boundary = if front { list.front() } else { list.back() };
+            let batch_edge = if front { items.len() - 1 } else { 0 };
+            if boundary.is_some_and(|boundary| mergeable_albums(boundary, &items[batch_edge])) {
+                let batch_item = items.remove(batch_edge);
+                let boundary_item = if front {
+                    list.pop_front()
+                } else {
+                    list.pop_back()
+                };
+                let merged = match (front, boundary_item) {
+                    (true, Some(boundary_item)) => {
+                        // The batch is newer than the window's front item.
+                        merge_album_items(batch_item, boundary_item)
+                    }
+                    (false, Some(boundary_item)) => merge_album_items(boundary_item, batch_item),
+                    (_, None) => batch_item,
+                };
+                if front {
+                    items.push(merged);
+                } else {
+                    items.insert(0, merged);
+                }
+                removed = 1;
+            }
+
+            if front {
+                for item in items.into_iter().rev() {
+                    list.push_front(item);
+                }
+            } else {
+                list.extend(items);
+            }
+
+            let added = list.len() - old_len + removed;
+            let position = if front { 0 } else { list.len() - added };
+            (position, removed, added)
+        };
+
+        self.emit_items_changed_with_dividers(position as u32, removed as u32, added as u32);
     }
 
     fn remove(&self, message: model::Message) {
         let imp = self.imp();
 
-        // Put this in a block, so that we only need to borrow the list once and the runtime
-        // borrow checker does not panic when the change notification borrows the list again.
         let Some(index) = ({
-            let mut list = imp.list.borrow_mut();
+            let list = imp.list.borrow();
 
             // The elements in this list are ordered. While the day dividers are ordered
             // only by their date time, the messages are additionally sorted by their id. We
@@ -488,6 +523,20 @@ impl ChatHistoryModel {
                 list.binary_search_by(|m| match m.type_() {
                     model::ChatHistoryItemType::Message(other_message) => {
                         message.id().cmp(&other_message.id())
+                    }
+                    model::ChatHistoryItemType::Album(members) => {
+                        // An album spans a contiguous id range; anything inside
+                        // it matches, anything outside keeps the search
+                        // monotonic across the descending storage.
+                        let oldest = members.first().map(|m| m.id()).unwrap_or_default();
+                        let newest = members.last().map(|m| m.id()).unwrap_or_default();
+                        if message.id() > newest {
+                            Ordering::Less
+                        } else if message.id() < oldest {
+                            Ordering::Greater
+                        } else {
+                            Ordering::Equal
+                        }
                     }
                     model::ChatHistoryItemType::DayDivider(date_time) => {
                         let ordering = timestamp.cmp(date_time);
@@ -516,23 +565,52 @@ impl ChatHistoryModel {
                 })
                 .ok()
             });
-            let index = result.or_else(|| {
+            result.or_else(|| {
                 log::warn!(
                     "Message {} was not found at its expected chat history position",
                     message.id()
                 );
                 list.iter().position(|item| {
-                    item.message()
-                        .is_some_and(|other_message| other_message.id() == message.id())
+                    item.messages()
+                        .iter()
+                        .any(|other_message| other_message.id() == message.id())
                 })
-            });
-
-            index.and_then(|index| list.remove(index).map(|_| index as u32))
+            })
         }) else {
             return;
         };
 
-        self.emit_items_changed_with_dividers(index, 1, 0);
+        // Put this in a block, so that we only need to borrow the list once and the runtime
+        // borrow checker does not panic when the change notification borrows the list again.
+        let (removed, added) = {
+            let mut list = imp.list.borrow_mut();
+            let members: Vec<model::Message> = match list[index].type_() {
+                model::ChatHistoryItemType::Album(members) => members.clone(),
+                _ => {
+                    list.remove(index);
+                    return self.emit_items_changed_with_dividers(index as u32, 1, 0);
+                }
+            };
+            let remaining: Vec<model::Message> = members
+                .into_iter()
+                .filter(|member| member.id() != message.id())
+                .collect();
+
+            if remaining.is_empty() {
+                list.remove(index);
+                (1, 0)
+            } else {
+                // A one-member album is just a message again.
+                list[index] = if remaining.len() == 1 {
+                    model::ChatHistoryItem::for_message(remaining.into_iter().next().unwrap())
+                } else {
+                    model::ChatHistoryItem::for_album(remaining)
+                };
+                (1, 1)
+            }
+        };
+
+        self.emit_items_changed_with_dividers(index as u32, removed, added);
     }
 }
 
@@ -546,6 +624,88 @@ fn view_emit_position(old_len: usize, position: usize, removed: usize) -> usize 
     old_len
         .checked_sub(position + removed)
         .expect("change range within old item count")
+}
+
+/// Groups a newest-first batch of messages into display items: consecutive
+/// members of one media album collapse into a single album item (members
+/// stored oldest-first), everything else stays a plain message item.
+fn group_messages(messages: Vec<model::Message>) -> Vec<model::ChatHistoryItem> {
+    let keys: Vec<(i64, i64, i64)> = messages
+        .iter()
+        .map(|message| {
+            (
+                message.id(),
+                message.media_album_id(),
+                message.sender().id(),
+            )
+        })
+        .collect();
+
+    let mut items = Vec::new();
+    for (start, len) in album_group_ranges(&keys) {
+        let batch = &messages[start..start + len];
+        if len > 1 {
+            let mut members = batch.to_vec();
+            members.sort_by_key(|message| message.id());
+            items.push(model::ChatHistoryItem::for_album(members));
+        } else {
+            items.push(model::ChatHistoryItem::for_message(batch[0].clone()));
+        }
+    }
+    items
+}
+
+/// Splits a newest-first list of `(id, album_id, sender_id)` message keys into
+/// runs of `(start, len)`: a run is a maximal stretch of consecutive messages
+/// sharing one non-zero album id and sender; everything else is a run of one.
+fn album_group_ranges(keys: &[(i64, i64, i64)]) -> Vec<(usize, usize)> {
+    let mut runs = Vec::new();
+    let mut index = 0;
+    while index < keys.len() {
+        let (_, album_id, sender_id) = keys[index];
+        let mut len = 1;
+        if album_id != 0 {
+            while index + len < keys.len()
+                && keys[index + len].1 == album_id
+                && keys[index + len].2 == sender_id
+            {
+                len += 1;
+            }
+        }
+        runs.push((index, len));
+        index += len;
+    }
+    runs
+}
+
+/// The album identity of an item: `(album id, sender id)` when it is a
+/// (possibly single-member) album, `None` for anything else.
+fn album_key(item: &model::ChatHistoryItem) -> Option<(i64, i64)> {
+    let first = item.message()?;
+    let album_id = first.media_album_id();
+    (album_id != 0).then(|| (album_id, first.sender().id()))
+}
+
+/// Whether two adjacent items are members of the same album and should live
+/// in one item.
+fn mergeable_albums(a: &model::ChatHistoryItem, b: &model::ChatHistoryItem) -> bool {
+    album_key(a).is_some() && album_key(a) == album_key(b)
+}
+
+/// Joins two adjacent items of one album, given in newest → oldest order.
+/// The result is an album item whenever more than one message remains.
+fn merge_album_items(
+    newer: model::ChatHistoryItem,
+    older: model::ChatHistoryItem,
+) -> model::ChatHistoryItem {
+    let mut members = older.messages().to_vec();
+    members.extend(newer.messages().iter().cloned());
+    members.sort_by_key(|message| message.id());
+    if members.len() == 1 {
+        model::ChatHistoryItem::for_message(members.into_iter().next().unwrap())
+    } else {
+        model::ChatHistoryItem::for_album(members)
+    }
 }
 
 fn insert_day_dividers(
@@ -659,6 +819,7 @@ mod tests {
 
     use gtk::glib;
 
+    use super::album_group_ranges;
     use super::day_divider_offsets;
     use super::remove_trailing_day_divider;
     use super::view_emit_position;
@@ -704,5 +865,39 @@ mod tests {
         assert_eq!(remove_trailing_day_divider(&mut list, 0, 1), 2);
         assert_eq!(list.len(), 1);
         assert_eq!(list.front(), Some(&following_item));
+    }
+
+    #[test]
+    fn album_group_ranges_without_albums_is_all_singles() {
+        let keys = [(30, 0, 7), (29, 0, 7), (28, 0, 8)];
+        assert_eq!(album_group_ranges(&keys), [(0, 1), (1, 1), (2, 1)]);
+    }
+
+    #[test]
+    fn album_group_ranges_collapses_consecutive_members() {
+        // Newest-first: members 13, 12, 11 of album 5 from sender 7.
+        let keys = [(13, 5, 7), (12, 5, 7), (11, 5, 7), (10, 0, 7)];
+        assert_eq!(album_group_ranges(&keys), [(0, 3), (3, 1)]);
+    }
+
+    #[test]
+    fn album_group_ranges_split_on_sender_or_other_message() {
+        // Same album id but an interleaved foreign message ends the run.
+        let keys = [(13, 5, 7), (12, 0, 8), (11, 5, 7)];
+        assert_eq!(album_group_ranges(&keys), [(0, 1), (1, 1), (2, 1)]);
+        // A different sender never joins the album.
+        let keys = [(13, 5, 7), (12, 5, 9)];
+        assert_eq!(album_group_ranges(&keys), [(0, 1), (1, 1)]);
+    }
+
+    #[test]
+    fn album_group_ranges_keeps_distinct_albums_apart() {
+        let keys = [(15, 6, 7), (14, 6, 7), (13, 5, 7), (12, 5, 7)];
+        assert_eq!(album_group_ranges(&keys), [(0, 2), (2, 2)]);
+    }
+
+    #[test]
+    fn album_group_ranges_of_empty_batch_is_empty() {
+        assert_eq!(album_group_ranges(&[]), []);
     }
 }

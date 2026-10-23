@@ -1,3 +1,4 @@
+mod album;
 mod audio;
 mod base;
 mod blocks;
@@ -31,6 +32,7 @@ use gtk::glib;
 use gtk::graphene;
 use gtk::subclass::prelude::*;
 
+pub(crate) use self::album::MessageAlbum;
 pub(crate) use self::audio::MessageAudio;
 pub(crate) use self::base::MessageBase;
 pub(crate) use self::base::MessageBaseExt;
@@ -209,7 +211,7 @@ impl Row {
     }
 
     fn reply(&self) {
-        if let Ok(message) = self.message().downcast::<model::Message>() {
+        if let Some(message) = self.primary_message() {
             self.activate_action("chat-history.reply", Some(&message.id().to_variant()))
                 .unwrap();
         }
@@ -217,7 +219,7 @@ impl Row {
 
     /// Pins this message in its chat.
     fn pin_message(&self) {
-        let Ok(message) = self.message().downcast::<model::Message>() else {
+        let Some(message) = self.primary_message() else {
             return;
         };
         let chat = message.chat_();
@@ -240,7 +242,7 @@ impl Row {
 
     /// Unpins this message in its chat (for everyone).
     fn unpin_message(&self) {
-        let Ok(message) = self.message().downcast::<model::Message>() else {
+        let Some(message) = self.primary_message() else {
             return;
         };
         let chat = message.chat_();
@@ -262,7 +264,7 @@ impl Row {
 
     /// Copies the message's text (or media caption) to the clipboard.
     fn copy_text(&self) {
-        if let Some(message) = self.message().downcast_ref::<model::Message>()
+        if let Some(message) = self.primary_message()
             && let Some(text) = copyable_text(&message.content().0)
         {
             self.clipboard().set_text(&text);
@@ -270,15 +272,14 @@ impl Row {
     }
 
     fn can_copy_text(&self) -> bool {
-        self.message()
-            .downcast_ref::<model::Message>()
+        self.primary_message()
             .and_then(|message| copyable_text(&message.content().0))
             .is_some()
     }
 
     /// Copies a public/shareable link to this message (supergroups and channels).
     fn copy_link(&self) {
-        let Ok(message) = self.message().downcast::<model::Message>() else {
+        let Some(message) = self.primary_message() else {
             return;
         };
         let chat = message.chat_();
@@ -307,8 +308,7 @@ impl Row {
     }
 
     fn can_copy_link(&self) -> bool {
-        self.message()
-            .downcast_ref::<model::Message>()
+        self.primary_message()
             .map(|message| matches!(message.chat_().chat_type(), model::ChatType::Supergroup(_)))
             .unwrap_or(false)
     }
@@ -318,7 +318,7 @@ impl Row {
     /// clipboard. Useful for bug reports, adding support for currently
     /// unsupported message types, and writing tests.
     fn copy_debug_entry(&self) {
-        let Ok(message) = self.message().downcast::<model::Message>() else {
+        let Some(message) = self.primary_message() else {
             return;
         };
         let chat = message.chat_();
@@ -338,7 +338,7 @@ impl Row {
 
     /// Opens a chat picker to forward this message to another chat.
     fn show_forward(&self) {
-        let Ok(message) = self.message().downcast::<model::Message>() else {
+        let Some(message) = self.primary_message() else {
             return;
         };
         let Some(session) = utils::ancestor::<_, ui::Session>(self) else {
@@ -350,7 +350,11 @@ impl Row {
             parent.as_ref(),
             &session,
             message.chat_().id(),
-            vec![message.id()],
+            // Forward an album as a whole, exactly like deletion.
+            match self.message().downcast_ref::<model::ChatHistoryItem>() {
+                Some(item) => item.messages().iter().map(|m| m.id()).collect(),
+                None => vec![message.id()],
+            },
         );
         window.present();
     }
@@ -368,22 +372,17 @@ impl Row {
             "message-row.copy-link" => self.can_copy_link(),
             "message-row.copy-debug" => debug_options_enabled(),
             "message-row.show-sticker-pack" => self
-                .message()
-                .downcast_ref::<model::Message>()
-                .is_some_and(|message| sticker_message_set_id(message) != 0),
+                .primary_message()
+                .is_some_and(|message| sticker_message_set_id(&message) != 0),
             "message-row.delete" => self
-                .message()
-                .downcast_ref::<model::Message>()
+                .primary_message()
                 .is_some_and(|m| m.can_be_deleted_only_for_self()),
             "message-row.revoke-delete" => self
-                .message()
-                .downcast_ref::<model::Message>()
+                .primary_message()
                 .is_some_and(|m| m.can_be_deleted_for_all_users()),
             // Only location/venue message rows install `message-row.open`.
             "message-row.open" => matches!(
-                self.message()
-                    .downcast_ref::<model::Message>()
-                    .map(|m| m.content().0),
+                self.primary_message().map(|m| m.content().0),
                 Some(
                     tdlib::enums::MessageContent::MessageLocation(_)
                         | tdlib::enums::MessageContent::MessageLiveLocation(_)
@@ -391,24 +390,20 @@ impl Row {
                 )
             ),
             // Forward and select are always offered for real messages.
-            "message-row.forward" | "message-row.select" => {
-                self.message().downcast_ref::<model::Message>().is_some()
-            }
+            "message-row.forward" | "message-row.select" => self.primary_message().is_some(),
             // Pin and Unpin are mutually exclusive, following the message's live state.
             "message-row.pin" => self
-                .message()
-                .downcast_ref::<model::Message>()
+                .primary_message()
                 .is_some_and(|message| !message.is_pinned()),
             "message-row.unpin" => self
-                .message()
-                .downcast_ref::<model::Message>()
+                .primary_message()
                 .is_some_and(|message| message.is_pinned()),
             _ => true,
         }
     }
 
     fn edit(&self) {
-        if let Ok(message) = self.message().downcast::<model::Message>() {
+        if let Some(message) = self.primary_message() {
             self.activate_action("chat-history.edit", Some(&message.id().to_variant()))
                 .unwrap();
         }
@@ -436,15 +431,31 @@ impl Row {
                 #[weak(rename_to = obj)]
                 self,
                 move |response| {
-                    if response == "yes"
-                        && let Ok(message) = obj.message().downcast::<model::Message>()
-                    {
-                        utils::spawn(async move {
-                            if let Err(e) = message.delete(revoke).await {
-                                log::warn!("Error deleting a message (revoke = {revoke}): {e:?}");
-                            }
-                        });
+                    if response != "yes" {
+                        return;
                     }
+                    // An album is deleted as a whole: every member goes with it.
+                    let ids: Vec<i64> = match obj.message().downcast_ref::<model::ChatHistoryItem>()
+                    {
+                        Some(item) => item.messages().iter().map(|m| m.id()).collect(),
+                        None => match obj.primary_message() {
+                            Some(message) => vec![message.id()],
+                            None => return,
+                        },
+                    };
+                    let Some(primary) = obj.primary_message() else {
+                        return;
+                    };
+                    let chat = primary.chat_();
+                    let chat_id = chat.id();
+                    let client_id = chat.session_().client_().id();
+                    utils::spawn(async move {
+                        if let Err(e) =
+                            tdlib::functions::delete_messages(chat_id, ids, revoke, client_id).await
+                        {
+                            log::warn!("Error deleting a message (revoke = {revoke}): {e:?}");
+                        }
+                    });
                 }
             ),
         );
@@ -452,6 +463,12 @@ impl Row {
 
     pub(crate) fn message(&self) -> glib::Object {
         self.imp().message.borrow().clone().unwrap()
+    }
+
+    /// The message this row acts on: plain messages themselves, albums through
+    /// their primary (first, caption-carrying) member.
+    fn primary_message(&self) -> Option<model::Message> {
+        resolve_primary_message(&self.message())
     }
 
     /// Wires the per-message click gesture: once in selection mode, a primary click
@@ -468,7 +485,7 @@ impl Row {
                 let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&obj) else {
                     return;
                 };
-                let Ok(message) = obj.message().downcast::<model::Message>() else {
+                let Some(message) = obj.primary_message() else {
                     return;
                 };
                 let shift = gesture
@@ -708,7 +725,7 @@ impl Row {
             return;
         }
 
-        if let Some(message) = message.downcast_ref::<model::Message>() {
+        if let Some(message) = resolve_primary_message(&message) {
             let show_avatar = if message.is_outgoing() {
                 false
             } else if message.chat_().is_own_chat() {
@@ -807,7 +824,7 @@ impl Row {
 
     /// Enters multi-select mode with this message selected (from the message menu).
     fn begin_selection(&self) {
-        if let Ok(message) = self.message().downcast::<model::Message>()
+        if let Some(message) = self.primary_message()
             && let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self)
         {
             chat_history.select_message(message.id());
@@ -815,7 +832,7 @@ impl Row {
     }
 
     fn show_sticker_pack(&self) {
-        let Ok(message) = self.message().downcast::<model::Message>() else {
+        let Some(message) = self.primary_message() else {
             return;
         };
         let set_id = sticker_message_set_id(&message);
@@ -828,7 +845,7 @@ impl Row {
     }
 
     fn can_reply_to_message(&self) -> bool {
-        if let Some(message) = self.message().downcast_ref::<model::Message>() {
+        if let Some(message) = self.primary_message() {
             can_send_messages_in_chat(&message.chat_())
         } else {
             false
@@ -836,7 +853,7 @@ impl Row {
     }
 
     fn can_edit_message(&self) -> bool {
-        if let Some(message) = self.message().downcast_ref::<model::Message>() {
+        if let Some(message) = self.primary_message() {
             use tdlib::enums::MessageContent::*;
 
             // Text messages edit their text; captioned media edit their caption.
@@ -860,12 +877,11 @@ impl Row {
         self.action_set_enabled("message-row.copy-debug", debug_options_enabled());
         self.action_set_enabled(
             "message-row.show-sticker-pack",
-            self.message()
-                .downcast_ref::<model::Message>()
-                .is_some_and(|message| sticker_message_set_id(message) != 0),
+            self.primary_message()
+                .is_some_and(|message| sticker_message_set_id(&message) != 0),
         );
 
-        if let Some(message) = self.message().downcast_ref::<model::Message>() {
+        if let Some(message) = self.primary_message() {
             self.action_set_enabled("message-row.delete", message.can_be_deleted_only_for_self());
             self.action_set_enabled(
                 "message-row.revoke-delete",
@@ -885,7 +901,18 @@ impl Row {
     fn update_content(&self, message: glib::Object) {
         use tdlib::enums::MessageContent::*;
 
-        let is_outgoing = if let Some(message_) = message.downcast_ref::<model::Message>() {
+        let is_outgoing = if let Some(item) = message.downcast_ref::<model::ChatHistoryItem>() {
+            // An album item renders as one grid bubble holding all its members.
+            self.update_specific_content::<model::ChatHistoryItem, ui::MessageAlbum>(item);
+            match item.message() {
+                Some(primary) => match primary.chat_().chat_type() {
+                    // Do not mark channel messages as outgoing
+                    model::ChatType::Supergroup(data) if data.is_channel() => false,
+                    _ => primary.is_outgoing(),
+                },
+                None => false,
+            }
+        } else if let Some(message_) = message.downcast_ref::<model::Message>() {
             // Do not mark channel messages as outgoing
             let is_outgoing = match message_.chat_().chat_type() {
                 model::ChatType::Supergroup(data) if data.is_channel() => false,
@@ -1122,6 +1149,17 @@ fn can_send_messages_in_chat(chat: &model::Chat) -> bool {
 }
 
 /// The message's plain text or media caption, if non-empty (for the copy action).
+/// The message a row object acts on: plain messages themselves, album items
+/// through their primary (first, caption-carrying) member.
+fn resolve_primary_message(obj: &glib::Object) -> Option<model::Message> {
+    if let Some(message) = obj.downcast_ref::<model::Message>() {
+        return Some(message.clone());
+    }
+    obj.downcast_ref::<model::ChatHistoryItem>()?
+        .message()
+        .cloned()
+}
+
 fn copyable_text(content: &tdlib::enums::MessageContent) -> Option<String> {
     use tdlib::enums::MessageContent::*;
 

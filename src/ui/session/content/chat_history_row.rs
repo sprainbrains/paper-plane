@@ -81,8 +81,17 @@ mod imp {
 
             if let Some(item) = &*self.item.borrow() {
                 if let Some(item) = item.downcast_ref::<model::ChatHistoryItem>() {
-                    if let model::ChatHistoryItemType::Message(message) = item.type_() {
-                        op(&chat_history, message.id());
+                    match item.type_() {
+                        model::ChatHistoryItemType::Message(message) => {
+                            op(&chat_history, message.id());
+                        }
+                        // Every member of a visible album counts as viewed.
+                        model::ChatHistoryItemType::Album(members) => {
+                            for message in members {
+                                op(&chat_history, message.id());
+                            }
+                        }
+                        _ => {}
                     }
                 } else if let Some(message) = item.downcast_ref::<model::SponsoredMessage>() {
                     op(&chat_history, message.message_id());
@@ -150,6 +159,11 @@ impl ChatHistoryRow {
                             }
                             _ => self.update_or_create_message_row(message.to_owned().upcast()),
                         }
+                    }
+                    // The album widget takes the whole item; the row chrome uses
+                    // its primary message.
+                    model::ChatHistoryItemType::Album(_) => {
+                        self.update_or_create_message_row(item.to_owned().upcast());
                     }
                     model::ChatHistoryItemType::DayDivider(date) => {
                         let fmt = if date.year() == glib::DateTime::now_local().unwrap().year() {

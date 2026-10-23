@@ -33,6 +33,7 @@ pub(crate) use self::media_viewer::MediaViewer;
 pub(crate) use self::message_menu::MessageMenu;
 pub(crate) use self::message_menu_reactions::MessageMenuReactions;
 pub(crate) use self::message_row::MediaPicture;
+pub(crate) use self::message_row::MessageAlbum;
 pub(crate) use self::message_row::MessageAudio;
 pub(crate) use self::message_row::MessageBase;
 pub(crate) use self::message_row::MessageBaseExt;

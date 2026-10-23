@@ -76,6 +76,9 @@ mod imp {
         pub(super) forward_info: RefCell<Option<model::MessageForwardInfo>>,
         #[property(get, set, construct_only)]
         pub(super) reply_to: RefCell<Option<model::BoxedMessageReplyTo>>,
+        /// Album grouping key; 0 when the message is not part of a media album.
+        #[property(get, set, construct_only)]
+        pub(super) media_album_id: Cell<i64>,
         #[property(get)]
         pub(super) content: RefCell<model::BoxedMessageContent>,
         #[property(get)]
@@ -147,6 +150,7 @@ impl Message {
                 "reply-to",
                 td_message.reply_to.map(model::BoxedMessageReplyTo),
             )
+            .property("media-album-id", td_message.media_album_id)
             .build();
 
         let imp = obj.imp();
@@ -160,21 +164,6 @@ impl Message {
     }
 
     weak_getter!(chat_, chat, model::Chat);
-
-    pub(crate) fn handle_update(&self, update: tdlib::enums::Update) {
-        use tdlib::enums::Update::*;
-
-        match update {
-            MessageContent(data) => {
-                let new_content = model::BoxedMessageContent(data.new_content);
-                self.set_content(new_content);
-            }
-            MessageEdited(data) => self.set_is_edited(data.edit_date > 0),
-            MessageIsPinned(data) => self.set_is_pinned(data.is_pinned),
-            MessageInteractionInfo(data) => self.interaction_info().update(data.interaction_info),
-            _ => {}
-        }
-    }
 
     pub(crate) fn update_from_td_message(&self, td_message: tdlib::types::Message) {
         let imp = self.imp();
@@ -234,15 +223,19 @@ impl Message {
         self.set_is_pinned(td_message.is_pinned);
     }
 
-    pub(crate) async fn delete(&self, revoke: bool) -> Result<(), tdlib::types::Error> {
-        let chat = self.chat_();
-        tdlib::functions::delete_messages(
-            chat.id(),
-            vec![self.id()],
-            revoke,
-            chat.session_().client_().id(),
-        )
-        .await
+    pub(crate) fn handle_update(&self, update: tdlib::enums::Update) {
+        use tdlib::enums::Update::*;
+
+        match update {
+            MessageContent(data) => {
+                let new_content = model::BoxedMessageContent(data.new_content);
+                self.set_content(new_content);
+            }
+            MessageEdited(data) => self.set_is_edited(data.edit_date > 0),
+            MessageIsPinned(data) => self.set_is_pinned(data.is_pinned),
+            MessageInteractionInfo(data) => self.interaction_info().update(data.interaction_info),
+            _ => {}
+        }
     }
 
     fn set_content(&self, content: model::BoxedMessageContent) {

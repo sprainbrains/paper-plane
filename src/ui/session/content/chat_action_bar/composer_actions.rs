@@ -165,8 +165,13 @@ impl super::ChatActionBar {
 
             let parent = self.root().and_downcast().unwrap();
             let path = path.to_str().unwrap().to_string();
-            ui::SendMediaWindow::new(&parent, &chat, path, self.imp().state.get().replying())
-                .present();
+            ui::SendMediaWindow::new(
+                &parent,
+                &chat,
+                vec![path],
+                self.imp().state.get().replying(),
+            )
+            .present();
         }
 
         Ok(())
