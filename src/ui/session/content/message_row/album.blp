@@ -6,9 +6,10 @@ template $PaplMessageAlbum : $PaplMessageBase {
   $PaplMessageBubble message_bubble {
     styles ["media"]
 
-    prefix: Grid album_grid {
-      row-spacing: 2;
-      column-spacing: 2;
+    // Holds either a photo/video grid or a stack of document rows,
+    // depending on what the album members are.
+    prefix: Box album_content {
+      orientation: vertical;
     };
   }
 }

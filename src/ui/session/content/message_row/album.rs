@@ -84,7 +84,7 @@ mod imp {
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
-        pub(super) album_grid: TemplateChild<gtk::Grid>,
+        pub(super) album_content: TemplateChild<gtk::Box>,
     }
 
     #[glib::object_subclass]
@@ -207,7 +207,10 @@ impl ui::MessageBaseExt for MessageAlbum {
 }
 
 impl MessageAlbum {
-    /// Rebuilds the cell grid from the album's current members.
+    /// Rebuilds the album body from its current members: a photo/video grid
+    /// when every member is displayable media, otherwise a stack of document
+    /// rows (like the single-document bubble), so albums sent "as files"
+    /// present names and sizes instead of blurry tiles.
     fn rebuild_grid(&self) {
         let imp = self.imp();
         let Some(item) = imp.message.upgrade() else {
@@ -217,8 +220,8 @@ impl MessageAlbum {
         imp.generation.set(imp.generation.get() + 1);
         imp.cells.borrow_mut().clear();
 
-        while let Some(child) = imp.album_grid.first_child() {
-            imp.album_grid.remove(&child);
+        while let Some(child) = imp.album_content.first_child() {
+            imp.album_content.remove(&child);
         }
 
         let members: Vec<model::Message> = match item.album_members() {
@@ -227,11 +230,45 @@ impl MessageAlbum {
             // message full-width rather than as a cell.
             None => item.message().into_iter().cloned().collect(),
         };
-        let placements = match item.album_members() {
-            Some(_) => album_placements(members.len()),
-            None => vec![(0, 0, 2, 1)],
-        };
 
+        let all_media = members.iter().all(|member| {
+            matches!(
+                member.content().0,
+                tdlib::enums::MessageContent::MessagePhoto(_)
+                    | tdlib::enums::MessageContent::MessageVideo(_)
+                    | tdlib::enums::MessageContent::MessageAnimation(_)
+                    | tdlib::enums::MessageContent::MessageVideoNote(_)
+            )
+        });
+
+        imp.message_bubble.remove_css_class("media");
+        imp.message_bubble.remove_css_class("document");
+        if all_media {
+            imp.message_bubble.add_css_class("media");
+        } else {
+            imp.message_bubble.add_css_class("document");
+        }
+
+        if all_media {
+            self.rebuild_media_grid(&members, item.album_members().is_some());
+        } else {
+            self.rebuild_file_rows(&members);
+        }
+    }
+
+    /// The photo/video grid: square cover-cropped cells.
+    fn rebuild_media_grid(&self, members: &[model::Message], multi: bool) {
+        let imp = self.imp();
+        let grid = gtk::Grid::builder()
+            .row_spacing(ALBUM_CELL_SPACING)
+            .column_spacing(ALBUM_CELL_SPACING)
+            .build();
+
+        let placements = if multi {
+            album_placements(members.len())
+        } else {
+            vec![(0, 0, 2, 1)]
+        };
         let generation = imp.generation.get();
         let scale = self.scale_factor().max(1);
         for (member, (col, row, w, h)) in members.iter().zip(placements) {
@@ -247,11 +284,44 @@ impl MessageAlbum {
             };
             let target_px = width * scale;
             let cell = self.build_cell(member, width, height, target_px);
-            imp.album_grid.attach(&cell.widget, col, row, w, h);
+            grid.attach(&cell.widget, col, row, w, h);
             if let Some(entry) = cell.entry {
                 imp.cells.borrow_mut().push(entry.clone());
                 if imp.demand.get() {
                     self.load_cell(&entry, generation);
+                }
+            }
+        }
+
+        imp.album_content.append(&grid);
+    }
+
+    /// The document variant: one shared [`ui::DocumentRow`] per member, so
+    /// files sent "as file" show thumbnail, name and size just like a lone
+    /// document message.
+    fn rebuild_file_rows(&self, members: &[model::Message]) {
+        let imp = self.imp();
+        let generation = imp.generation.get();
+        for member in members {
+            if matches!(
+                member.content().0,
+                tdlib::enums::MessageContent::MessageDocument(_)
+            ) {
+                let row = ui::DocumentRow::new();
+                row.set_message(member);
+                imp.album_content.append(&row);
+            } else {
+                // A media member inside a file album still gets a tappable
+                // preview row rather than a grid cell.
+                let scale = self.scale_factor().max(1);
+                let width = ALBUM_CELL_SIZE * 2 + ALBUM_CELL_SPACING;
+                let cell = self.build_cell(member, width, ALBUM_CELL_SIZE, width * scale);
+                imp.album_content.append(&cell.widget);
+                if let Some(entry) = cell.entry {
+                    imp.cells.borrow_mut().push(entry.clone());
+                    if imp.demand.get() {
+                        self.load_cell(&entry, generation);
+                    }
                 }
             }
         }

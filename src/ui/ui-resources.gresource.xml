@@ -39,6 +39,7 @@
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/audio.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/base.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/bubble.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/document/row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/document/mod.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/document/status_indicator.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/indicators.ui</file>
