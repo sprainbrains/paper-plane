@@ -12,6 +12,7 @@ use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::glib;
 
+use crate::i18n::gettext_f;
 use crate::model;
 use crate::utils;
 
@@ -56,10 +57,18 @@ mod imp {
         pub(super) editing: RefCell<Option<model::ProxyItem>>,
         /// Whether a saved proxy should become the active one.
         pub(super) enable_on_save: Cell<bool>,
+        /// Bumped whenever the form changes or a probe starts; only a probe
+        /// whose generation still matches may paint the result label, so a
+        /// late reply cannot describe an already-edited form.
+        pub(super) check_generation: Cell<u32>,
         #[template_child]
         pub(super) title: TemplateChild<adw::WindowTitle>,
         #[template_child]
         pub(super) save_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub(super) check_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub(super) check_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) kind_row: TemplateChild<adw::ComboRow>,
         #[template_child]
@@ -148,6 +157,11 @@ mod imp {
                 obj,
                 move |_| obj.save()
             ));
+            self.check_button.connect_clicked(clone!(
+                #[weak]
+                obj,
+                move |_| obj.check_connection()
+            ));
 
             obj.update_field_visibility();
             obj.update_save_sensitivity();
@@ -168,13 +182,14 @@ glib::wrapper! {
 impl ProxyEditor {
     /// Opens the editor to add a new proxy. The new proxy becomes active
     /// exactly when one already is (the window's "Use Proxy" state).
-    pub(crate) fn for_add(parent: &gtk::Window, client: &model::Client) {
+    pub(crate) fn for_add(parent: &gtk::Window, client: &model::Client) -> Self {
         let editor = Self::new_window(parent, client);
         editor
             .imp()
             .enable_on_save
             .set(client.proxies().active_proxy_id() != 0);
         editor.present(Some(parent));
+        editor
     }
 
     /// Opens the editor prefilled from a `t.me/proxy` link; saving activates it.
@@ -182,7 +197,7 @@ impl ProxyEditor {
         parent: &gtk::Window,
         client: &model::Client,
         link: &utils::proxy_link::ProxyLink,
-    ) {
+    ) -> Self {
         let editor = Self::new_window(parent, client);
         {
             let imp = editor.imp();
@@ -202,10 +217,15 @@ impl ProxyEditor {
             }
         }
         editor.present(Some(parent));
+        editor
     }
 
     /// Opens the editor prefilled from an existing proxy.
-    pub(crate) fn for_edit(parent: &gtk::Window, client: &model::Client, item: &model::ProxyItem) {
+    pub(crate) fn for_edit(
+        parent: &gtk::Window,
+        client: &model::Client,
+        item: &model::ProxyItem,
+    ) -> Self {
         let editor = Self::new_window(parent, client);
         {
             let imp = editor.imp();
@@ -222,6 +242,7 @@ impl ProxyEditor {
             imp.password_row.set_text(&item.password());
         }
         editor.present(Some(parent));
+        editor
     }
 
     fn new_window(parent: &gtk::Window, client: &model::Client) -> Self {
@@ -258,22 +279,26 @@ impl ProxyEditor {
 
     fn update_save_sensitivity(&self) {
         let imp = self.imp();
-        imp.save_button.set_sensitive(validate(
+        let valid = validate(
             &imp.server_row.text(),
             &imp.port_row.text(),
             self.selected_kind(),
             &imp.secret_row.text(),
-        ));
+        );
+        imp.save_button.set_sensitive(valid);
+        // Editing the form invalidates any probe result shown beside the
+        // button and abandons an in-flight probe (see `check_connection`).
+        imp.check_button.set_sensitive(valid);
+        imp.check_label.set_visible(false);
+        imp.check_generation.set(imp.check_generation.get() + 1);
     }
 
-    fn save(&self) {
+    /// The proxy described by the form as currently filled in (id 0 while
+    /// adding). Shared by Save and the connection check so both probe/store
+    /// exactly what the user sees.
+    fn form_entry(&self) -> model::ProxyEntry {
         let imp = self.imp();
-        let Some(client) = imp.client.get().cloned() else {
-            return;
-        };
-        let manager = client.proxies();
-
-        let entry = model::ProxyEntry {
+        model::ProxyEntry {
             id: imp
                 .editing
                 .borrow()
@@ -288,7 +313,67 @@ impl ProxyEditor {
             secret: imp.secret_row.text().trim().to_string(),
             comment: imp.name_row.text().into(),
             enabled: false,
+        }
+    }
+
+    /// Probes the form's proxy with TDLib's `testProxy` (same call, DC and
+    /// timeout as `ProxyManager::check`) and shows the outcome as text beside
+    /// the button, mirroring the proxy list's status labels.
+    pub(crate) fn check_connection(&self) {
+        let imp = self.imp();
+        let Some(client) = imp.client.get().cloned() else {
+            return;
         };
+        let entry = self.form_entry();
+        let generation = imp.check_generation.get() + 1;
+        imp.check_generation.set(generation);
+        imp.check_button.set_sensitive(false);
+        imp.check_label.set_visible(true);
+        imp.check_label.set_label(&gettext("Checking…"));
+        imp.check_label.remove_css_class("success");
+        imp.check_label.remove_css_class("error");
+
+        let client_id = client.id();
+        utils::spawn(clone!(
+            #[weak(rename_to = as_this)]
+            self,
+            async move {
+                let start = glib::monotonic_time();
+                let result =
+                    tdlib::functions::test_proxy(entry.tdlib_proxy(), 2, 5.0, client_id).await;
+                let latency_ms = ((glib::monotonic_time() - start) / 1000) as i32;
+
+                let imp = as_this.imp();
+                // A form edit (or a newer probe) took over the label meanwhile;
+                // stay out of its way.
+                if imp.check_generation.get() != generation {
+                    return;
+                }
+                imp.check_button.set_sensitive(true);
+                if result.is_ok() {
+                    imp.check_label.set_label(&gettext_f(
+                        "Available ({ping} ms)",
+                        &[("ping", &latency_ms.to_string())],
+                    ));
+                    imp.check_label.add_css_class("success");
+                    imp.check_label.remove_css_class("error");
+                } else {
+                    imp.check_label.set_label(&gettext("Unavailable"));
+                    imp.check_label.add_css_class("error");
+                    imp.check_label.remove_css_class("success");
+                }
+            }
+        ));
+    }
+
+    fn save(&self) {
+        let imp = self.imp();
+        let Some(client) = imp.client.get().cloned() else {
+            return;
+        };
+        let manager = client.proxies();
+
+        let entry = self.form_entry();
         let enable = imp.enable_on_save.get();
         let editing = imp.editing.borrow().clone();
 

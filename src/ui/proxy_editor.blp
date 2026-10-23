@@ -77,6 +77,27 @@ template $PaplProxyEditor : Adw.Dialog {
             title: _("Proxy Name");
           }
         }
+
+        // Probe the proxy exactly as typed, before saving: result text mirrors
+        // the proxy list's status labels (same strings, same styling).
+        Box {
+          orientation: horizontal;
+          spacing: 12;
+
+          Button check_button {
+            label: _("Check Connection");
+            halign: start;
+          }
+
+          Label check_label {
+            ellipsize: end;
+            valign: center;
+            xalign: 0;
+            hexpand: true;
+
+            styles ["caption"]
+          }
+        }
       }
     }
   };

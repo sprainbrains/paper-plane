@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-22 21:05+0300\n"
+"POT-Creation-Date: 2026-10-23 16:18+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1077,7 +1077,7 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1807 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1803 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr ""
 
@@ -1258,7 +1258,7 @@ msgstr ""
 msgid "Terms of Service"
 msgstr ""
 
-#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:191
+#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:205
 #: src/ui/proxy_window.blp:49
 msgid "Add Proxy"
 msgstr ""
@@ -1306,11 +1306,27 @@ msgstr ""
 msgid "Proxy Name"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:214
+#: src/ui/proxy_editor.blp:88
+msgid "Check Connection"
+msgstr ""
+
+#: src/ui/proxy_editor.rs:228
 msgid "Edit Proxy"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:314
+#: src/ui/proxy_editor.rs:325
+msgid "Checking…"
+msgstr ""
+
+#: src/ui/proxy_editor.rs:348 src/ui/proxy_row.rs:172
+msgid "Available ({ping} ms)"
+msgstr ""
+
+#: src/ui/proxy_editor.rs:354 src/ui/proxy_row.rs:180
+msgid "Unavailable"
+msgstr ""
+
+#: src/ui/proxy_editor.rs:392
 msgid "Could not save the proxy"
 msgstr ""
 
@@ -1324,14 +1340,6 @@ msgstr ""
 
 #: src/ui/proxy_row.blp:51
 msgid "Remove"
-msgstr ""
-
-#: src/ui/proxy_row.rs:172
-msgid "Available ({ping} ms)"
-msgstr ""
-
-#: src/ui/proxy_row.rs:180
-msgid "Unavailable"
 msgstr ""
 
 #: src/ui/proxy_window.blp:11
@@ -1415,7 +1423,7 @@ msgid "This will permanently delete the chat for you."
 msgstr ""
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1808
+#: src/ui/session/content/chat_history.rs:1804
 msgid "_Delete"
 msgstr ""
 
@@ -1449,37 +1457,37 @@ msgstr ""
 msgid "Do you want to leave this chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1686
+#: src/ui/session/content/chat_history.rs:1682
 msgid "{n} selected"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1805
+#: src/ui/session/content/chat_history.rs:1801
 msgid "Delete Messages"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1806
+#: src/ui/session/content/chat_history.rs:1802
 msgid "Delete the selected messages?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2433
+#: src/ui/session/content/chat_history.rs:2429
 msgid "Pinned panel was hidden"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2434
+#: src/ui/session/content/chat_history.rs:2430
 msgid "Show"
 msgstr ""
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2559
+#: src/ui/session/content/chat_history.rs:2555
 msgid "Pinned Message #{n}"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2561
+#: src/ui/session/content/chat_history.rs:2557
 #: src/ui/session/content/chat_history.ui:142
 msgid "Pinned Message"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2619
+#: src/ui/session/content/chat_history.rs:2615
 msgid "{n} Pinned Messages"
 msgstr ""
 
