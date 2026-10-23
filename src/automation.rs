@@ -86,6 +86,9 @@ impl Application {
         self.add_auto_action("auto-scroll-latest", None, |app, _| {
             app.auto_scroll_latest();
         });
+        self.add_auto_action("auto-chat-back", None, |app, _| {
+            app.auto_chat_back();
+        });
         self.add_auto_action("auto-list-chats", None, |app, _| app.auto_list_chats());
         self.add_auto_action(
             "auto-list-messages",
@@ -468,6 +471,17 @@ impl Application {
             return;
         };
         session.scroll_content_to_latest();
+    }
+
+    /// Presses the chat header's back arrow (same handler as the button) to
+    /// return to the chat this one was opened from.
+    fn auto_chat_back(&self) {
+        let window = self.main_window();
+        let Some(history) = utils::descendant::<_, ui::ChatHistory>(&window) else {
+            log::warn!("auto-chat-back: no chat history widget");
+            return;
+        };
+        history.go_back();
     }
 
     /// Opens a chat's info window, exactly as clicking an @mention link does

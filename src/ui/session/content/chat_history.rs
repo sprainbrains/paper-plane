@@ -775,11 +775,7 @@ impl ChatHistory {
         // The back arrow only exists for chats opened from within another chat:
         // the switch armed at request time claims the pending return when it
         // actually lands; any other switch (sidebar, search, …) clears it.
-        let pending = imp.pending_return.take();
-        let return_to = match pending {
-            Some((from, to)) if chat.is_some_and(|chat| chat.id() == to) => Some(from),
-            _ => None,
-        };
+        let return_to = claim_return(imp.pending_return.take(), chat.map(|chat| chat.id()));
         imp.return_chat.set(return_to);
         imp.back_button.set_visible(return_to.is_some());
         imp.generation.set(imp.generation.get().wrapping_add(1));
@@ -2817,6 +2813,17 @@ impl ChatHistory {
     }
 }
 
+/// Decides the header back-arrow state for a completed chat switch. Only the
+/// switch that was armed for this exact target (`pending = Some((from, to))`
+/// landing on `to`) claims `from` as the return destination; every other
+/// switch — sidebar, search, or a stale arming — leaves no arrow.
+fn claim_return(pending: Option<(i64, i64)>, opened_chat_id: Option<i64>) -> Option<i64> {
+    match pending {
+        Some((from, to)) if opened_chat_id == Some(to) => Some(from),
+        _ => None,
+    }
+}
+
 fn perform_chat_action<F, Fut>(chat: &model::Chat, op: F)
 where
     F: Fn(i64, i32) -> Fut + 'static,
@@ -2831,4 +2838,27 @@ where
             }
         }
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::claim_return;
+
+    #[test]
+    fn armed_switch_to_target_claims_return() {
+        assert_eq!(claim_return(Some((10, 20)), Some(20)), Some(10));
+    }
+
+    #[test]
+    fn other_switches_drop_the_armed_return() {
+        // Sidebar navigation to an unrelated chat while a jump is pending.
+        assert_eq!(claim_return(Some((10, 20)), Some(30)), None);
+        // Switching to no chat at all.
+        assert_eq!(claim_return(Some((10, 20)), None), None);
+    }
+
+    #[test]
+    fn plain_switch_has_no_return() {
+        assert_eq!(claim_return(None, Some(20)), None);
+    }
 }
