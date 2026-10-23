@@ -239,6 +239,18 @@ impl Application {
             app.auto_composer_send();
         });
         self.add_auto_action(
+            "auto-delete-message",
+            Some(glib::VariantTy::new("(xx)").unwrap()),
+            |app, p| {
+                let Some((chat_id, message_id)) = p.and_then(glib::Variant::get::<(i64, i64)>)
+                else {
+                    log::warn!("auto-delete-message: missing or invalid parameters");
+                    return;
+                };
+                app.auto_delete_message(chat_id, message_id);
+            },
+        );
+        self.add_auto_action(
             "auto-send-album",
             Some(glib::VariantTy::new("(xas)").unwrap()),
             |app, p| {
@@ -513,6 +525,23 @@ impl Application {
             return;
         };
         self.main_window().select_chat(client_id, chat_id);
+    }
+
+    /// Deletes one message through TDLib, driving the same
+    /// updateDeleteMessages -> model.remove path the context menu uses (an
+    /// album member must collapse its album item without panicking).
+    fn auto_delete_message(&self, chat_id: ChatId, message_id: i64) {
+        let Some(client_id) = self.active_client_id() else {
+            log::warn!("auto-delete-message: no active client");
+            return;
+        };
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::delete_messages(chat_id, vec![message_id], false, client_id).await
+            {
+                log::warn!("auto-delete-message failed: {e:?}");
+            }
+        });
     }
 
     /// Opens the send-media window with the given files and presses Send, so

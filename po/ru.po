@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 19:48+0300\n"
+"POT-Creation-Date: 2026-10-23 20:09+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -1156,7 +1156,7 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1783 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1796 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr "_Отменить"
 
@@ -1515,7 +1515,7 @@ msgid "This will permanently delete the chat for you."
 msgstr "Это безвозвратно удалит чат для вас."
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1784
+#: src/ui/session/content/chat_history.rs:1797
 msgid "_Delete"
 msgstr "_Удалить"
 
@@ -1549,37 +1549,37 @@ msgstr "Покинуть чат?"
 msgid "Do you want to leave this chat?"
 msgstr "Вы точно хотите покинуть этот чат?"
 
-#: src/ui/session/content/chat_history.rs:1662
+#: src/ui/session/content/chat_history.rs:1675
 msgid "{n} selected"
 msgstr "Выбрано: {n}"
 
-#: src/ui/session/content/chat_history.rs:1781
+#: src/ui/session/content/chat_history.rs:1794
 msgid "Delete Messages"
 msgstr "Удалить сообщения"
 
-#: src/ui/session/content/chat_history.rs:1782
+#: src/ui/session/content/chat_history.rs:1795
 msgid "Delete the selected messages?"
 msgstr "Удалить выбранные сообщения?"
 
-#: src/ui/session/content/chat_history.rs:2414
+#: src/ui/session/content/chat_history.rs:2427
 msgid "Pinned panel was hidden"
 msgstr "Панель закреплённых сообщений скрыта"
 
-#: src/ui/session/content/chat_history.rs:2415
+#: src/ui/session/content/chat_history.rs:2428
 msgid "Show"
 msgstr "Показать"
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2540
+#: src/ui/session/content/chat_history.rs:2553
 msgid "Pinned Message #{n}"
 msgstr "Закреплённое сообщение №{n}"
 
-#: src/ui/session/content/chat_history.rs:2542
+#: src/ui/session/content/chat_history.rs:2555
 #: src/ui/session/content/chat_history.ui:142
 msgid "Pinned Message"
 msgstr "Закреплённое сообщение"
 
-#: src/ui/session/content/chat_history.rs:2600
+#: src/ui/session/content/chat_history.rs:2613
 msgid "{n} Pinned Messages"
 msgstr "Закреплённых сообщений: {n}"
 

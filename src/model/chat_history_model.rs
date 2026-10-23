@@ -584,29 +584,26 @@ impl ChatHistoryModel {
         // borrow checker does not panic when the change notification borrows the list again.
         let (removed, added) = {
             let mut list = imp.list.borrow_mut();
-            let members: Vec<model::Message> = match list[index].type_() {
-                model::ChatHistoryItemType::Album(members) => members.clone(),
-                _ => {
+            if let Some(members) = list[index].album_members().map(<[model::Message]>::to_vec) {
+                let remaining: Vec<model::Message> = members
+                    .into_iter()
+                    .filter(|member| member.id() != message.id())
+                    .collect();
+                if remaining.is_empty() {
                     list.remove(index);
-                    return self.emit_items_changed_with_dividers(index as u32, 1, 0);
+                    (1, 0)
+                } else if remaining.len() == 1 {
+                    // A one-member album is just a message again.
+                    list[index] =
+                        model::ChatHistoryItem::for_message(remaining.into_iter().next().unwrap());
+                    (1, 1)
+                } else {
+                    list[index] = model::ChatHistoryItem::for_album(remaining);
+                    (1, 1)
                 }
-            };
-            let remaining: Vec<model::Message> = members
-                .into_iter()
-                .filter(|member| member.id() != message.id())
-                .collect();
-
-            if remaining.is_empty() {
+            } else {
                 list.remove(index);
                 (1, 0)
-            } else {
-                // A one-member album is just a message again.
-                list[index] = if remaining.len() == 1 {
-                    model::ChatHistoryItem::for_message(remaining.into_iter().next().unwrap())
-                } else {
-                    model::ChatHistoryItem::for_album(remaining)
-                };
-                (1, 1)
             }
         };
 
