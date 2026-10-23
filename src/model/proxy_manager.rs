@@ -18,10 +18,14 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
 use crate::model;
-use crate::model::proxies::{
-    MergeOp, ProxyEntry, ProxyItem, ProxyStatus, entry_from_added, next_proxy_id, plan_merge,
-    should_rotate,
-};
+use crate::model::proxies::MergeOp;
+use crate::model::proxies::ProxyEntry;
+use crate::model::proxies::ProxyItem;
+use crate::model::proxies::ProxyStatus;
+use crate::model::proxies::entry_from_added;
+use crate::model::proxies::next_proxy_id;
+use crate::model::proxies::plan_merge;
+use crate::model::proxies::should_rotate;
 use crate::utils;
 
 mod imp {
