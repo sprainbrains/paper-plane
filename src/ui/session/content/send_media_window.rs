@@ -5,6 +5,7 @@ use adw::subclass::prelude::*;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
+use gtk::gio;
 use gtk::glib;
 use gtk::prelude::*;
 
@@ -190,48 +191,67 @@ impl SendMediaWindow {
             return;
         };
 
+        // Decoding and sending run in the background now; lock the buttons so
+        // the same album cannot be fired off twice meanwhile.
+        self.action_set_enabled("send-media-window.send-message", false);
+        self.action_set_enabled("send-media-window.send-as-file", false);
+
         let paths = imp.paths.borrow().clone();
         let caption = imp.caption_entry.as_markdown().await;
 
-        let mut contents: Vec<InputMessageContent> = Vec::with_capacity(paths.len());
-        for (index, path) in paths.iter().enumerate() {
-            let file = InputFile::Local(InputFileLocal { path: path.clone() });
-            // Fall back to sending as a document when the file couldn't be
-            // decoded as an image (`paintable()` is `None`), even if the user
-            // chose "send as photo".
-            let paintable = (!send_as_file)
-                .then(|| utils::decode_image_from_path(path).ok())
-                .flatten();
+        // Decode every file off the main thread: a phone-sized photo takes a
+        // noticeable moment, and decoding them inline froze the whole window.
+        let built = gio::spawn_blocking(move || {
+            let mut contents: Vec<InputMessageContent> = Vec::with_capacity(paths.len());
+            for (index, path) in paths.iter().enumerate() {
+                let file = InputFile::Local(InputFileLocal { path: path.clone() });
+                // Fall back to sending as a document when the file couldn't be
+                // decoded as an image, even if the user chose "send as photo".
+                let paintable = (!send_as_file)
+                    .then(|| utils::decode_image_from_path(path).ok())
+                    .flatten();
 
-            // The caption belongs to the album as a whole, so it rides on the
-            // first member only (the album's primary).
-            let caption = (index == 0).then(|| caption.clone()).flatten();
+                // The caption belongs to the album as a whole, so it rides on
+                // the first member only (the album's primary).
+                let caption = (index == 0).then(|| caption.clone()).flatten();
 
-            contents.push(match paintable {
-                Some(paintable) => InputMessageContent::InputMessagePhoto(InputMessagePhoto {
-                    photo: tdlib::types::InputPhoto {
-                        photo: file,
-                        thumbnail: None,
-                        video: None,
-                        added_sticker_file_ids: vec![],
-                        width: paintable.intrinsic_width(),
-                        height: paintable.intrinsic_height(),
-                    },
-                    caption,
-                    show_caption_above_media: false,
-                    self_destruct_type: None,
-                    has_spoiler: false,
-                }),
-                None => InputMessageContent::InputMessageDocument(InputMessageDocument {
-                    document: tdlib::types::InputDocument {
-                        document: file,
-                        thumbnail: None,
-                        disable_content_type_detection: true,
-                    },
-                    caption,
-                }),
-            });
-        }
+                contents.push(match paintable {
+                    Some(paintable) => InputMessageContent::InputMessagePhoto(InputMessagePhoto {
+                        photo: tdlib::types::InputPhoto {
+                            photo: file,
+                            thumbnail: None,
+                            video: None,
+                            added_sticker_file_ids: vec![],
+                            width: paintable.intrinsic_width(),
+                            height: paintable.intrinsic_height(),
+                        },
+                        caption,
+                        show_caption_above_media: false,
+                        self_destruct_type: None,
+                        has_spoiler: false,
+                    }),
+                    None => InputMessageContent::InputMessageDocument(InputMessageDocument {
+                        document: tdlib::types::InputDocument {
+                            document: file,
+                            thumbnail: None,
+                            disable_content_type_detection: true,
+                        },
+                        caption,
+                    }),
+                });
+            }
+            contents
+        })
+        .await;
+
+        let contents = match built {
+            Ok(contents) => contents,
+            Err(e) => {
+                log::warn!("Media decode task failed: {e:?}");
+                self.restore_send_actions();
+                return;
+            }
+        };
 
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
@@ -247,14 +267,16 @@ impl SendMediaWindow {
         };
 
         // Several files go out as one album so every client groups them into a
-        // single bubble; a lone file keeps the plain send path.
+        // single bubble; a lone file keeps the plain send path. Upload progress
+        // belongs to the chat bubble, so the window closes as soon as TDLib has
+        // accepted the message.
         let result = if contents.len() == 1 {
             tdlib::functions::send_message(
                 chat_id,
                 None,
                 reply_to,
                 None,
-                contents.remove(0),
+                contents.into_iter().next().unwrap(),
                 client_id,
             )
             .await
@@ -267,13 +289,21 @@ impl SendMediaWindow {
 
         match result {
             Ok(()) => self.close(),
-            Err(e) => imp.toast_overlay.add_toast(
-                adw::Toast::builder()
-                    .title(e.message)
-                    .timeout(3)
-                    .priority(adw::ToastPriority::High)
-                    .build(),
-            ),
+            Err(e) => {
+                imp.toast_overlay.add_toast(
+                    adw::Toast::builder()
+                        .title(e.message)
+                        .timeout(3)
+                        .priority(adw::ToastPriority::High)
+                        .build(),
+                );
+                self.restore_send_actions();
+            }
         }
+    }
+
+    fn restore_send_actions(&self) {
+        self.action_set_enabled("send-media-window.send-message", true);
+        self.action_set_enabled("send-media-window.send-as-file", true);
     }
 }
