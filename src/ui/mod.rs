@@ -24,6 +24,7 @@ pub(crate) use self::components::IconMapMarker;
 pub(crate) use self::components::Map;
 pub(crate) use self::components::MapMarker;
 pub(crate) use self::components::MapWindow;
+pub(crate) use self::components::MentionPopup;
 pub(crate) use self::components::MessageEntry;
 pub(crate) use self::components::PhoneNumberInput;
 pub(crate) use self::components::Snow;

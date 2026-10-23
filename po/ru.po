@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 16:18+0300\n"
+"POT-Creation-Date: 2026-10-23 18:43+0300\n"
 "PO-Revision-Date: 2023-09-28 16:44+0000\n"
 "Last-Translator: Aleksandr Melman <alexmelman88@gmail.com>\n"
 "Language-Team: Russian <https://hosted.weblate.org/projects/paper-plane/main/"
@@ -1349,7 +1349,7 @@ msgstr "_Да"
 msgid "Terms of Service"
 msgstr "Условия предоставления услуг"
 
-#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:205
+#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:206
 #: src/ui/proxy_window.blp:49
 msgid "Add Proxy"
 msgstr "Добавить прокси"
@@ -1401,23 +1401,23 @@ msgstr "Название прокси"
 msgid "Check Connection"
 msgstr "Проверить подключение"
 
-#: src/ui/proxy_editor.rs:228
+#: src/ui/proxy_editor.rs:234
 msgid "Edit Proxy"
 msgstr "Изменить прокси"
 
-#: src/ui/proxy_editor.rs:325
+#: src/ui/proxy_editor.rs:332
 msgid "Checking…"
 msgstr "Проверка…"
 
-#: src/ui/proxy_editor.rs:348 src/ui/proxy_row.rs:172
+#: src/ui/proxy_editor.rs:355 src/ui/proxy_row.rs:172
 msgid "Available ({ping} ms)"
 msgstr "Доступен ({ping} мс)"
 
-#: src/ui/proxy_editor.rs:354 src/ui/proxy_row.rs:180
+#: src/ui/proxy_editor.rs:361 src/ui/proxy_row.rs:180
 msgid "Unavailable"
 msgstr "Недоступен"
 
-#: src/ui/proxy_editor.rs:392
+#: src/ui/proxy_editor.rs:399
 msgid "Could not save the proxy"
 msgstr "Не удалось сохранить прокси"
 

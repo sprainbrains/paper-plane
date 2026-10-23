@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 16:18+0300\n"
+"POT-Creation-Date: 2026-10-23 18:43+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1258,7 +1258,7 @@ msgstr ""
 msgid "Terms of Service"
 msgstr ""
 
-#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:205
+#: src/ui/proxy_editor.blp:14 src/ui/proxy_editor.rs:206
 #: src/ui/proxy_window.blp:49
 msgid "Add Proxy"
 msgstr ""
@@ -1310,23 +1310,23 @@ msgstr ""
 msgid "Check Connection"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:228
+#: src/ui/proxy_editor.rs:234
 msgid "Edit Proxy"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:325
+#: src/ui/proxy_editor.rs:332
 msgid "Checking…"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:348 src/ui/proxy_row.rs:172
+#: src/ui/proxy_editor.rs:355 src/ui/proxy_row.rs:172
 msgid "Available ({ping} ms)"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:354 src/ui/proxy_row.rs:180
+#: src/ui/proxy_editor.rs:361 src/ui/proxy_row.rs:180
 msgid "Unavailable"
 msgstr ""
 
-#: src/ui/proxy_editor.rs:392
+#: src/ui/proxy_editor.rs:399
 msgid "Could not save the proxy"
 msgstr ""
 
