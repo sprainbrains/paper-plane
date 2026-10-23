@@ -1025,6 +1025,14 @@ contentpicker.content-picker.reaction-mode separator {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 3px 9px 1px rgba(0, 0, 0, 0.14);
 }
 
+/* The scrolled viewport paints @view_bg_color by default, a darker rectangle
+   inside the card; flatten it so the popup is one uniform surface. */
+.mention-popup scrolledwindow,
+.mention-popup scrolledwindow > viewport,
+.mention-popup list {
+  background: none;
+}
+
 .mention-popup list > row {
   border-radius: 8px;
 }
