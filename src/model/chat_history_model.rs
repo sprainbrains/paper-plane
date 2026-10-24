@@ -467,8 +467,7 @@ impl ChatHistoryModel {
             // it streams an older post from its database), so the album they
             // belong to may sit below the window's newest items. Join by
             // album identity wherever it lives, not only at the front.
-            loop {
-                let edge = items.len() - 1;
+            while let Some(edge) = items.len().checked_sub(1) {
                 let Some(key) = album_key(&items[edge]) else {
                     break;
                 };
