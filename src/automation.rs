@@ -95,6 +95,9 @@ impl Application {
         self.add_auto_action("auto-scroll-latest", None, |app, _| {
             app.auto_scroll_latest();
         });
+        self.add_auto_action("auto-load-older", None, |app, _| {
+            app.auto_load_older();
+        });
         self.add_auto_action("auto-chat-back", None, |app, _| {
             app.auto_chat_back();
         });
@@ -673,6 +676,25 @@ impl Application {
             return;
         };
         session.scroll_content_to_latest();
+    }
+
+    /// Loads one more page of older messages into the open chat's model,
+    /// exercising the append/prepend album-boundary paths on demand.
+    fn auto_load_older(&self) {
+        let window = self.main_window();
+        let Some(history) = utils::descendant::<_, ui::ChatHistory>(&window) else {
+            log::warn!("auto-load-older: no chat history widget");
+            return;
+        };
+        let Some(model) = history.history_model() else {
+            log::warn!("auto-load-older: no model yet");
+            return;
+        };
+        utils::spawn(async move {
+            if let Err(e) = model.load_older_messages(30).await {
+                log::warn!("auto-load-older failed: {e}");
+            }
+        });
     }
 
     /// Presses the chat header's back arrow (same handler as the button) to
