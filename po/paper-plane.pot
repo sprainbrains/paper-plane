@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-24 02:19+0300\n"
+"POT-Creation-Date: 2026-10-24 14:32+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1077,7 +1077,8 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1796 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1813
+#: src/ui/session/content/message_row/mod.rs:512 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr ""
 
@@ -1245,12 +1246,12 @@ msgid "Do you accept the Terms of Service?"
 msgstr ""
 
 #: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:634
-#: src/ui/session/content/message_row/mod.rs:423
+#: src/ui/session/content/message_row/mod.rs:435
 msgid "_No"
 msgstr ""
 
 #: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:635
-#: src/ui/session/content/message_row/mod.rs:424
+#: src/ui/session/content/message_row/mod.rs:436
 msgid "_Yes"
 msgstr ""
 
@@ -1423,7 +1424,7 @@ msgid "This will permanently delete the chat for you."
 msgstr ""
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1797
+#: src/ui/session/content/chat_history.rs:1814
 msgid "_Delete"
 msgstr ""
 
@@ -1457,37 +1458,37 @@ msgstr ""
 msgid "Do you want to leave this chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1675
+#: src/ui/session/content/chat_history.rs:1692
 msgid "{n} selected"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1794
+#: src/ui/session/content/chat_history.rs:1811
 msgid "Delete Messages"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1795
+#: src/ui/session/content/chat_history.rs:1812
 msgid "Delete the selected messages?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2427
+#: src/ui/session/content/chat_history.rs:2444
 msgid "Pinned panel was hidden"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2428
+#: src/ui/session/content/chat_history.rs:2445
 msgid "Show"
 msgstr ""
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2553
+#: src/ui/session/content/chat_history.rs:2570
 msgid "Pinned Message #{n}"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2555
+#: src/ui/session/content/chat_history.rs:2572
 #: src/ui/session/content/chat_history.ui:142
 msgid "Pinned Message"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2613
+#: src/ui/session/content/chat_history.rs:2630
 msgid "{n} Pinned Messages"
 msgstr ""
 
@@ -1511,25 +1512,25 @@ msgstr ""
 #: src/ui/session/content/chat_history.ui:213
 #: src/ui/session/content/chat_history.ui:217
 #: src/ui/session/content/message_menu.rs:33
-#: src/ui/session/content/message_row/mod.rs:630
+#: src/ui/session/content/message_row/mod.rs:698
 msgid "Forward"
 msgstr ""
 
 #: src/ui/session/content/chat_history.ui:230
 #: src/ui/session/content/chat_history.ui:234
 #: src/ui/session/content/message_menu.rs:45
-#: src/ui/session/content/message_row/mod.rs:634
+#: src/ui/session/content/message_row/mod.rs:702
 msgid "Copy Text"
 msgstr ""
 
 #: src/ui/session/content/chat_history.ui:247
 #: src/ui/session/content/chat_history.ui:251
-#: src/ui/session/content/message_row/mod.rs:638
+#: src/ui/session/content/message_row/mod.rs:706
 msgid "Delete"
 msgstr ""
 
 #: src/ui/session/content/chat_history.ui:276
-#: src/ui/session/content/message_row/mod.rs:642
+#: src/ui/session/content/message_row/mod.rs:710
 msgid "Clear Selection"
 msgstr ""
 
@@ -1638,14 +1639,20 @@ msgid "Show Sticker Pack"
 msgstr ""
 
 #: src/ui/session/content/message_menu.rs:87
-msgid "Delete for Everyone"
+msgid "Remove from Album"
 msgstr ""
 
 #: src/ui/session/content/message_menu.rs:93
+#: src/ui/session/content/message_row/mod.rs:517
+msgid "Delete for Everyone"
+msgstr ""
+
+#: src/ui/session/content/message_menu.rs:99
+#: src/ui/session/content/message_row/mod.rs:513
 msgid "Delete for Me"
 msgstr ""
 
-#: src/ui/session/content/message_menu.rs:102
+#: src/ui/session/content/message_menu.rs:108
 msgid "Copy Debug Entry"
 msgstr ""
 
@@ -1682,19 +1689,24 @@ msgstr ""
 msgid "updated {hours} hours and {minutes} minutes ago"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:415
+#: src/ui/session/content/message_row/mod.rs:427
 msgid "Do you want to delete this message for <b>everyone</b>?"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:417
+#: src/ui/session/content/message_row/mod.rs:429
 msgid "Do you want to delete this message?"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:421
+#: src/ui/session/content/message_row/mod.rs:433
+#: src/ui/session/content/message_row/mod.rs:509
 msgid "Confirm Message Deletion"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:1077
+#: src/ui/session/content/message_row/mod.rs:510
+msgid "Do you want to delete this item from the album?"
+msgstr ""
+
+#: src/ui/session/content/message_row/mod.rs:1145
 msgid "Send Message"
 msgstr ""
 

@@ -79,6 +79,12 @@ mod imp {
             let Some(row) = utils::ancestor::<_, ui::MessageRow>(obj) else {
                 return;
             };
+            // Record which album member (if any) the click landed on so the menu can
+            // offer per-item deletion. Non-album rows and album padding clear it.
+            let member = obj
+                .downcast_ref::<ui::MessageAlbum>()
+                .and_then(|album| album.member_at(x as f64, y as f64));
+            row.set_menu_member(member);
             menu.rebind(&row);
 
             // Point at the whole bubble rather than the click point so GTK places the menu
