@@ -1,0 +1,53 @@
+using Gtk 4.0;
+
+// A chat title with inline badges, shared by the sidebar chat row and the
+// open-chat header. Layout: [source][title][verified][scam][mute][spacer].
+// The trailing spacer keeps the badges hugging the (possibly elided) title and
+// left-aligns the whole group, so a long title truncates before a badge is
+// pushed out of view — the mobile pattern.
+template $PaplChatTitle : Box {
+  spacing: 4;
+  valign: center;
+
+  Image source_icon {
+    visible: false;
+    valign: center;
+    icon-name: "chat-source-symbolic";
+
+    styles ["chat-badge", "chat-source"]
+  }
+
+  Label title_label {
+    ellipsize: end;
+    xalign: 0;
+    valign: center;
+  }
+
+  Image verified_icon {
+    visible: false;
+    valign: center;
+    icon-name: "chat-verified-symbolic";
+
+    styles ["chat-badge", "chat-verified"]
+  }
+
+  Image scam_icon {
+    visible: false;
+    valign: center;
+    icon-name: "chat-scam-symbolic";
+
+    styles ["chat-badge", "chat-scam"]
+  }
+
+  Image mute_icon {
+    visible: false;
+    valign: center;
+    icon-name: "notifications-disabled-symbolic";
+
+    styles ["chat-badge", "chat-muted", "dim-label"]
+  }
+
+  Box {
+    hexpand: true;
+  }
+}

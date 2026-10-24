@@ -176,6 +176,18 @@ pub(crate) struct BoxedChatNotificationSettings(pub(crate) ChatNotificationSetti
 #[boxed_type(name = "BoxedChatPermissions")]
 pub(crate) struct BoxedChatPermissions(pub(crate) ChatPermissions);
 
+/// Telegram-issued verification state of a user or supergroup. `nullable` so the
+/// property is `None` when TDLib reports no verification information.
+#[derive(Clone, Debug, Default, PartialEq, glib::Boxed)]
+#[boxed_type(name = "BoxedVerificationStatus", nullable)]
+pub(crate) struct BoxedVerificationStatus(pub(crate) tdlib::types::VerificationStatus);
+
+/// The external source a chat was added from (e.g. a public service announcement).
+/// `nullable` so the property is `None` for ordinary chats.
+#[derive(Clone, Debug, PartialEq, glib::Boxed)]
+#[boxed_type(name = "BoxedChatSource", nullable)]
+pub(crate) struct BoxedChatSource(pub(crate) tdlib::enums::ChatSource);
+
 #[derive(Clone, Debug, PartialEq, glib::Boxed)]
 #[boxed_type(name = "BoxedDraftMessage", nullable)]
 pub(crate) struct BoxedDraftMessage(pub(crate) DraftMessage);

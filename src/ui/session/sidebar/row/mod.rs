@@ -9,7 +9,6 @@ use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
-use crate::expressions;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -27,7 +26,7 @@ mod imp {
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) session_signal_group: OnceCell<glib::SignalGroup>,
         #[template_child]
-        pub(super) title_label: TemplateChild<gtk::Inscription>,
+        pub(super) title: TemplateChild<ui::ChatTitle>,
         #[template_child]
         pub(super) message_status_icon: TemplateChild<gtk::Image>,
         #[template_child]
@@ -330,12 +329,9 @@ impl Row {
         let item_expression = Self::this_expression("item");
         let chat_expression = item_expression.chain_property::<model::ChatListItem>("chat");
 
-        // Chat title
-        expressions::chat_display_name(&chat_expression).bind(
-            &*imp.title_label,
-            "text",
-            Some(self),
-        );
+        // Chat title (name + verification/source/mute badges), rendered by the
+        // shared title widget.
+        chat_expression.bind(&*imp.title, "chat", Some(self));
 
         // Chat unread count
         chat_expression

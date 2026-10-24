@@ -108,6 +108,10 @@ mod imp {
         pub(super) draft_message: RefCell<Option<model::BoxedDraftMessage>>,
         #[property(get)]
         pub(super) notification_settings: RefCell<model::BoxedChatNotificationSettings>,
+        /// The external source the chat was added from, if any (e.g. a public
+        /// service announcement). Surfaced as a leading badge in chat titles.
+        #[property(get)]
+        pub(super) source: RefCell<Option<model::BoxedChatSource>>,
         #[property(get = Self::actions)]
         pub(super) actions: OnceCell<model::ChatActionList>,
         #[property(get)]
@@ -422,6 +426,46 @@ impl Chat {
         self.notify_notification_settings();
     }
 
+    /// Records the external source a chat was added from (from a chat position).
+    /// Only a `Some` source updates the value; ordinary position updates leave the
+    /// existing badge in place.
+    pub(crate) fn set_source(&self, source: Option<tdlib::enums::ChatSource>) {
+        let boxed = source.map(model::BoxedChatSource);
+        if self.imp().source.borrow().eq(&boxed) {
+            return;
+        }
+        self.imp().source.replace(boxed);
+        self.notify_source();
+    }
+
+    /// The Telegram-issued verification state of the chat's participant or group,
+    /// if any. Resolved through the chat type (private user or supergroup).
+    pub(crate) fn verification_status(&self) -> Option<tdlib::types::VerificationStatus> {
+        match self.chat_type() {
+            model::ChatType::Private(user) => user.verification_status().map(|v| v.0),
+            model::ChatType::Supergroup(supergroup) => {
+                supergroup.verification_status().map(|v| v.0)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether the chat's notifications are effectively muted, resolving the
+    /// chat's own setting against the session's scope default.
+    pub(crate) fn is_muted(&self) -> bool {
+        let session = self.session_();
+        let scope = match self.chat_type() {
+            model::ChatType::Private(_) | model::ChatType::Secret(_) => {
+                session.private_chats_notification_settings()
+            }
+            model::ChatType::Supergroup(ref supergroup) if supergroup.is_channel() => {
+                session.channel_chats_notification_settings()
+            }
+            _ => session.group_chats_notification_settings(),
+        };
+        resolve_muted(&self.notification_settings().0, &scope.0)
+    }
+
     pub(crate) fn is_own_chat(&self) -> bool {
         self.chat_type().user() == Some(self.session_().me_())
     }
@@ -559,5 +603,57 @@ impl Chat {
             self.session_().client_().id(),
         )
         .await
+    }
+}
+
+/// Whether a chat is muted, given its own notification settings and the session's
+/// scope default for its chat type. When the chat defers to the default the scope
+/// decides; otherwise the chat's own `mute_for` does.
+fn resolve_muted(
+    settings: &tdlib::types::ChatNotificationSettings,
+    scope: &tdlib::types::ScopeNotificationSettings,
+) -> bool {
+    if settings.use_default_mute_for {
+        scope.mute_for > 0 || settings.mute_for > 0
+    } else {
+        settings.mute_for > 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tdlib::types::ChatNotificationSettings;
+    use tdlib::types::ScopeNotificationSettings;
+
+    use super::resolve_muted;
+
+    fn chat_settings(use_default: bool, mute_for: i32) -> ChatNotificationSettings {
+        ChatNotificationSettings {
+            use_default_mute_for: use_default,
+            mute_for,
+            ..Default::default()
+        }
+    }
+
+    fn scope_settings(mute_for: i32) -> ScopeNotificationSettings {
+        ScopeNotificationSettings {
+            mute_for,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn defers_to_scope_when_use_default() {
+        assert!(resolve_muted(&chat_settings(true, 0), &scope_settings(10)));
+        assert!(!resolve_muted(&chat_settings(true, 0), &scope_settings(0)));
+    }
+
+    #[test]
+    fn own_setting_wins_when_not_default() {
+        assert!(resolve_muted(&chat_settings(false, 10), &scope_settings(0)));
+        assert!(!resolve_muted(
+            &chat_settings(false, 0),
+            &scope_settings(10)
+        ));
     }
 }
