@@ -82,6 +82,12 @@ const PRIMARY: &[MenuEntry] = &[
         destructive: false,
     },
     MenuEntry {
+        action: "message-row.delete-album-member",
+        icon: "user-trash-symbolic",
+        label: gettext_noop("Remove from Album"),
+        destructive: true,
+    },
+    MenuEntry {
         action: "message-row.revoke-delete",
         icon: "user-trash-symbolic",
         label: gettext_noop("Delete for Everyone"),

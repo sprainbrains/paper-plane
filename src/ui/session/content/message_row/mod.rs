@@ -80,6 +80,11 @@ mod imp {
         /// The trailing selection checkbox, shown (empty or checked) for every message
         /// while in multi-select mode.
         pub(super) selection_check: RefCell<Option<gtk::CheckButton>>,
+        /// The specific album member the currently-open context menu was invoked on,
+        /// if any. Set by [`MessageBase`](super::MessageBase) before the menu rebinds and
+        /// cleared for non-album rows, so the per-item delete only appears when a real
+        /// cell was clicked.
+        pub(super) menu_member: RefCell<Option<model::Message>>,
     }
 
     #[glib::object_subclass]
@@ -128,6 +133,11 @@ mod imp {
             klass.install_action("message-row.delete", None, move |widget, _, _| {
                 widget.show_delete_dialog(false)
             });
+            klass.install_action(
+                "message-row.delete-album-member",
+                None,
+                move |widget, _, _| widget.show_delete_member_dialog(),
+            );
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -381,6 +391,8 @@ impl Row {
             "message-row.revoke-delete" => self
                 .primary_message()
                 .is_some_and(|m| m.can_be_deleted_for_all_users()),
+            // Per-item delete only when the menu was opened on a specific album cell.
+            "message-row.delete-album-member" => self.menu_member().is_some(),
             // Only location/venue message rows install `message-row.open`.
             "message-row.open" => matches!(
                 self.primary_message().map(|m| m.content().0),
@@ -470,6 +482,62 @@ impl Row {
     /// their primary (first, caption-carrying) member.
     fn primary_message(&self) -> Option<model::Message> {
         resolve_primary_message(&self.message())
+    }
+
+    /// The album member the currently-open context menu was invoked on, if any.
+    pub(crate) fn menu_member(&self) -> Option<model::Message> {
+        self.imp().menu_member.borrow().clone()
+    }
+
+    /// Records the album member under the right-click point and syncs the
+    /// per-item delete action's enabled state. Called before every menu rebind,
+    /// with `None` for non-album rows and clicks that miss every cell.
+    pub(crate) fn set_menu_member(&self, member: Option<model::Message>) {
+        let enabled = member.is_some();
+        *self.imp().menu_member.borrow_mut() = member;
+        self.action_set_enabled("message-row.delete-album-member", enabled);
+    }
+
+    /// Confirms and deletes only the album member the menu was opened on,
+    /// leaving the rest of the album (which the model re-groups on removal).
+    fn show_delete_member_dialog(&self) {
+        let Some(member) = self.menu_member() else {
+            return;
+        };
+
+        let dialog = adw::AlertDialog::builder()
+            .heading(gettext("Confirm Message Deletion"))
+            .body(gettext("Do you want to delete this item from the album?"))
+            .build();
+        dialog.add_response("cancel", &gettext("_Cancel"));
+        dialog.add_response("self", &gettext("Delete for Me"));
+        dialog.set_response_appearance("self", adw::ResponseAppearance::Destructive);
+        // "For everyone" only makes sense for our own messages.
+        if member.can_be_deleted_for_all_users() {
+            dialog.add_response("everyone", &gettext("Delete for Everyone"));
+            dialog.set_response_appearance("everyone", adw::ResponseAppearance::Destructive);
+        }
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+
+        dialog.choose(Some(self), gio::Cancellable::NONE, move |response| {
+            let revoke = response == "everyone";
+            if response != "self" && response != "everyone" {
+                return;
+            }
+            let chat = member.chat_();
+            let chat_id = chat.id();
+            let client_id = chat.session_().client_().id();
+            let message_id = member.id();
+            utils::spawn(async move {
+                if let Err(e) =
+                    tdlib::functions::delete_messages(chat_id, vec![message_id], revoke, client_id)
+                        .await
+                {
+                    log::warn!("Error deleting an album item (revoke = {revoke}): {e:?}");
+                }
+            });
+        });
     }
 
     /// Wires the per-message click gesture: once in selection mode, a primary click

@@ -81,6 +81,10 @@ mod imp {
         /// (see the virtualized-list rules in AGENTS.md).
         pub(super) demand: Cell<bool>,
         pub(super) cells: RefCell<Vec<CellEntry>>,
+        /// Top-level cell widgets (grid cells / document rows) paired with the
+        /// member they render, so a right-click can be mapped to the specific
+        /// album item under the cursor.
+        pub(super) member_cells: RefCell<Vec<(gtk::Widget, model::Message)>>,
         #[template_child]
         pub(super) message_bubble: TemplateChild<ui::MessageBubble>,
         #[template_child]
@@ -219,6 +223,7 @@ impl MessageAlbum {
         // Invalidate every in-flight load from the previous content.
         imp.generation.set(imp.generation.get() + 1);
         imp.cells.borrow_mut().clear();
+        imp.member_cells.borrow_mut().clear();
 
         while let Some(child) = imp.album_content.first_child() {
             imp.album_content.remove(&child);
@@ -285,6 +290,9 @@ impl MessageAlbum {
             let target_px = width * scale;
             let cell = self.build_cell(member, width, height, target_px);
             grid.attach(&cell.widget, col, row, w, h);
+            imp.member_cells
+                .borrow_mut()
+                .push((cell.widget.clone(), member.clone()));
             if let Some(entry) = cell.entry {
                 imp.cells.borrow_mut().push(entry.clone());
                 if imp.demand.get() {
@@ -310,6 +318,9 @@ impl MessageAlbum {
                 let row = ui::DocumentRow::new();
                 row.set_message(member);
                 imp.album_content.append(&row);
+                imp.member_cells
+                    .borrow_mut()
+                    .push((row.upcast(), member.clone()));
             } else {
                 // A media member inside a file album still gets a tappable
                 // preview row rather than a grid cell.
@@ -317,6 +328,9 @@ impl MessageAlbum {
                 let width = ALBUM_CELL_SIZE * 2 + ALBUM_CELL_SPACING;
                 let cell = self.build_cell(member, width, ALBUM_CELL_SIZE, width * scale);
                 imp.album_content.append(&cell.widget);
+                imp.member_cells
+                    .borrow_mut()
+                    .push((cell.widget.clone(), member.clone()));
                 if let Some(entry) = cell.entry {
                     imp.cells.borrow_mut().push(entry.clone());
                     if imp.demand.get() {
@@ -325,6 +339,25 @@ impl MessageAlbum {
                 }
             }
         }
+    }
+
+    /// The album member rendered under the point (in this widget's
+    /// coordinates), if the point lands on a cell. Used by the context menu to
+    /// offer per-item deletion: right-click a photo and only that photo is
+    /// targeted, matching tdesktop.
+    pub(crate) fn member_at(&self, x: f64, y: f64) -> Option<model::Message> {
+        let picked = self.pick(x, y, gtk::PickFlags::DEFAULT)?;
+        let cells = self.imp().member_cells.borrow();
+        let mut widget = Some(picked);
+        while let Some(current) = widget {
+            for (cell, message) in cells.iter() {
+                if current.as_ptr() == cell.as_ptr() {
+                    return Some(message.clone());
+                }
+            }
+            widget = current.parent();
+        }
+        None
     }
 
     /// One square cell: the minithumbnail as an instant placeholder, upgraded
