@@ -84,14 +84,24 @@ mod imp {
             // Point at the whole bubble rather than the click point so GTK places the menu
             // beside/above the message instead of on top of it. Fall back to the click point
             // if the bubble's bounds can't be resolved in this widget's coordinates.
+            //
+            // A media album is often taller than the popover itself. GTK can then find no
+            // side to open on (not enough room above or below the tall pointing rect) and
+            // silently fails to show the menu at all. So cap the pointing rect to a modest
+            // height and slide it to stay centred on the click: short messages keep the
+            // whole-bubble behaviour unchanged, tall albums get the menu right at the cursor.
+            const MAX_POINTING_HEIGHT: f32 = 200.0;
             let pointing = obj
                 .compute_bounds(obj)
                 .map(|bounds| {
+                    let height = bounds.height().min(MAX_POINTING_HEIGHT);
+                    let lowest_top = (bounds.y() + bounds.height() - height).max(bounds.y());
+                    let top = (y as f32 - height / 2.0).clamp(bounds.y(), lowest_top);
                     gdk::Rectangle::new(
                         bounds.x() as i32,
-                        bounds.y() as i32,
+                        top as i32,
                         bounds.width() as i32,
-                        bounds.height() as i32,
+                        height as i32,
                     )
                 })
                 .unwrap_or_else(|| gdk::Rectangle::new(x, y, 0, 0));
