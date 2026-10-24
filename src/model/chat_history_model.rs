@@ -461,6 +461,40 @@ impl ChatHistoryModel {
         let imp = self.imp();
         let mut items = group_messages(messages);
 
+        if front {
+            // Late album members: TDLib can deliver an album's messages with
+            // delay and interleaved with unrelated newer messages (e.g. while
+            // it streams an older post from its database), so the album they
+            // belong to may sit below the window's newest items. Join by
+            // album identity wherever it lives, not only at the front.
+            loop {
+                let edge = items.len() - 1;
+                let Some(key) = album_key(&items[edge]) else {
+                    break;
+                };
+                let position = {
+                    let list = imp.list.borrow();
+                    list.iter().position(|item| album_key(item) == Some(key))
+                };
+                let Some(position) = position else {
+                    break;
+                };
+                let batch_item = items.remove(edge);
+                {
+                    let mut list = imp.list.borrow_mut();
+                    let existing = list.remove(position).expect("position found moments ago");
+                    let merged = merge_album_items(batch_item, existing);
+                    list.insert(position, merged);
+                }
+                self.emit_items_changed_with_dividers(position as u32, 1, 1);
+            }
+        }
+
+        // Everything in the batch may have joined existing albums already.
+        if items.is_empty() {
+            return;
+        }
+
         let (position, removed, added) = {
             let mut list = imp.list.borrow_mut();
             let old_len = list.len();
@@ -468,29 +502,55 @@ impl ChatHistoryModel {
             // The batch item adjacent to the window may continue an album that
             // the boundary item started (or vice versa).
             let mut removed = 0;
-            let boundary = if front { list.front() } else { list.back() };
-            let batch_edge = if front { items.len() - 1 } else { 0 };
-            if boundary.is_some_and(|boundary| mergeable_albums(boundary, &items[batch_edge])) {
-                let batch_item = items.remove(batch_edge);
-                let boundary_item = if front {
-                    list.pop_front()
-                } else {
-                    list.pop_back()
-                };
-                let merged = match (front, boundary_item) {
-                    (true, Some(boundary_item)) => {
-                        // The batch is newer than the window's front item.
-                        merge_album_items(batch_item, boundary_item)
-                    }
-                    (false, Some(boundary_item)) => merge_album_items(boundary_item, batch_item),
-                    (_, None) => batch_item,
-                };
-                if front {
+            if front {
+                let batch_edge = items.len() - 1;
+                if list
+                    .front()
+                    .is_some_and(|boundary| mergeable_albums(boundary, &items[batch_edge]))
+                {
+                    let batch_item = items.remove(batch_edge);
+                    let boundary_item = list.pop_front().expect("front checked above");
+                    // The batch is newer than the window's front item.
+                    let merged = merge_album_items(batch_item, boundary_item);
                     items.push(merged);
-                } else {
-                    items.insert(0, merged);
+                    removed = 1;
                 }
-                removed = 1;
+            } else {
+                // Appending older messages. A trailing day divider left over
+                // from the previous page must not block the album merge: an
+                // album never spans midnight, so when the album continues
+                // across it the divider is redundant and goes with it.
+                let mut boundary_index = match list.len() {
+                    0 => None,
+                    len => Some(len - 1),
+                };
+                let mut skipped_divider = false;
+                if let Some(index) = boundary_index
+                    && index > 0
+                    && matches!(
+                        list[index].type_(),
+                        model::ChatHistoryItemType::DayDivider(_)
+                    )
+                {
+                    boundary_index = Some(index - 1);
+                    skipped_divider = true;
+                }
+                if let Some(index) = boundary_index
+                    && mergeable_albums(&list[index], &items[0])
+                {
+                    let batch_item = items.remove(0);
+                    let boundary_item = list.remove(index).expect("index checked above");
+                    if skipped_divider {
+                        // Removing the boundary shifted the divider into its
+                        // slot; it is redundant now that the same-day album
+                        // continues into the batch.
+                        list.remove(index);
+                    }
+                    // The window item is newer than the batch.
+                    let merged = merge_album_items(boundary_item, batch_item);
+                    items.insert(0, merged);
+                    removed = 1 + skipped_divider as usize;
+                }
             }
 
             if front {

@@ -1078,12 +1078,29 @@ impl ChatHistory {
         if let Some(model) = self.history_model() {
             let mut albums = 0;
             for index in 0..model.n_items() {
-                if let Some(item) = model.item(index).and_downcast::<model::ChatHistoryItem>()
-                    && let Some(members) = item.album_members()
-                {
-                    albums += 1;
-                    let ids: Vec<i64> = members.iter().map(|m| m.id()).collect();
-                    let _ = writeln!(out, "album #{albums} at {index}: members {ids:?}");
+                if let Some(item) = model.item(index).and_downcast::<model::ChatHistoryItem>() {
+                    if let Some(members) = item.album_members() {
+                        albums += 1;
+                        let ids: Vec<i64> = members.iter().map(|m| m.id()).collect();
+                        let album_id = members
+                            .first()
+                            .map(|m| m.media_album_id())
+                            .unwrap_or_default();
+                        let _ = writeln!(
+                            out,
+                            "album #{albums} at {index}: album_id {album_id}, members {ids:?}"
+                        );
+                    } else if let Some(message) = item.message()
+                        && message.media_album_id() != 0
+                    {
+                        // An album member that failed to join its album.
+                        let _ = writeln!(
+                            out,
+                            "orphan at {index}: id {} album_id {}",
+                            message.id(),
+                            message.media_album_id()
+                        );
+                    }
                 }
             }
             let _ = writeln!(out, "albums: {albums}");
