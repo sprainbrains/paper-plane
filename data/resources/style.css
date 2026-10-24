@@ -201,6 +201,29 @@ chatlist row .unread-count-muted {
   background-color: @light_5;
 }
 
+/* Chat-title badges (verification / external source / mute), shared by the
+   sidebar row and the open-chat header. Symbolic icons recolor to `color`. */
+.chat-badge {
+  -gtk-icon-size: 14px;
+  -gtk-icon-style: regular;
+}
+
+.chat-verified {
+  color: #3390ec;
+}
+
+.chat-source {
+  color: #3390ec;
+}
+
+.chat-scam {
+  color: #e53935;
+}
+
+.chat-muted {
+  -gtk-icon-size: 12px;
+}
+
 sidebarsearch listview.results-list > row {
   /* Keep in sync with button height */
   min-height: 34px;

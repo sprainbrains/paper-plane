@@ -374,6 +374,14 @@ impl ClientStateSession {
     ) {
         use tdlib::enums::ChatList::*;
 
+        // The external source (e.g. a public service announcement) rides on the
+        // position; surface it on the chat so both the sidebar and the header can
+        // badge it. Only a present source updates, so ordinary position updates for
+        // other lists don't clear an existing badge.
+        if position.source.is_some() {
+            chat.set_source(position.source.clone());
+        }
+
         match &position.list {
             Main => {
                 self.main_chat_list().update_chat_position(chat, position);

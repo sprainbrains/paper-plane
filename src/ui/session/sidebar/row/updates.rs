@@ -159,36 +159,15 @@ impl super::Row {
 
     pub(super) fn update_unread_count_style(&self) {
         if let Some(item) = self.item() {
-            let imp = self.imp();
             let chat = item.chat_();
-            let label = &imp.unread_count_label;
-
-            let notification_settings = chat.notification_settings();
-            let scope_notification_settings = match chat.chat_type() {
-                model::ChatType::Private(_) | model::ChatType::Secret(_) => {
-                    chat.session_().private_chats_notification_settings()
-                }
-                model::ChatType::Supergroup(supergroup) if supergroup.is_channel() => {
-                    chat.session_().channel_chats_notification_settings()
-                }
-                _ => chat.session_().group_chats_notification_settings(),
-            };
-
-            let css_class = if notification_settings.0.use_default_mute_for {
-                if scope_notification_settings.0.mute_for > 0
-                    || notification_settings.0.mute_for > 0
-                {
-                    "unread-count-muted"
-                } else {
-                    "unread-count-unmuted"
-                }
-            } else if notification_settings.0.mute_for > 0 {
+            let css_class = if chat.is_muted() {
                 "unread-count-muted"
             } else {
                 "unread-count-unmuted"
             };
-
-            label.set_css_classes(&["unread-count", css_class]);
+            self.imp()
+                .unread_count_label
+                .set_css_classes(&["unread-count", css_class]);
         }
     }
 

@@ -16,7 +16,6 @@ use gtk::gio;
 use gtk::glib;
 use gtk::graphene;
 
-use crate::expressions;
 use crate::model;
 use crate::strings;
 use crate::ui;
@@ -102,7 +101,7 @@ mod imp {
         #[template_child]
         pub(super) selection_count_label: TemplateChild<gtk::Label>,
         #[template_child]
-        pub(super) window_title: TemplateChild<adw::WindowTitle>,
+        pub(super) header_chat_title: TemplateChild<ui::ChatTitle>,
         #[template_child]
         pub(super) back_button: TemplateChild<gtk::Button>,
         #[template_child]
@@ -581,12 +580,9 @@ impl ChatHistory {
     fn setup_expressions(&self) {
         let chat_expression = Self::this_expression("chat");
 
-        // Chat title
-        expressions::chat_display_name(&chat_expression).bind(
-            &*self.imp().window_title,
-            "title",
-            Some(self),
-        );
+        // Chat title with verification / external-source / mute badges, rendered by
+        // the shared title widget installed in the header's title slot.
+        chat_expression.bind(&*self.imp().header_chat_title, "chat", Some(self));
 
         // Chat avatar in the header (also serves as identity when the sidebar is collapsed).
         chat_expression.bind(&*self.imp().header_avatar, "item", Some(self));

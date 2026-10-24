@@ -39,7 +39,9 @@
                     <property name="orientation">vertical</property>
                     <property name="valign">center</property>
                     <child>
-                      <object class="AdwWindowTitle" id="window_title"/>
+                      <object class="PaplChatTitle" id="header_chat_title">
+                        <property name="halign">center</property>
+                      </object>
                     </child>
                     <child>
                       <object class="GtkBox" id="header_typing_box">

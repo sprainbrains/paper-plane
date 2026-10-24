@@ -33,6 +33,8 @@ mod imp {
         pub(super) avatar: RefCell<Option<model::Avatar>>,
         #[property(get)]
         pub(super) status: RefCell<model::BoxedUserStatus>,
+        #[property(get)]
+        pub(super) verification_status: RefCell<Option<model::BoxedVerificationStatus>>,
     }
 
     #[glib::object_subclass]
@@ -82,6 +84,11 @@ impl User {
         imp.avatar
             .replace(td_user.profile_photo.map(model::Avatar::from));
         imp.status.replace(model::BoxedUserStatus(td_user.status));
+        imp.verification_status.replace(
+            td_user
+                .verification_status
+                .map(model::BoxedVerificationStatus),
+        );
 
         obj
     }
@@ -154,6 +161,14 @@ impl User {
         self.notify_status();
     }
 
+    fn set_verification_status(&self, status: Option<model::BoxedVerificationStatus>) {
+        if self.verification_status() == status {
+            return;
+        }
+        self.imp().verification_status.replace(status);
+        self.notify_verification_status();
+    }
+
     pub(crate) fn update(&self, td_user: tdlib::types::User) {
         self.set_type(model::BoxedUserType(td_user.r#type));
         self.set_first_name(td_user.first_name);
@@ -167,6 +182,11 @@ impl User {
         self.set_phone_number(td_user.phone_number);
         self.set_status(model::BoxedUserStatus(td_user.status));
         self.set_avatar(td_user.profile_photo.map(Into::into));
+        self.set_verification_status(
+            td_user
+                .verification_status
+                .map(model::BoxedVerificationStatus),
+        );
     }
 
     pub(crate) fn update_status(&self, status: tdlib::enums::UserStatus) {

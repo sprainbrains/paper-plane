@@ -25,6 +25,8 @@ mod imp {
         pub(super) member_count: Cell<i32>,
         #[property(get)]
         pub(super) status: RefCell<model::BoxedChatMemberStatus>,
+        #[property(get)]
+        pub(super) verification_status: RefCell<Option<model::BoxedVerificationStatus>>,
     }
 
     #[glib::object_subclass]
@@ -70,6 +72,11 @@ impl From<tdlib::types::Supergroup> for Supergroup {
         imp.member_count.set(td_supergroup.member_count);
         imp.status
             .replace(model::BoxedChatMemberStatus(td_supergroup.status));
+        imp.verification_status.replace(
+            td_supergroup
+                .verification_status
+                .map(model::BoxedVerificationStatus),
+        );
 
         obj
     }
@@ -100,6 +107,14 @@ impl Supergroup {
         self.notify_status();
     }
 
+    fn set_verification_status(&self, status: Option<model::BoxedVerificationStatus>) {
+        if self.verification_status() == status {
+            return;
+        }
+        self.imp().verification_status.replace(status);
+        self.notify_verification_status();
+    }
+
     pub(crate) fn update(&self, td_supergroup: tdlib::types::Supergroup) {
         self.set_username(
             td_supergroup
@@ -109,5 +124,10 @@ impl Supergroup {
         );
         self.set_member_count(td_supergroup.member_count);
         self.set_status(model::BoxedChatMemberStatus(td_supergroup.status));
+        self.set_verification_status(
+            td_supergroup
+                .verification_status
+                .map(model::BoxedVerificationStatus),
+        );
     }
 }

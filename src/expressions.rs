@@ -52,6 +52,21 @@ pub(crate) fn user_display_name(user_expression: &gtk::Expression) -> gtk::Expre
     .upcast()
 }
 
+/// The display name of a chat as a plain string (own chat → "Saved Messages",
+/// deleted account → "Deleted Account", otherwise the title). Mirrors
+/// [`chat_display_name`] for imperative callers (e.g. the chat-title widget).
+pub(crate) fn chat_display_name_str(chat: &model::Chat) -> String {
+    if chat.is_own_chat() {
+        gettext("Saved Messages")
+    } else if matches!(chat.chat_type(), model::ChatType::Private(user)
+        if user.user_type().0 == tdlib::enums::UserType::Deleted)
+    {
+        gettext("Deleted Account")
+    } else {
+        chat.title()
+    }
+}
+
 pub(crate) fn is_deleted_expression(chat_expression: &gtk::Expression) -> gtk::Expression {
     gtk::ClosureExpression::with_callback([chat_expression], |args| {
         let chat = args[1].get::<model::Chat>().unwrap();

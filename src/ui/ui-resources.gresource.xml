@@ -13,6 +13,7 @@
     <file compressed="true" preprocess="xml-stripblanks">components/avatar.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">components/avatar_map_marker.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">components/avatar_with_selection.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">components/chat_title.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">components/icon_map_marker.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">components/map.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">components/map_window.ui</file>
