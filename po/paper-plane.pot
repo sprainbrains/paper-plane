@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-25 17:20+0300\n"
+"POT-Creation-Date: 2026-10-25 19:32+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1079,7 +1079,7 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1818
+#: src/ui/session/content/chat_history.rs:1815
 #: src/ui/session/content/message_row/mod.rs:514 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr ""
@@ -1247,12 +1247,12 @@ msgstr ""
 msgid "Do you accept the Terms of Service?"
 msgstr ""
 
-#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:639
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:633
 #: src/ui/session/content/message_row/mod.rs:437
 msgid "_No"
 msgstr ""
 
-#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:640
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:634
 #: src/ui/session/content/message_row/mod.rs:438
 msgid "_Yes"
 msgstr ""
@@ -1426,7 +1426,7 @@ msgid "This will permanently delete the chat for you."
 msgstr ""
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1819
+#: src/ui/session/content/chat_history.rs:1816
 msgid "_Delete"
 msgstr ""
 
@@ -1440,57 +1440,57 @@ msgstr ""
 
 #. Telegram rejects empty edits; keep the edit state so the user can
 #. fix it, and tell them why nothing happened.
-#: src/ui/session/content/chat_action_bar/mod.rs:472
+#: src/ui/session/content/chat_action_bar/mod.rs:479
 msgid "A message can't be empty"
 msgstr ""
 
-#: src/ui/session/content/chat_action_bar/mod.rs:693
+#: src/ui/session/content/chat_action_bar/mod.rs:700
 msgid "Unmute"
 msgstr ""
 
-#: src/ui/session/content/chat_action_bar/mod.rs:695
+#: src/ui/session/content/chat_action_bar/mod.rs:702
 msgid "Mute"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:637
+#: src/ui/session/content/chat_history.rs:631
 msgid "Leave chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:638
+#: src/ui/session/content/chat_history.rs:632
 msgid "Do you want to leave this chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1697
+#: src/ui/session/content/chat_history.rs:1694
 msgid "{n} selected"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1816
+#: src/ui/session/content/chat_history.rs:1813
 msgid "Delete Messages"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1817
+#: src/ui/session/content/chat_history.rs:1814
 msgid "Delete the selected messages?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2449
+#: src/ui/session/content/chat_history.rs:2446
 msgid "Pinned panel was hidden"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2450
+#: src/ui/session/content/chat_history.rs:2447
 msgid "Show"
 msgstr ""
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2575
+#: src/ui/session/content/chat_history.rs:2572
 msgid "Pinned Message #{n}"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2577
+#: src/ui/session/content/chat_history.rs:2574
 #: src/ui/session/content/chat_history.ui:144
 msgid "Pinned Message"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2635
+#: src/ui/session/content/chat_history.rs:2632
 msgid "{n} Pinned Messages"
 msgstr ""
 
@@ -1540,33 +1540,33 @@ msgstr ""
 msgid "Scroll to bottom"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:424
-msgid "Start of discussion"
-msgstr ""
-
-#: src/ui/session/content/chat_history.ui:506
+#: src/ui/session/content/chat_history.ui:465
 msgid "View Info"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:510
+#: src/ui/session/content/chat_history.ui:469
 msgid "Show Pinned Panel"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:515
+#: src/ui/session/content/chat_history.ui:474
 msgid "Leave Chat"
 msgstr ""
 
+#: src/ui/session/content/chat_history_row.rs:180
+msgid "Start of discussion"
+msgstr ""
+
 #. Translators: This is a date format in the day divider without the year
-#: src/ui/session/content/chat_history_row.rs:171
+#: src/ui/session/content/chat_history_row.rs:185
 msgid "%B %e"
 msgstr ""
 
 #. Translators: This is a date format in the day divider with the year
-#: src/ui/session/content/chat_history_row.rs:174
+#: src/ui/session/content/chat_history_row.rs:188
 msgid "%B %e, %Y"
 msgstr ""
 
-#: src/ui/session/content/chat_history_row.rs:183
+#: src/ui/session/content/chat_history_row.rs:197
 msgid "Unread messages"
 msgstr ""
 
@@ -1666,11 +1666,11 @@ msgstr ""
 msgid "Forwarded from {name}"
 msgstr ""
 
-#: src/ui/session/content/message_row/comments.rs:92
+#: src/ui/session/content/message_row/comments.rs:112
 msgid "Comment"
 msgstr ""
 
-#: src/ui/session/content/message_row/comments.rs:97
+#: src/ui/session/content/message_row/comments.rs:117
 msgid "{n} comment"
 msgid_plural "{n} comments"
 msgstr[0] ""

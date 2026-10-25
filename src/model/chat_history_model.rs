@@ -28,10 +28,18 @@ pub(crate) enum ChatHistoryError {
 /// thread history is keyed by `message_thread_id`, which equals the id of the
 /// channel post's anchor *inside the discussion group* (the channel post id is
 /// a different id space there and can collide with unrelated threads).
-#[derive(Clone, Debug, PartialEq, Eq)]
+///
+/// In thread mode the window carries a fixed tail of two synthetic items — the
+/// "Start of discussion" pill and the channel post itself — always at the
+/// oldest (top) end, excluded from pagination and album merging.
+#[derive(Clone, Debug)]
 pub(crate) struct ThreadContext {
     pub message_thread_id: i64,
+    pub anchor: model::Message,
 }
+
+/// Number of synthetic tail items a thread window keeps at its oldest end.
+const THREAD_TAIL_ITEMS: usize = 2;
 
 mod imp {
     use super::*;
@@ -126,6 +134,7 @@ impl ChatHistoryModel {
         obj.imp().chat.set(Some(chat));
         obj.imp().newest_loaded.set(true);
         *obj.imp().thread.borrow_mut() = thread;
+        obj.seed_thread_tail();
 
         let new_message_handler = chat.connect_new_message(clone!(
             #[weak]
@@ -165,6 +174,19 @@ impl ChatHistoryModel {
 
     pub(crate) fn thread(&self) -> Option<ThreadContext> {
         self.imp().thread.borrow().clone()
+    }
+
+    /// Appends the synthetic thread tail — the "Start of discussion" pill and
+    /// the channel post, oldest end (screen top) — to an empty or just-cleared
+    /// window. Does not emit: fresh models are bound after seeding, and the one
+    /// re-seeding caller reports the change itself.
+    fn seed_thread_tail(&self) {
+        let Some(thread) = self.thread() else {
+            return;
+        };
+        let mut list = self.imp().list.borrow_mut();
+        list.push_back(model::ChatHistoryItem::for_thread_intro());
+        list.push_back(model::ChatHistoryItem::for_thread_anchor(thread.anchor));
     }
 
     /// Whether a message belongs in this window: always in a normal chat, and only
@@ -277,6 +299,13 @@ impl ChatHistoryModel {
         imp.list.borrow_mut().clear();
         self.upcast_ref::<gio::ListModel>()
             .items_changed(0, removed as u32, 0);
+
+        if self.thread().is_some() {
+            // The window is anchored to its post: re-pin the thread tail.
+            self.seed_thread_tail();
+            self.upcast_ref::<gio::ListModel>()
+                .items_changed(0, 0, THREAD_TAIL_ITEMS as u32);
+        }
 
         let newest_loaded = chat.last_message().is_none_or(|last| {
             messages
@@ -580,6 +609,11 @@ impl ChatHistoryModel {
         let (position, removed, added) = {
             let mut list = imp.list.borrow_mut();
             let old_len = list.len();
+            let tail = if imp.thread.borrow().is_some() {
+                THREAD_TAIL_ITEMS
+            } else {
+                0
+            };
 
             // The batch item adjacent to the window may continue an album that
             // the boundary item started (or vice versa).
@@ -602,10 +636,9 @@ impl ChatHistoryModel {
                 // from the previous page must not block the album merge: an
                 // album never spans midnight, so when the album continues
                 // across it the divider is redundant and goes with it.
-                let mut boundary_index = match list.len() {
-                    0 => None,
-                    len => Some(len - 1),
-                };
+                // The synthetic thread tail is not a merge candidate: the
+                // boundary is the last real item before it.
+                let mut boundary_index = list.len().checked_sub(1 + tail);
                 let mut skipped_divider = false;
                 if let Some(index) = boundary_index
                     && index > 0
@@ -640,11 +673,16 @@ impl ChatHistoryModel {
                     list.push_front(item);
                 }
             } else {
-                list.extend(items);
+                // Older messages join above the window but below the thread
+                // tail, which stays pinned at the oldest (top) end.
+                let insert_at = list.len() - tail;
+                for (offset, item) in items.into_iter().enumerate() {
+                    list.insert(insert_at + offset, item);
+                }
             }
 
             let added = list.len() - old_len + removed;
-            let position = if front { 0 } else { list.len() - added };
+            let position = if front { 0 } else { list.len() - added - tail };
             (position, removed, added)
         };
 
@@ -704,6 +742,12 @@ impl ChatHistoryModel {
                             ordering
                         }
                     }
+                    // The thread tail (intro pill + channel anchor) sits above the
+                    // oldest comment and can never match a comment search: report it
+                    // as "past the target" so the comparator stays monotonic across
+                    // the id-space break.
+                    model::ChatHistoryItemType::ThreadAnchor(_)
+                    | model::ChatHistoryItemType::ThreadIntro => Ordering::Greater,
                 })
                 .ok()
             });

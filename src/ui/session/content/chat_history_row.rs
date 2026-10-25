@@ -157,13 +157,27 @@ impl ChatHistoryRow {
                                 let event_row = self.get_or_create_event_row();
                                 event_row.set_label(&strings::message_content(message));
                             }
-                            _ => self.update_or_create_message_row(message.to_owned().upcast()),
+                            _ => {
+                                self.set_comments_suppressed(false);
+                                self.update_or_create_message_row(message.to_owned().upcast());
+                            }
                         }
                     }
                     // The album widget takes the whole item; the row chrome uses
                     // its primary message.
                     model::ChatHistoryItemType::Album(_) => {
+                        self.set_comments_suppressed(false);
                         self.update_or_create_message_row(item.to_owned().upcast());
+                    }
+                    // The thread's anchor post: bound like a message, but it *is*
+                    // the thread, so its comments bar is pinned off.
+                    model::ChatHistoryItemType::ThreadAnchor(message) => {
+                        self.update_or_create_message_row(message.to_owned().upcast());
+                        self.set_comments_suppressed(true);
+                    }
+                    model::ChatHistoryItemType::ThreadIntro => {
+                        let child = self.get_or_create_event_row();
+                        child.set_label(&gettext("Start of discussion"));
                     }
                     model::ChatHistoryItemType::DayDivider(date) => {
                         let fmt = if date.year() == glib::DateTime::now_local().unwrap().year() {
@@ -279,6 +293,16 @@ impl ChatHistoryRow {
                 let child = ui::MessageRow::new(&message);
                 self.set_child(Some(&child));
             }
+        }
+    }
+
+    /// Toggles the comments bar on this row's (possibly reused) message content.
+    /// Recycled rows carry the previous item's state into the next bind, so the
+    /// flag is set *before* rebinding for plain messages and after for anchors
+    /// (the bind itself would otherwise show the bar on the thread anchor).
+    fn set_comments_suppressed(&self, suppressed: bool) {
+        if let Some(bar) = utils::descendant::<_, ui::MessageCommentsBar>(self) {
+            bar.set_suppressed(suppressed);
         }
     }
 
