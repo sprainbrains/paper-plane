@@ -1799,6 +1799,14 @@ msgstr "Удалить из альбома"
 msgid "Start of discussion"
 msgstr "Начало обсуждения"
 
+#: src/model/chat.rs
+msgid "Replies"
+msgstr "Ответы"
+
+#: src/ui/session/content/message_row/view_in_chat.rs
+msgid "View in Chat"
+msgstr "Просмотреть в чате"
+
 #: src/ui/session/content/message_row/comments.rs
 msgid "Comment"
 msgstr "Прокомментировать"

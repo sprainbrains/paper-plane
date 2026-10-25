@@ -94,6 +94,8 @@ mod imp {
         pub(super) reactions: TemplateChild<ui::MessageReactions>,
         #[template_child]
         pub(super) comments_bar: TemplateChild<ui::MessageCommentsBar>,
+        #[template_child]
+        pub(super) view_in_chat_bar: TemplateChild<ui::MessageViewInChatBar>,
     }
 
     #[glib::object_subclass]
@@ -481,6 +483,7 @@ impl MessageBubble {
         imp.indicators.set_message(message.upcast_ref());
         imp.reactions.set_message(Some(message.clone()));
         imp.comments_bar.set_message(Some(message));
+        imp.view_in_chat_bar.set_message(Some(message));
 
         let is_channel = if let model::ChatType::Supergroup(data) = message.chat_().chat_type() {
             data.is_channel()
@@ -604,6 +607,7 @@ impl MessageBubble {
         // reactions/reply/forward header left over from a previously bound real message.
         imp.reactions.set_message(None::<model::Message>);
         imp.comments_bar.set_message(None);
+        imp.view_in_chat_bar.set_message(None);
         imp.message_reply_bin.set_child(gtk::Widget::NONE);
         self.remove_css_class("with-reply");
         imp.forward_label.set_visible(false);

@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use gettextrs::gettext;
 use glib::Properties;
 use glib::subclass::Signal;
 use gtk::glib;
@@ -13,6 +14,10 @@ use gtk::subclass::prelude::*;
 use crate::model;
 use crate::types::ChatId;
 use crate::types::MessageId;
+
+/// Telegram's system "Replies" bot user id (global, not per account). TDLib
+/// delivers the chat title untranslated, so the client localizes it.
+const REPLIES_BOT_USER_ID: ChatId = 1271266957;
 
 #[derive(Clone, Debug, glib::Boxed)]
 #[boxed_type(name = "ChatType")]
@@ -179,7 +184,7 @@ impl Chat {
 
         imp.block_list
             .replace(td_chat.block_list.map(model::BoxedBlockList));
-        imp.title.replace(td_chat.title);
+        imp.title.replace(obj.localized_title(td_chat.title));
         imp.avatar.replace(td_chat.photo.map(model::Avatar::from));
         imp.last_read_outbox_message_id
             .set(td_chat.last_read_outbox_message_id);
@@ -338,11 +343,31 @@ impl Chat {
     }
 
     fn set_title(&self, title: String) {
+        let title = self.localized_title(title);
         if self.title() == title {
             return;
         }
         self.imp().title.replace(title);
         self.notify_title();
+    }
+
+    /// Whether this is the private chat with the system "Replies" bot.
+    pub(crate) fn is_replies_chat(&self) -> bool {
+        match self.chat_type() {
+            ChatType::Private(user) => {
+                user.id() == REPLIES_BOT_USER_ID || user.username() == "replies"
+            }
+            _ => false,
+        }
+    }
+
+    /// Maps TDLib's untranslated Replies chat title to the UI locale.
+    fn localized_title(&self, title: String) -> String {
+        if self.is_replies_chat() {
+            gettext("Replies")
+        } else {
+            title
+        }
     }
 
     fn set_avatar(&self, avatar: Option<model::Avatar>) {

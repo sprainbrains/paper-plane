@@ -55,6 +55,7 @@ pub(crate) use self::message_row::MessageText;
 pub(crate) use self::message_row::MessageVenue;
 pub(crate) use self::message_row::MessageVideo;
 pub(crate) use self::message_row::MessageVideoNote;
+pub(crate) use self::message_row::MessageViewInChatBar;
 pub(crate) use self::message_row::MessageVoiceNote;
 pub(crate) use self::message_row::Row as MessageRow;
 pub(crate) use self::send_media_window::SendMediaWindow;
@@ -237,6 +238,12 @@ impl Content {
     /// `ChatHistory::arm_return_to`).
     pub(crate) fn arm_return_to(&self, from_chat: i64, to_chat: i64) {
         self.imp().chat_history.arm_return_to(from_chat, to_chat);
+    }
+
+    /// Records a message to reveal after the next switch to `chat_id` (see
+    /// `ChatHistory::arm_reveal`).
+    pub(crate) fn arm_reveal(&self, chat_id: i64, message_id: i64) {
+        self.imp().chat_history.arm_reveal(chat_id, message_id);
     }
 
     fn set_chat(&self, chat: Option<&model::Chat>) {

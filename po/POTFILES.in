@@ -104,6 +104,7 @@ src/ui/session/content/message_row/base.rs
 src/ui/session/content/message_row/bubble.blp
 src/ui/session/content/message_row/bubble.rs
 src/ui/session/content/message_row/comments.rs
+src/ui/session/content/message_row/view_in_chat.rs
 src/ui/session/content/message_row/document/file_status.rs
 src/ui/session/content/message_row/document/mod.blp
 src/ui/session/content/message_row/document/mod.rs

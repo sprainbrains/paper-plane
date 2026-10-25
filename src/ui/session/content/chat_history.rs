@@ -60,6 +60,10 @@ mod imp {
         /// (from, to) armed by `Session::select_chat_with_return` before the
         /// switch; the next real `set_chat` claims it if it lands on `to`.
         pub(super) pending_return: Cell<Option<(i64, i64)>>,
+        /// (chat, message) armed by `Session::select_chat_and_reveal` before a
+        /// cross-chat jump; the next `set_chat` reveals it once the initial
+        /// window has loaded.
+        pub(super) pending_reveal: Cell<Option<(i64, i64)>>,
         pub(super) message_menu: OnceCell<ui::MessageMenu>,
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
@@ -972,7 +976,13 @@ impl ChatHistory {
                         }
                     }
 
-                    if !jumped {
+                    let reveal = imp
+                        .pending_reveal
+                        .take()
+                        .filter(|(reveal_chat, _)| *reveal_chat == chat_id);
+                    if let Some((_, reveal_id)) = reveal {
+                        obj.reveal_message(reveal_id);
+                    } else if !jumped {
                         adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
                         obj.set_sticky(true);
                         obj.scroll_down();
@@ -2786,6 +2796,12 @@ impl ChatHistory {
     /// header back arrow once the switch actually lands (see `set_chat`).
     pub(crate) fn arm_return_to(&self, from_chat: i64, to_chat: i64) {
         self.imp().pending_return.set(Some((from_chat, to_chat)));
+    }
+
+    /// Records a message to reveal after the next switch to `chat_id` finishes
+    /// its initial load (see `Session::select_chat_and_reveal`).
+    pub(crate) fn arm_reveal(&self, chat_id: i64, message_id: i64) {
+        self.imp().pending_reveal.set(Some((chat_id, message_id)));
     }
 
     /// Returns to the chat this one was opened from (header back arrow). The

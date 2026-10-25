@@ -18,6 +18,7 @@ mod text;
 mod venue;
 mod video;
 mod video_note;
+mod view_in_chat;
 mod voice_note;
 
 use std::cell::RefCell;
@@ -59,6 +60,7 @@ pub(crate) use self::text::MessageText;
 pub(crate) use self::venue::MessageVenue;
 pub(crate) use self::video::MessageVideo;
 pub(crate) use self::video_note::MessageVideoNote;
+pub(crate) use self::view_in_chat::MessageViewInChatBar;
 pub(crate) use self::voice_note::MessageVoiceNote;
 use crate::config;
 use crate::model;
