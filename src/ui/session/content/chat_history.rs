@@ -64,6 +64,10 @@ mod imp {
         /// cross-chat jump; the next `set_chat` reveals it once the initial
         /// window has loaded.
         pub(super) pending_reveal: Cell<Option<(i64, i64)>>,
+        /// (channel, post, comment) armed by `Session::select_chat_and_open_thread`:
+        /// the next `set_chat` landing on the channel opens the post's comment
+        /// thread (revealing the comment when set).
+        pub(super) pending_open_thread: Cell<Option<(i64, i64, Option<i64>)>>,
         pub(super) message_menu: OnceCell<ui::MessageMenu>,
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
@@ -831,6 +835,7 @@ impl ChatHistory {
             let unread_count = chat.unread_count();
             let generation = imp.generation.get();
             let chat_id = chat.id();
+            let client_id = chat.session_().client_().id();
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -843,6 +848,17 @@ impl ChatHistory {
                     let imp = obj.imp();
 
                     imp.is_loading_messages.set(true);
+
+                    // `getChatHistory` only fetches from the server once the chat is
+                    // open; loading before `openChat` is processed hands back just the
+                    // locally stored stub window. Await the open here (instead of the
+                    // fire-and-forget call below) so the first page is authoritative.
+                    if let Err(e) = tdlib::functions::open_chat(chat_id, client_id).await {
+                        log::warn!("Failed to open chat {chat_id}: {e:?}");
+                    }
+                    if !obj.is_current_history(generation, chat_id, &model) {
+                        return;
+                    }
 
                     let scrollbar = imp.scrolled_window.vscrollbar();
                     scrollbar.set_visible(false);
@@ -976,11 +992,19 @@ impl ChatHistory {
                         }
                     }
 
+                    let open_thread = imp
+                        .pending_open_thread
+                        .take()
+                        .filter(|(channel, _, _)| *channel == chat_id);
                     let reveal = imp
                         .pending_reveal
                         .take()
                         .filter(|(reveal_chat, _)| *reveal_chat == chat_id);
-                    if let Some((_, reveal_id)) = reveal {
+                    if let Some((_, post_id, comment_id)) = open_thread {
+                        // Enter the post's comment thread once the anchor message
+                        // is at hand; a comment-originated jump reveals it inside.
+                        obj.jump_to_thread(post_id, comment_id);
+                    } else if let Some((_, reveal_id)) = reveal {
                         obj.reveal_message(reveal_id);
                     } else if !jumped {
                         adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
@@ -1016,8 +1040,6 @@ impl ChatHistory {
             imp.list_view.set_model(Some(&selection));
 
             imp.model.replace(Some(model));
-
-            perform_chat_action(chat, tdlib::functions::open_chat);
         }
 
         imp.chat.set(chat);
@@ -2804,6 +2826,45 @@ impl ChatHistory {
         self.imp().pending_reveal.set(Some((chat_id, message_id)));
     }
 
+    /// Records that the next switch to `channel` should open the comment thread
+    /// of `post`, revealing `comment` inside it when given (see
+    /// `Session::open_message_origin`).
+    pub(crate) fn arm_open_thread(&self, channel: i64, post: i64, comment: Option<i64>) {
+        self.imp()
+            .pending_open_thread
+            .set(Some((channel, post, comment)));
+    }
+
+    /// Opens the comment thread of the channel post `post_id`, revealing
+    /// `comment_id` inside it when given. Fetches the anchor message first, so
+    /// the thread opens as soon as the post object is at hand.
+    pub(crate) fn jump_to_thread(&self, post_id: i64, comment_id: Option<i64>) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let generation = self.imp().generation.get();
+        let chat_id = chat.id();
+        let weak = self.downgrade();
+        utils::spawn(async move {
+            let Some(obj) = weak.upgrade() else {
+                return;
+            };
+            if !obj.is_current_chat(generation, chat_id) {
+                return;
+            }
+            let Some(chat) = obj.chat() else {
+                return;
+            };
+            match chat.fetch_message(post_id).await {
+                Ok(post) => obj.open_thread_revealing(&post, comment_id),
+                Err(e) => {
+                    log::warn!("Failed to fetch thread anchor: {e:?}");
+                    obj.reveal_message(post_id);
+                }
+            }
+        });
+    }
+
     /// Returns to the chat this one was opened from (header back arrow). The
     /// switch clears `return_chat` and hides the arrow.
     pub(crate) fn go_back(&self) {
@@ -2844,6 +2905,12 @@ impl ChatHistory {
     /// Opens the comment thread of a channel post: swaps the list to a thread
     /// model, pins the anchor post in a header, and arms a return to the channel.
     pub(crate) fn open_thread(&self, anchor: &model::Message) {
+        self.open_thread_revealing(anchor, None);
+    }
+
+    /// [`open_thread`](Self::open_thread) with an optional comment to reveal
+    /// once the thread window has loaded (the "View in Chat" jump target).
+    pub(crate) fn open_thread_revealing(&self, anchor: &model::Message, reveal: Option<i64>) {
         if self.imp().thread.borrow().is_some() {
             return;
         }
@@ -2860,6 +2927,7 @@ impl ChatHistory {
             post_id,
             discussion_chat_id: 0,
             message_thread_id: 0,
+            reveal,
         });
 
         utils::spawn(clone!(
@@ -2921,7 +2989,8 @@ impl ChatHistory {
         imp.back_button.set_visible(true);
         imp.chat_action_bar.set_chat(Some(&discussion_chat));
 
-        // Load the comments, then stick to the bottom (newest comment).
+        // Load the comments, then stick to the bottom (newest comment) unless
+        // the jump asked for a specific comment to reveal.
         utils::spawn(clone!(
             #[weak]
             model,
@@ -2929,8 +2998,18 @@ impl ChatHistory {
             self,
             async move {
                 let _ = model.load_older_messages(50).await;
-                obj.set_sticky(true);
-                obj.scroll_down();
+                let reveal = obj
+                    .imp()
+                    .thread
+                    .borrow()
+                    .as_ref()
+                    .and_then(|thread| thread.reveal);
+                if let Some(message_id) = reveal {
+                    obj.reveal_message(message_id);
+                } else {
+                    obj.set_sticky(true);
+                    obj.scroll_down();
+                }
             }
         ));
     }
@@ -3018,6 +3097,9 @@ pub(crate) struct ThreadUi {
     post_id: i64,
     discussion_chat_id: i64,
     message_thread_id: i64,
+    /// Comment to reveal after the thread window loads (jump from "View in
+    /// Chat"), if any.
+    reveal: Option<i64>,
 }
 
 /// Decides the header back-arrow state for a completed chat switch. Only the
