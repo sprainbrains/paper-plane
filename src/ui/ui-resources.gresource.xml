@@ -36,6 +36,7 @@
     <file compressed="true" preprocess="xml-stripblanks">session/content/event_row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/forward_window.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/media_viewer.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/comments.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/album.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/audio.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/content/message_row/base.ui</file>

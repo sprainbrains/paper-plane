@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::cell::OnceCell;
+use std::cell::RefCell;
 
 use glib::Properties;
 use gtk::gio;
@@ -19,6 +20,14 @@ mod imp {
         pub(super) reply_count: Cell<u32>,
         #[property(get)]
         pub(super) view_count: Cell<i32>,
+        /// Whether this message has a comment thread (reply info present, i.e. it
+        /// is a post in a channel that has a discussion supergroup).
+        #[property(get)]
+        pub(super) has_thread: Cell<bool>,
+        /// Up to three recent repliers, for the comments-bar avatars. Raw TDLib
+        /// senders; the comments bar resolves them via the message's session.
+        /// Rust-side only, not a GObject property.
+        pub(super) recent_repliers: RefCell<Vec<tdlib::enums::MessageSender>>,
         pub(super) reactions: OnceCell<gio::ListStore>,
     }
 
@@ -45,22 +54,53 @@ glib::wrapper! {
 impl From<Option<tdlib::types::MessageInteractionInfo>> for MessageInteractionInfo {
     fn from(interaction_info: Option<tdlib::types::MessageInteractionInfo>) -> Self {
         let obj: Self = glib::Object::new();
-        obj.imp()
-            .reply_count
-            .set(extract_reply_count(interaction_info.as_ref()));
-        obj.imp()
-            .view_count
-            .set(extract_view_count(interaction_info.as_ref()));
-        obj.set_reactions_from(interaction_info.as_ref());
+        obj.apply(interaction_info.as_ref());
         obj
     }
 }
 
 impl MessageInteractionInfo {
     pub(crate) fn update(&self, interaction_info: Option<tdlib::types::MessageInteractionInfo>) {
-        self.set_reply_count(extract_reply_count(interaction_info.as_ref()));
-        self.set_view_count(extract_view_count(interaction_info.as_ref()));
-        self.set_reactions_from(interaction_info.as_ref());
+        self.apply(interaction_info.as_ref());
+    }
+
+    /// Pull every derived value out of the (possibly absent) TDLib interaction
+    /// info and update the corresponding properties, notifying on change.
+    fn apply(&self, interaction_info: Option<&tdlib::types::MessageInteractionInfo>) {
+        let reply_info = interaction_info.and_then(|info| info.reply_info.as_ref());
+
+        self.set_reply_count(
+            reply_info
+                .map(|reply_info| reply_info.reply_count)
+                .unwrap_or(0) as u32,
+        );
+        self.set_view_count(interaction_info.map(|info| info.view_count).unwrap_or(0));
+        self.set_has_thread(reply_info.is_some());
+
+        let repliers: Vec<tdlib::enums::MessageSender> = reply_info
+            .map(|reply_info| reply_info.recent_replier_ids.clone())
+            .unwrap_or_default();
+        if *self.imp().recent_repliers.borrow() != repliers {
+            self.imp().recent_repliers.replace(repliers);
+            // No dedicated notify: the comments bar re-reads on the reply-count /
+            // interaction-info update that always accompanies a replier change.
+        }
+
+        self.set_reactions_from(interaction_info);
+    }
+
+    /// The up-to-three recent repliers, as raw TDLib senders for the caller to
+    /// resolve into users/chats via the session.
+    pub(crate) fn recent_repliers(&self) -> Vec<tdlib::enums::MessageSender> {
+        self.imp().recent_repliers.borrow().clone()
+    }
+
+    fn set_has_thread(&self, has_thread: bool) {
+        if self.has_thread() == has_thread {
+            return;
+        }
+        self.imp().has_thread.set(has_thread);
+        self.notify_has_thread();
     }
 
     fn set_view_count(&self, view_count: i32) {
@@ -185,17 +225,4 @@ fn reactions_unchanged(store: &gio::ListStore, new: &[model::MessageReaction]) -
                     && current.is_chosen() == new_reaction.is_chosen()
             })
     })
-}
-
-fn extract_reply_count(interaction_info: Option<&tdlib::types::MessageInteractionInfo>) -> u32 {
-    interaction_info
-        .and_then(|interaction_info| interaction_info.reply_info.as_ref())
-        .map(|reply_info| reply_info.reply_count)
-        .unwrap_or(0) as u32
-}
-
-fn extract_view_count(interaction_info: Option<&tdlib::types::MessageInteractionInfo>) -> i32 {
-    interaction_info
-        .map(|interaction_info| interaction_info.view_count)
-        .unwrap_or(0)
 }

@@ -116,6 +116,15 @@ mod imp {
         pub(super) content_overlay: TemplateChild<gtk::Overlay>,
         #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
+        #[template_child]
+        pub(super) thread_header: TemplateChild<gtk::Revealer>,
+        #[template_child]
+        pub(super) thread_anchor_row: TemplateChild<ui::ChatHistoryRow>,
+        #[template_child]
+        pub(super) thread_divider_label: TemplateChild<gtk::Label>,
+        /// Non-empty while the view shows a single comment thread instead of the
+        /// whole chat. Records how to return to the channel post.
+        pub(super) thread: RefCell<Option<super::ThreadUi>>,
         pub(super) send_animation: RefCell<Option<adw::Animation>>,
         pub(super) send_poll: RefCell<Option<gtk::TickCallbackId>>,
         pub(super) send_ghost: RefCell<Option<gtk::Overlay>>,
@@ -2785,12 +2794,144 @@ impl ChatHistory {
     /// Returns to the chat this one was opened from (header back arrow). The
     /// switch clears `return_chat` and hides the arrow.
     pub(crate) fn go_back(&self) {
+        // In a thread, back returns to the channel post that opened it.
+        if self.imp().thread.borrow().is_some() {
+            self.close_thread();
+            return;
+        }
         let Some(from) = self.imp().return_chat.get() else {
             return;
         };
         if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
             session.select_chat(from);
         }
+    }
+
+    /// The (discussion chat id, message thread id) to route the composer's send
+    /// into, when the view is showing a comment thread. `None` for a normal chat.
+    pub(crate) fn thread_send_context(&self) -> Option<(i64, i64)> {
+        self.imp()
+            .thread
+            .borrow()
+            .as_ref()
+            .map(|thread| (thread.discussion_chat_id, thread.message_thread_id))
+    }
+
+    /// Opens the comment thread of a channel post: swaps the list to a thread
+    /// model, pins the anchor post in a header, and arms a return to the channel.
+    pub(crate) fn open_thread(&self, anchor: &model::Message) {
+        if self.imp().thread.borrow().is_some() {
+            return;
+        }
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let channel_chat_id = chat.id();
+        let post_id = anchor.id();
+        let session = chat.session_();
+        let client_id = session.client_().id();
+        let anchor = anchor.clone();
+
+        *self.imp().thread.borrow_mut() = Some(ThreadUi {
+            channel_chat_id,
+            post_id,
+            discussion_chat_id: 0,
+            message_thread_id: 0,
+        });
+
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let Ok(tdlib::enums::MessageThreadInfo::MessageThreadInfo(info)) =
+                    tdlib::functions::get_message_thread(channel_chat_id, post_id, client_id).await
+                else {
+                    log::warn!("open_thread: get_message_thread failed");
+                    obj.imp().thread.borrow_mut().take();
+                    return;
+                };
+                obj.setup_thread_model(info, &anchor);
+            }
+        ));
+    }
+
+    fn setup_thread_model(&self, info: tdlib::types::MessageThreadInfo, anchor: &model::Message) {
+        let imp = self.imp();
+        let session = anchor.chat_().session_();
+        let discussion_chat = session.chat(info.chat_id);
+
+        if let Some(thread) = imp.thread.borrow_mut().as_mut() {
+            thread.discussion_chat_id = info.chat_id;
+            thread.message_thread_id = info.message_thread_id;
+        }
+
+        let context = model::ThreadContext {
+            channel_chat_id: anchor.chat_().id(),
+            post_id: anchor.id(),
+            message_thread_id: info.message_thread_id,
+        };
+        let model = model::ChatHistoryModel::new_thread(&discussion_chat, context);
+        model.connect_items_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |model, position, removed, added| {
+                if removed > 0 || position + added >= model.n_items() {
+                    obj.refresh_grouping_visuals();
+                }
+            }
+        ));
+
+        let selection = gtk::NoSelection::new(Some(model.clone()));
+        imp.list_view.set_model(Some(&selection));
+        *imp.model.borrow_mut() = Some(model.clone());
+
+        // Anchor post + "start of discussion" header.
+        imp.thread_anchor_row.set_item(Some(
+            model::ChatHistoryItem::for_message(anchor.clone()).upcast(),
+        ));
+        imp.thread_header.set_reveal_child(true);
+        imp.thread_header.set_visible(true);
+
+        // Header: discussion identity + back arrow.
+        imp.header_chat_title.set_chat(Some(&discussion_chat));
+        imp.header_avatar
+            .set_item(Some(discussion_chat.clone().upcast()));
+        imp.back_button.set_visible(true);
+
+        // Load the comments, then stick to the bottom (newest comment).
+        utils::spawn(clone!(
+            #[weak]
+            model,
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let _ = model.load_older_messages(50).await;
+                obj.set_sticky(true);
+                obj.scroll_down();
+            }
+        ));
+    }
+
+    /// Leaves thread mode: rebuilds the channel chat and reveals the anchor post.
+    fn close_thread(&self) {
+        let Some(thread) = self.imp().thread.borrow_mut().take() else {
+            return;
+        };
+        let imp = self.imp();
+        imp.thread_header.set_reveal_child(false);
+        imp.thread_header.set_visible(false);
+
+        if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
+            session.select_chat(thread.channel_chat_id);
+        }
+        // After the channel reloads, jump back to the post we came from.
+        let post_id = thread.post_id;
+        let weak = self.downgrade();
+        glib::idle_add_local_once(move || {
+            if let Some(obj) = weak.upgrade() {
+                obj.reveal_message(post_id);
+            }
+        });
     }
 
     pub(crate) fn view_messages(&self) {
@@ -2822,6 +2963,16 @@ impl ChatHistory {
             });
         }
     }
+}
+
+/// Live state while the view shows a single comment thread instead of a whole
+/// chat: how to route sends and how to return to the channel post.
+#[derive(Clone, Debug)]
+pub(crate) struct ThreadUi {
+    channel_chat_id: i64,
+    post_id: i64,
+    discussion_chat_id: i64,
+    message_thread_id: i64,
 }
 
 /// Decides the header back-arrow state for a completed chat switch. Only the

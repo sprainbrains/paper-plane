@@ -1,0 +1,41 @@
+using Gtk 4.0;
+
+// The comments bar shown under a channel post that has a discussion thread.
+// Reads as a full-width tappable row: [bubble icon][up to 3 replier avatars]
+// [count text][chevron]. Populated imperatively from the message's interaction
+// info via `set_message`; emits `activate` when tapped to open the thread.
+template $PaplMessageCommentsBar : Button {
+  styles ["comments-bar", "flat"]
+
+  Box {
+    spacing: 8;
+
+    Image icon {
+      valign: center;
+      icon-name: "message-comments-symbolic";
+      pixel-size: 16;
+
+      styles ["dim-label"]
+    }
+
+    Box avatars_box {
+      valign: center;
+      spacing: 0;
+    }
+
+    Label count_label {
+      hexpand: true;
+      xalign: 0;
+      valign: center;
+      ellipsize: end;
+    }
+
+    Image {
+      valign: center;
+      icon-name: "pan-end-symbolic";
+      pixel-size: 14;
+
+      styles ["dim-label"]
+    }
+  }
+}

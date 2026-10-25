@@ -92,6 +92,8 @@ mod imp {
         pub(super) suffix_bin: TemplateChild<adw::Bin>,
         #[template_child]
         pub(super) reactions: TemplateChild<ui::MessageReactions>,
+        #[template_child]
+        pub(super) comments_bar: TemplateChild<ui::MessageCommentsBar>,
     }
 
     #[glib::object_subclass]
@@ -154,6 +156,13 @@ mod imp {
                 }
             ));
             self.forward_label.add_controller(gesture);
+
+            // Tapping the comments bar opens the post's discussion thread.
+            self.comments_bar.connect_clicked(clone!(
+                #[weak]
+                obj,
+                move |_| obj.open_thread()
+            ));
         }
 
         fn dispose(&self) {
@@ -352,6 +361,16 @@ impl MessageBubble {
         }
     }
 
+    /// Opens the discussion thread of the bound channel post, if any.
+    fn open_thread(&self) {
+        let Some(message) = self.imp().message.upgrade() else {
+            return;
+        };
+        if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) {
+            chat_history.open_thread(&message);
+        }
+    }
+
     /// Builds the hover-actions island (Reply + the favorite reaction) overlaid at the
     /// bubble's top-trailing corner, revealed only while the pointer is over the bubble
     /// and never in multi-select mode.
@@ -461,6 +480,7 @@ impl MessageBubble {
 
         imp.indicators.set_message(message.upcast_ref());
         imp.reactions.set_message(Some(message.clone()));
+        imp.comments_bar.set_message(Some(message));
 
         let is_channel = if let model::ChatType::Supergroup(data) = message.chat_().chat_type() {
             data.is_channel()
@@ -583,6 +603,7 @@ impl MessageBubble {
         // Bubbles are recycled between real and sponsored messages, so clear any
         // reactions/reply/forward header left over from a previously bound real message.
         imp.reactions.set_message(None::<model::Message>);
+        imp.comments_bar.set_message(None);
         imp.message_reply_bin.set_child(gtk::Widget::NONE);
         self.remove_css_class("with-reply");
         imp.forward_label.set_visible(false);

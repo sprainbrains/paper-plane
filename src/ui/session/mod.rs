@@ -38,6 +38,7 @@ pub(crate) use self::content::MessageBase;
 pub(crate) use self::content::MessageBaseExt;
 pub(crate) use self::content::MessageBaseImpl;
 pub(crate) use self::content::MessageBubble;
+pub(crate) use self::content::MessageCommentsBar;
 pub(crate) use self::content::MessageDocument;
 pub(crate) use self::content::MessageDocumentStatusIndicator;
 pub(crate) use self::content::MessageDragPayload;

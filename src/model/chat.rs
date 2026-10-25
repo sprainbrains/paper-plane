@@ -526,17 +526,10 @@ impl Chat {
         })
     }
 
-    pub(crate) async fn get_chat_history(
-        &self,
-        from_id: MessageId,
-        limit: i32,
-    ) -> Result<Vec<model::Message>, tdlib::types::Error> {
-        self.get_chat_history_around(from_id, 0, limit).await
-    }
-
-    /// Like [`Self::get_chat_history`], but with a TDLib offset: a negative offset
-    /// shifts the returned window towards newer messages, so a window *around*
-    /// `from_id` (or strictly newer than it) can be fetched in one request.
+    /// Loads a page of messages newest-first. `from_id` is the newest id to
+    /// exclude (0 for the latest page); a negative `offset` shifts the window
+    /// toward newer messages, so a window *around* `from_id` can be fetched in one
+    /// request.
     pub(crate) async fn get_chat_history_around(
         &self,
         from_id: MessageId,
@@ -558,6 +551,38 @@ impl Chat {
             .collect();
 
         Ok(loaded_messages)
+    }
+
+    /// Loads a comment thread's messages. `self` must be the discussion chat and
+    /// `post_id` the channel post the thread belongs to (TDLib keys the thread by
+    /// the channel post id, not the thread id). Newest-first, like the other
+    /// history loaders.
+    pub(crate) async fn get_thread_history(
+        &self,
+        post_id: MessageId,
+        from_id: MessageId,
+        offset: i32,
+        limit: i32,
+    ) -> Result<Vec<model::Message>, tdlib::types::Error> {
+        let client_id = self.session_().client_().id();
+        let result = tdlib::functions::get_message_thread_history(
+            self.id(),
+            post_id,
+            from_id,
+            offset,
+            limit,
+            client_id,
+        )
+        .await;
+
+        let tdlib::enums::Messages::Messages(data) = result?;
+
+        Ok(data
+            .messages
+            .into_iter()
+            .flatten()
+            .map(|m| self.upsert_message(m))
+            .collect())
     }
 
     pub(crate) async fn mark_as_read(&self) -> Result<(), tdlib::types::Error> {
