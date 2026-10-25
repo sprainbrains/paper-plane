@@ -23,6 +23,16 @@ pub(crate) enum ChatHistoryError {
     ChatUnavailable,
 }
 
+/// Identifies the comment thread a [`ChatHistoryModel`] is showing. The model's
+/// `chat` is the discussion group; `post_id` is the channel post that anchors
+/// the thread and keys the TDLib thread-history calls.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ThreadContext {
+    pub channel_chat_id: i64,
+    pub post_id: i64,
+    pub message_thread_id: i64,
+}
+
 mod imp {
     use super::*;
 
@@ -38,6 +48,10 @@ mod imp {
         /// Whether the loaded window includes the chat's newest message. `false` after
         /// jumping to an old message, until the gap is closed by loading newer ones.
         pub(super) newest_loaded: Cell<bool>,
+        /// When set, the model shows a single comment thread of the (discussion)
+        /// `chat`: loads via the thread API and only accepts messages belonging to
+        /// the thread.
+        pub(super) thread: RefCell<Option<super::ThreadContext>>,
     }
 
     #[glib::object_subclass]
@@ -97,15 +111,31 @@ glib::wrapper! {
 
 impl ChatHistoryModel {
     pub(crate) fn new(chat: &model::Chat) -> Self {
+        Self::build(chat, None)
+    }
+
+    /// A model showing a single comment thread. `discussion_chat` is the chat the
+    /// comments live in; the context keys the thread API and filters updates.
+    pub(crate) fn new_thread(discussion_chat: &model::Chat, thread: ThreadContext) -> Self {
+        Self::build(discussion_chat, Some(thread))
+    }
+
+    fn build(chat: &model::Chat, thread: Option<ThreadContext>) -> Self {
         let obj: ChatHistoryModel = glib::Object::new();
 
         obj.imp().chat.set(Some(chat));
         obj.imp().newest_loaded.set(true);
+        *obj.imp().thread.borrow_mut() = thread;
 
         let new_message_handler = chat.connect_new_message(clone!(
             #[weak]
             obj,
             move |_, message| {
+                // In thread mode, only this thread's comments belong; the discussion
+                // chat also carries other posts' comments.
+                if !obj.accepts_message(&message) {
+                    return;
+                }
                 // While showing a jumped-to window that doesn't reach the newest
                 // message, appending a new message at the front would fake a
                 // contiguous history; it arrives once the gap is closed instead.
@@ -118,7 +148,9 @@ impl ChatHistoryModel {
             #[weak]
             obj,
             move |_, message| {
-                obj.remove(message);
+                if obj.accepts_message(&message) {
+                    obj.remove(message);
+                }
             }
         ));
         obj.imp()
@@ -129,6 +161,42 @@ impl ChatHistoryModel {
             .replace(Some(deleted_message_handler));
 
         obj
+    }
+
+    pub(crate) fn thread(&self) -> Option<ThreadContext> {
+        self.imp().thread.borrow().clone()
+    }
+
+    /// Whether a message belongs in this window: always in a normal chat, and only
+    /// this thread's comments (replying to the anchor post) in thread mode.
+    fn accepts_message(&self, message: &model::Message) -> bool {
+        match self.thread() {
+            None => true,
+            Some(thread) => matches!(
+                message.reply_to().map(|reply| reply.0),
+                Some(tdlib::enums::MessageReplyTo::Message(data))
+                    if data.chat_id == thread.channel_chat_id
+                        && data.message_id == thread.post_id
+            ),
+        }
+    }
+
+    /// Loads one page of messages (newest-first) from `from_id`, honouring thread
+    /// mode. `offset` shifts the window toward newer messages when negative.
+    async fn load_page(
+        &self,
+        chat: &model::Chat,
+        from_id: i64,
+        offset: i32,
+        limit: i32,
+    ) -> Result<Vec<model::Message>, tdlib::types::Error> {
+        match self.thread() {
+            Some(thread) => {
+                chat.get_thread_history(thread.post_id, from_id, offset, limit)
+                    .await
+            }
+            None => chat.get_chat_history_around(from_id, offset, limit).await,
+        }
     }
 
     /// Loads older messages from this chat history.
@@ -152,7 +220,7 @@ impl ChatHistoryModel {
 
         let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
         imp.is_loading.set(true);
-        let result = chat.get_chat_history(oldest_message_id, limit).await;
+        let result = self.load_page(&chat, oldest_message_id, 0, limit).await;
 
         imp.is_loading.set(false);
 
@@ -184,7 +252,7 @@ impl ChatHistoryModel {
         let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
 
         imp.is_loading.set(true);
-        let result = chat.get_chat_history_around(message_id, -25, 51).await;
+        let result = self.load_page(&chat, message_id, -25, 51).await;
         imp.is_loading.set(false);
         let messages = result.map_err(ChatHistoryError::Tdlib)?;
 
@@ -226,9 +294,7 @@ impl ChatHistoryModel {
         let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
 
         imp.is_loading.set(true);
-        let result = chat
-            .get_chat_history_around(newest_id, -limit, limit + 1)
-            .await;
+        let result = self.load_page(&chat, newest_id, -limit, limit + 1).await;
         imp.is_loading.set(false);
         let mut messages = result.map_err(ChatHistoryError::Tdlib)?;
         messages.retain(|message| message.id() > newest_id);

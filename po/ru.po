@@ -1795,6 +1795,21 @@ msgstr "Вы хотите удалить этот элемент из альбо
 msgid "Remove from Album"
 msgstr "Удалить из альбома"
 
+#: src/ui/session/content/chat_history.ui
+msgid "Start of discussion"
+msgstr "Начало обсуждения"
+
+#: src/ui/session/content/message_row/comments.rs
+msgid "Comment"
+msgstr "Прокомментировать"
+
+#: src/ui/session/content/message_row/comments.rs
+msgid "{n} comment"
+msgid_plural "{n} comments"
+msgstr[0] "{n} комментарий"
+msgstr[1] "{n} комментария"
+msgstr[2] "{n} комментариев"
+
 #: src/ui/session/content/message_row/mod.rs:1076
 msgid "Send Message"
 msgstr "Отправить сообщение"

@@ -588,6 +588,14 @@ messagebubble.document .file {
   margin: 3px 0;
 }
 
+/* Comments bar under a channel post with a discussion thread. */
+messagebubble .comments-bar {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background-color: alpha(currentcolor, 0.06);
+}
+
 messagebubble.document .sender {
   margin-bottom: 3px;
 }

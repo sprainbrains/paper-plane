@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: paper-plane\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-24 14:32+0300\n"
+"POT-Creation-Date: 2026-10-25 17:20+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -401,39 +401,41 @@ msgstr ""
 msgid "Incoming call"
 msgstr ""
 
-#: src/expressions.rs:22 src/ui/session/sidebar/search/item_row.rs:101
+#: src/expressions.rs:22 src/expressions.rs:60
+#: src/ui/session/sidebar/search/item_row.rs:101
 #: src/ui/session/sidebar/search/mod.rs:193
 msgid "Saved Messages"
 msgstr ""
 
-#: src/expressions.rs:24 src/expressions.rs:46 src/strings/user.rs:9
+#: src/expressions.rs:24 src/expressions.rs:46 src/expressions.rs:64
+#: src/strings/user.rs:9
 msgid "Deleted Account"
 msgstr ""
 
-#: src/expressions.rs:90 src/expressions.rs:95 src/expressions.rs:111
+#: src/expressions.rs:105 src/expressions.rs:110 src/expressions.rs:126
 msgid "The admins of this group have restricted you from writing here"
 msgstr ""
 
 #. Translators: This is a time representation, without seconds.
 #. Here you may want to change to a 24-hours representation, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:102 src/ui/session/content/message_row/indicators.rs:314
+#: src/expressions.rs:117 src/ui/session/content/message_row/indicators.rs:314
 msgid "%l:%M %p"
 msgstr ""
 
 #. Translators: This is a date and time representation, without seconds.
 #. Here you may want to change to a 24-hours representation and change order, based on your locale.
 #. You can use this site to learn more: https://www.strfti.me/
-#: src/expressions.rs:107
+#: src/expressions.rs:122
 msgid "%B %e, %Y %l:%M %p"
 msgstr ""
 
-#: src/expressions.rs:113
+#: src/expressions.rs:128
 msgid ""
 "The admins of this group have restricted you from writing here until {date}"
 msgstr ""
 
-#: src/expressions.rs:124
+#: src/expressions.rs:139
 msgid "Writing messages isn't allowed in this group."
 msgstr ""
 
@@ -1077,8 +1079,8 @@ msgstr ""
 
 #: src/ui/login/mod.rs:152 src/ui/login/password.rs:239
 #: src/ui/session/content/chat_action_bar/mod.rs:393
-#: src/ui/session/content/chat_history.rs:1813
-#: src/ui/session/content/message_row/mod.rs:512 src/ui/session/row.rs:195
+#: src/ui/session/content/chat_history.rs:1818
+#: src/ui/session/content/message_row/mod.rs:514 src/ui/session/row.rs:195
 msgid "_Cancel"
 msgstr ""
 
@@ -1245,13 +1247,13 @@ msgstr ""
 msgid "Do you accept the Terms of Service?"
 msgstr ""
 
-#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:634
-#: src/ui/session/content/message_row/mod.rs:435
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:639
+#: src/ui/session/content/message_row/mod.rs:437
 msgid "_No"
 msgstr ""
 
-#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:635
-#: src/ui/session/content/message_row/mod.rs:436
+#: src/ui/login/registration.rs:168 src/ui/session/content/chat_history.rs:640
+#: src/ui/session/content/message_row/mod.rs:438
 msgid "_Yes"
 msgstr ""
 
@@ -1424,7 +1426,7 @@ msgid "This will permanently delete the chat for you."
 msgstr ""
 
 #: src/ui/session/content/chat_action_bar/mod.rs:394
-#: src/ui/session/content/chat_history.rs:1814
+#: src/ui/session/content/chat_history.rs:1819
 msgid "_Delete"
 msgstr ""
 
@@ -1442,111 +1444,115 @@ msgstr ""
 msgid "A message can't be empty"
 msgstr ""
 
-#: src/ui/session/content/chat_action_bar/mod.rs:682
+#: src/ui/session/content/chat_action_bar/mod.rs:693
 msgid "Unmute"
 msgstr ""
 
-#: src/ui/session/content/chat_action_bar/mod.rs:684
+#: src/ui/session/content/chat_action_bar/mod.rs:695
 msgid "Mute"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:632
+#: src/ui/session/content/chat_history.rs:637
 msgid "Leave chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:633
+#: src/ui/session/content/chat_history.rs:638
 msgid "Do you want to leave this chat?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1692
+#: src/ui/session/content/chat_history.rs:1697
 msgid "{n} selected"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1811
+#: src/ui/session/content/chat_history.rs:1816
 msgid "Delete Messages"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:1812
+#: src/ui/session/content/chat_history.rs:1817
 msgid "Delete the selected messages?"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2444
+#: src/ui/session/content/chat_history.rs:2449
 msgid "Pinned panel was hidden"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2445
+#: src/ui/session/content/chat_history.rs:2450
 msgid "Show"
 msgstr ""
 
 #. Pinned messages are numbered oldest = 1, like tdesktop.
-#: src/ui/session/content/chat_history.rs:2570
+#: src/ui/session/content/chat_history.rs:2575
 msgid "Pinned Message #{n}"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2572
-#: src/ui/session/content/chat_history.ui:142
+#: src/ui/session/content/chat_history.rs:2577
+#: src/ui/session/content/chat_history.ui:144
 msgid "Pinned Message"
 msgstr ""
 
-#: src/ui/session/content/chat_history.rs:2630
+#: src/ui/session/content/chat_history.rs:2635
 msgid "{n} Pinned Messages"
 msgstr ""
 
 #: src/ui/session/content/chat_history.ui:20
-#: src/ui/session/content/chat_history.ui:305
+#: src/ui/session/content/chat_history.ui:307
 msgid "Back"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:170
+#: src/ui/session/content/chat_history.ui:172
 msgid "All Pinned Messages"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:181
+#: src/ui/session/content/chat_history.ui:183
 msgid "Unpin for Everyone"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:193
+#: src/ui/session/content/chat_history.ui:195
 msgid "Hide Pinned Panel"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:213
-#: src/ui/session/content/chat_history.ui:217
+#: src/ui/session/content/chat_history.ui:215
+#: src/ui/session/content/chat_history.ui:219
 #: src/ui/session/content/message_menu.rs:33
-#: src/ui/session/content/message_row/mod.rs:698
+#: src/ui/session/content/message_row/mod.rs:700
 msgid "Forward"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:230
-#: src/ui/session/content/chat_history.ui:234
+#: src/ui/session/content/chat_history.ui:232
+#: src/ui/session/content/chat_history.ui:236
 #: src/ui/session/content/message_menu.rs:45
-#: src/ui/session/content/message_row/mod.rs:702
+#: src/ui/session/content/message_row/mod.rs:704
 msgid "Copy Text"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:247
-#: src/ui/session/content/chat_history.ui:251
-#: src/ui/session/content/message_row/mod.rs:706
+#: src/ui/session/content/chat_history.ui:249
+#: src/ui/session/content/chat_history.ui:253
+#: src/ui/session/content/message_row/mod.rs:708
 msgid "Delete"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:276
-#: src/ui/session/content/message_row/mod.rs:710
+#: src/ui/session/content/chat_history.ui:278
+#: src/ui/session/content/message_row/mod.rs:712
 msgid "Clear Selection"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:382
+#: src/ui/session/content/chat_history.ui:384
 msgid "Scroll to bottom"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:463
+#: src/ui/session/content/chat_history.ui:424
+msgid "Start of discussion"
+msgstr ""
+
+#: src/ui/session/content/chat_history.ui:506
 msgid "View Info"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:467
+#: src/ui/session/content/chat_history.ui:510
 msgid "Show Pinned Panel"
 msgstr ""
 
-#: src/ui/session/content/chat_history.ui:472
+#: src/ui/session/content/chat_history.ui:515
 msgid "Leave Chat"
 msgstr ""
 
@@ -1643,12 +1649,12 @@ msgid "Remove from Album"
 msgstr ""
 
 #: src/ui/session/content/message_menu.rs:93
-#: src/ui/session/content/message_row/mod.rs:517
+#: src/ui/session/content/message_row/mod.rs:519
 msgid "Delete for Everyone"
 msgstr ""
 
 #: src/ui/session/content/message_menu.rs:99
-#: src/ui/session/content/message_row/mod.rs:513
+#: src/ui/session/content/message_row/mod.rs:515
 msgid "Delete for Me"
 msgstr ""
 
@@ -1656,9 +1662,19 @@ msgstr ""
 msgid "Copy Debug Entry"
 msgstr ""
 
-#: src/ui/session/content/message_row/bubble.rs:520
+#: src/ui/session/content/message_row/bubble.rs:540
 msgid "Forwarded from {name}"
 msgstr ""
+
+#: src/ui/session/content/message_row/comments.rs:92
+msgid "Comment"
+msgstr ""
+
+#: src/ui/session/content/message_row/comments.rs:97
+msgid "{n} comment"
+msgid_plural "{n} comments"
+msgstr[0] ""
+msgstr[1] ""
 
 #: src/ui/session/content/message_row/indicators.rs:324
 msgid "edited"
@@ -1689,24 +1705,24 @@ msgstr ""
 msgid "updated {hours} hours and {minutes} minutes ago"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:427
+#: src/ui/session/content/message_row/mod.rs:429
 msgid "Do you want to delete this message for <b>everyone</b>?"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:429
+#: src/ui/session/content/message_row/mod.rs:431
 msgid "Do you want to delete this message?"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:433
-#: src/ui/session/content/message_row/mod.rs:509
+#: src/ui/session/content/message_row/mod.rs:435
+#: src/ui/session/content/message_row/mod.rs:511
 msgid "Confirm Message Deletion"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:510
+#: src/ui/session/content/message_row/mod.rs:512
 msgid "Do you want to delete this item from the album?"
 msgstr ""
 
-#: src/ui/session/content/message_row/mod.rs:1145
+#: src/ui/session/content/message_row/mod.rs:1147
 msgid "Send Message"
 msgstr ""
 

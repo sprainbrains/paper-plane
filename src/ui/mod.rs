@@ -64,6 +64,7 @@ pub(crate) use self::session::MessageBase;
 pub(crate) use self::session::MessageBaseExt;
 pub(crate) use self::session::MessageBaseImpl;
 pub(crate) use self::session::MessageBubble;
+pub(crate) use self::session::MessageCommentsBar;
 pub(crate) use self::session::MessageDocument;
 pub(crate) use self::session::MessageDocumentStatusIndicator;
 pub(crate) use self::session::MessageDragPayload;
@@ -140,6 +141,7 @@ pub(crate) fn init() {
     MediaViewer::static_type();
     DocumentRow::static_type();
     MessageAlbum::static_type();
+    MessageCommentsBar::static_type();
     MessageBase::static_type();
     MessageBubble::static_type();
     MessageDocument::static_type();

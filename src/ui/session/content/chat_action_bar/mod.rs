@@ -494,7 +494,7 @@ impl ChatActionBar {
             && let Some(message) = self.compose_text_message().await
         {
             let client_id = chat.session_().client_().id();
-            let chat_id = chat.id();
+            let mut chat_id = chat.id();
             let message_id = match self.imp().state.get() {
                 ChatActionBarState::Replying(id) => id,
                 _ => 0,
@@ -510,9 +510,20 @@ impl ChatActionBar {
                 None
             };
 
+            // In a comment thread, send into the discussion chat under the thread
+            // topic so the comment lands in the right place.
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self)
+                .and_then(|history| history.thread_send_context())
+                .map(|(discussion_chat_id, message_thread_id)| {
+                    chat_id = discussion_chat_id;
+                    tdlib::enums::MessageTopic::Thread(tdlib::types::MessageTopicThread {
+                        message_thread_id,
+                    })
+                });
+
             // Send the message
             let result =
-                tdlib::functions::send_message(chat_id, None, reply_to, None, message, client_id)
+                tdlib::functions::send_message(chat_id, topic, reply_to, None, message, client_id)
                     .await;
             match result {
                 Err(e) => log::warn!("Error sending a message: {e:?}"),

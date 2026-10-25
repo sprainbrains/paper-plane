@@ -40,6 +40,7 @@ pub(crate) use self::message_row::MessageBase;
 pub(crate) use self::message_row::MessageBaseExt;
 pub(crate) use self::message_row::MessageBaseImpl;
 pub(crate) use self::message_row::MessageBubble;
+pub(crate) use self::message_row::MessageCommentsBar;
 pub(crate) use self::message_row::MessageDocument;
 pub(crate) use self::message_row::MessageDocumentStatusIndicator;
 pub(crate) use self::message_row::MessageIndicators;
