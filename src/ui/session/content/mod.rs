@@ -246,6 +246,20 @@ impl Content {
         self.imp().chat_history.arm_reveal(chat_id, message_id);
     }
 
+    /// Records a comment thread to open after the next switch to `channel`
+    /// (see `ChatHistory::arm_open_thread`).
+    pub(crate) fn arm_open_thread(&self, channel: i64, post: i64, comment: Option<i64>) {
+        self.imp()
+            .chat_history
+            .arm_open_thread(channel, post, comment);
+    }
+
+    /// Opens a comment thread of the post currently displayed (see
+    /// `ChatHistory::jump_to_thread`).
+    pub(crate) fn jump_to_thread(&self, post: i64, comment: Option<i64>) {
+        self.imp().chat_history.jump_to_thread(post, comment);
+    }
+
     fn set_chat(&self, chat: Option<&model::Chat>) {
         if self.chat().as_ref() == chat {
             return;

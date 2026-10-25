@@ -406,6 +406,53 @@ impl Session {
         self.select_chat_with_return(chat_id);
     }
 
+    /// Switches to `channel` and opens the comment thread of `post`, revealing
+    /// `comment` inside it when given. When the channel is already on screen,
+    /// the thread opens in place (no switch would fire).
+    pub(crate) fn select_chat_and_open_thread(
+        &self,
+        channel: ChatId,
+        post: MessageId,
+        comment: Option<MessageId>,
+    ) {
+        if self
+            .imp()
+            .content
+            .chat()
+            .is_some_and(|chat| chat.id() == channel)
+        {
+            self.imp().content.jump_to_thread(post, comment);
+            return;
+        }
+        self.imp().content.arm_open_thread(channel, post, comment);
+        self.select_chat_with_return(channel);
+    }
+
+    /// Opens the chat holding the original of a mirrored message (the "View in
+    /// Chat" bar and cross-chat reply quotes). When the original turns out to
+    /// be a channel comment — its reply chain leads to the post's anchor mirror
+    /// in the discussion group — the thread itself is opened and the comment
+    /// revealed, matching tdesktop; otherwise the message is simply revealed in
+    /// its chat.
+    pub(crate) fn open_message_origin(&self, chat_id: ChatId, message_id: MessageId) {
+        let Some(session) = self.model() else {
+            return;
+        };
+        let weak = self.downgrade();
+        utils::spawn(async move {
+            let resolved = resolve_thread_origin(&session, chat_id, message_id).await;
+            let Some(obj) = weak.upgrade() else {
+                return;
+            };
+            match resolved {
+                Some((channel, post, comment)) => {
+                    obj.select_chat_and_open_thread(channel, post, comment)
+                }
+                None => obj.select_chat_and_reveal(chat_id, message_id),
+            }
+        });
+    }
+
     /// Opens the chat info window for `chat_id`, creating the private chat first
     /// when needed. Mention links use this instead of jumping straight into the
     /// chat, so the current conversation is never left by surprise.
@@ -592,4 +639,52 @@ impl Session {
         imp.split_view.set_show_content(false);
         imp.sidebar.begin_chats_search();
     }
+}
+
+/// Follow a mirrored message's reply chain inside its chat looking for the
+/// thread anchor: the anchor of a channel comment thread is the post's mirror
+/// in the discussion group — sent by the channel itself and carrying the post
+/// as its last-forward source. Returns `(channel, post, comment)` — `comment`
+/// set only when the anchor was reached through the chain (the jump started
+/// from an actual comment).
+async fn resolve_thread_origin(
+    session: &model::ClientStateSession,
+    chat_id: ChatId,
+    message_id: MessageId,
+) -> Option<(ChatId, MessageId, Option<MessageId>)> {
+    let chat = session.try_chat(chat_id)?;
+    let mut current = message_id;
+    // Reply chains are shallow in practice; the bound only guards against a
+    // TDLib quirk turning the walk into a loop.
+    for _ in 0..10 {
+        let Ok(message) = chat.fetch_message(current).await else {
+            return None;
+        };
+        if let Some((source_chat, source_message)) =
+            message.forward_info().and_then(|info| info.source_ids())
+            && source_chat != chat_id
+            && matches!(message.sender(), model::MessageSender::Chat(sender) if sender.id() == source_chat)
+        {
+            return Some((
+                source_chat,
+                source_message,
+                (current != message_id).then_some(message_id),
+            ));
+        }
+        // Comments reply to the anchor (or, nested, to another comment): follow
+        // the chain inside the same chat.
+        let next = match message.reply_to().map(|reply| reply.0) {
+            Some(tdlib::enums::MessageReplyTo::Message(data))
+                if data.chat_id == chat_id || data.chat_id == 0 =>
+            {
+                data.message_id
+            }
+            _ => return None,
+        };
+        if next == 0 || next == current {
+            return None;
+        }
+        current = next;
+    }
+    None
 }

@@ -120,12 +120,18 @@ impl MessageForwardInfo {
         obj
     }
 
+    /// The last-forwarded-from message, when TDLib knows it.
+    pub(crate) fn source_ids(&self) -> Option<(ChatId, MessageId)> {
+        self.imp().source.borrow().as_ref().and_then(|source| {
+            (source.chat_id != 0 && source.message_id != 0)
+                .then_some((source.chat_id, source.message_id))
+        })
+    }
+
     /// The last-forwarded-from message, when known and living in another chat:
     /// the target of the "View in Chat" affordance.
     pub(crate) fn view_in_chat(&self, current_chat_id: ChatId) -> Option<(ChatId, MessageId)> {
-        self.imp().source.borrow().as_ref().and_then(|source| {
-            (source.chat_id != 0 && source.message_id != 0 && source.chat_id != current_chat_id)
-                .then_some((source.chat_id, source.message_id))
-        })
+        self.source_ids()
+            .filter(|(chat_id, _)| *chat_id != current_chat_id)
     }
 }

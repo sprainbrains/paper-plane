@@ -92,7 +92,7 @@ impl MessageViewInChatBar {
         if chat_id != 0
             && let Some(session) = utils::ancestor::<_, ui::Session>(self)
         {
-            session.select_chat_and_reveal(chat_id, message_id);
+            session.open_message_origin(chat_id, message_id);
         }
     }
 }

@@ -96,7 +96,7 @@ mod imp {
                         if viewing_same_chat {
                             chat_history.focus_message(message_id);
                         } else if let Some(session) = utils::ancestor::<_, ui::Session>(&obj) {
-                            session.select_chat_and_reveal(chat_id, message_id);
+                            session.open_message_origin(chat_id, message_id);
                         }
                         gesture.set_state(gtk::EventSequenceState::Claimed);
                     }
