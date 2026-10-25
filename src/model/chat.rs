@@ -554,12 +554,12 @@ impl Chat {
     }
 
     /// Loads a comment thread's messages. `self` must be the discussion chat and
-    /// `post_id` the channel post the thread belongs to (TDLib keys the thread by
-    /// the channel post id, not the thread id). Newest-first, like the other
-    /// history loaders.
+    /// `message_thread_id` the thread's unique id — TDLib keys thread history by it
+    /// (it equals the anchor message id inside the discussion group, *not* the
+    /// channel post id). Newest-first, like the other history loaders.
     pub(crate) async fn get_thread_history(
         &self,
-        post_id: MessageId,
+        message_thread_id: i64,
         from_id: MessageId,
         offset: i32,
         limit: i32,
@@ -567,7 +567,7 @@ impl Chat {
         let client_id = self.session_().client_().id();
         let result = tdlib::functions::get_message_thread_history(
             self.id(),
-            post_id,
+            message_thread_id,
             from_id,
             offset,
             limit,

@@ -24,12 +24,12 @@ pub(crate) enum ChatHistoryError {
 }
 
 /// Identifies the comment thread a [`ChatHistoryModel`] is showing. The model's
-/// `chat` is the discussion group; `post_id` is the channel post that anchors
-/// the thread and keys the TDLib thread-history calls.
+/// `chat` is the discussion group. Verified against the live TDLib 1.8.66 API:
+/// thread history is keyed by `message_thread_id`, which equals the id of the
+/// channel post's anchor *inside the discussion group* (the channel post id is
+/// a different id space there and can collide with unrelated threads).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ThreadContext {
-    pub channel_chat_id: i64,
-    pub post_id: i64,
     pub message_thread_id: i64,
 }
 
@@ -168,16 +168,33 @@ impl ChatHistoryModel {
     }
 
     /// Whether a message belongs in this window: always in a normal chat, and only
-    /// this thread's comments (replying to the anchor post) in thread mode.
+    /// this thread's comments in thread mode. Live TDLib shows a comment as a reply
+    /// to the thread anchor (`message_thread_id`) or to an earlier comment; a
+    /// target outside the loaded window may be another thread's comment. Replies to
+    /// comments scrolled away from this window are missed until reload — an
+    /// acceptable, vanishingly rare gap for a desktop view.
     fn accepts_message(&self, message: &model::Message) -> bool {
-        match self.thread() {
-            None => true,
-            Some(thread) => matches!(
-                message.reply_to().map(|reply| reply.0),
-                Some(tdlib::enums::MessageReplyTo::Message(data))
-                    if data.chat_id == thread.channel_chat_id
-                        && data.message_id == thread.post_id
-            ),
+        let Some(thread) = self.thread() else {
+            return true;
+        };
+        let discussion_id = self.chat().map(|chat| chat.id()).unwrap_or_default();
+        match message.reply_to().map(|reply| reply.0) {
+            Some(tdlib::enums::MessageReplyTo::Message(data)) => {
+                if data.chat_id != discussion_id {
+                    return false;
+                }
+                data.message_id == thread.message_thread_id
+                    || self
+                        .imp()
+                        .list
+                        .borrow()
+                        .iter()
+                        .filter_map(|item| item.message())
+                        .any(|loaded| loaded.id() == data.message_id)
+            }
+            // Own comments sent through the thread topic can arrive without a
+            // reply target; the composer only sends into the thread in this mode.
+            _ => message.is_outgoing(),
         }
     }
 
@@ -192,7 +209,7 @@ impl ChatHistoryModel {
     ) -> Result<Vec<model::Message>, tdlib::types::Error> {
         match self.thread() {
             Some(thread) => {
-                chat.get_thread_history(thread.post_id, from_id, offset, limit)
+                chat.get_thread_history(thread.message_thread_id, from_id, offset, limit)
                     .await
             }
             None => chat.get_chat_history_around(from_id, offset, limit).await,

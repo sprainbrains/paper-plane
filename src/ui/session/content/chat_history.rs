@@ -743,6 +743,12 @@ impl ChatHistory {
         }
 
         let imp = self.imp();
+        // Thread mode is scoped to the chat it was opened from: any real chat
+        // change (and the forced rebuild when backing out of a thread) leaves it.
+        imp.thread.borrow_mut().take();
+        imp.thread_header.set_reveal_child(false);
+        imp.thread_header.set_visible(false);
+        imp.thread_anchor_row.set_item(None);
         // The back arrow only exists for chats opened from within another chat:
         // the switch armed at request time claims the pending return when it
         // actually lands; any other switch (sidebar, search, …) clears it.
@@ -2810,11 +2816,12 @@ impl ChatHistory {
     /// The (discussion chat id, message thread id) to route the composer's send
     /// into, when the view is showing a comment thread. `None` for a normal chat.
     pub(crate) fn thread_send_context(&self) -> Option<(i64, i64)> {
-        self.imp()
-            .thread
-            .borrow()
-            .as_ref()
-            .map(|thread| (thread.discussion_chat_id, thread.message_thread_id))
+        self.imp().thread.borrow().as_ref().and_then(|thread| {
+            // While the thread info request is still in flight the discussion id
+            // isn't resolved yet; sending must not target a half-known thread.
+            (thread.discussion_chat_id != 0)
+                .then_some((thread.discussion_chat_id, thread.message_thread_id))
+        })
     }
 
     /// Opens the comment thread of a channel post: swaps the list to a thread
@@ -2833,7 +2840,6 @@ impl ChatHistory {
         let anchor = anchor.clone();
 
         *self.imp().thread.borrow_mut() = Some(ThreadUi {
-            channel_chat_id,
             post_id,
             discussion_chat_id: 0,
             message_thread_id: 0,
@@ -2857,17 +2863,20 @@ impl ChatHistory {
 
     fn setup_thread_model(&self, info: tdlib::types::MessageThreadInfo, anchor: &model::Message) {
         let imp = self.imp();
-        let session = anchor.chat_().session_();
-        let discussion_chat = session.chat(info.chat_id);
-
-        if let Some(thread) = imp.thread.borrow_mut().as_mut() {
+        // The user may have backed out or switched chats while the request was
+        // in flight; never install a thread over a rebuilt or different window.
+        {
+            let mut borrow = imp.thread.borrow_mut();
+            let Some(thread) = borrow.as_mut() else {
+                return;
+            };
             thread.discussion_chat_id = info.chat_id;
             thread.message_thread_id = info.message_thread_id;
         }
+        let session = anchor.chat_().session_();
+        let discussion_chat = session.chat(info.chat_id);
 
         let context = model::ThreadContext {
-            channel_chat_id: anchor.chat_().id(),
-            post_id: anchor.id(),
             message_thread_id: info.message_thread_id,
         };
         let model = model::ChatHistoryModel::new_thread(&discussion_chat, context);
@@ -2889,6 +2898,11 @@ impl ChatHistory {
         imp.thread_anchor_row.set_item(Some(
             model::ChatHistoryItem::for_message(anchor.clone()).upcast(),
         ));
+        // The anchor *is* this thread: a bar opening it from inside it is moot.
+        // (The bind-time tree is detached, so the bar can't tell on its own.)
+        if let Some(bar) = utils::descendant::<_, ui::MessageCommentsBar>(&*imp.thread_anchor_row) {
+            bar.set_suppressed(true);
+        }
         imp.thread_header.set_reveal_child(true);
         imp.thread_header.set_visible(true);
 
@@ -2912,7 +2926,7 @@ impl ChatHistory {
         ));
     }
 
-    /// Leaves thread mode: rebuilds the channel chat and reveals the anchor post.
+    /// Leaves thread mode: rebuilds the channel window and reveals the anchor post.
     fn close_thread(&self) {
         let Some(thread) = self.imp().thread.borrow_mut().take() else {
             return;
@@ -2920,18 +2934,41 @@ impl ChatHistory {
         let imp = self.imp();
         imp.thread_header.set_reveal_child(false);
         imp.thread_header.set_visible(false);
+        imp.thread_anchor_row.set_item(None);
 
-        if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
-            session.select_chat(thread.channel_chat_id);
-        }
-        // After the channel reloads, jump back to the post we came from.
+        // The channel never stopped being the *current* chat (thread mode only
+        // swapped the list model), so re-entering it takes a forced rebuild:
+        // closing and immediately reopening the same chat.
+        let Some(channel) = self.chat() else {
+            return;
+        };
+        let channel_id = channel.id();
         let post_id = thread.post_id;
-        let weak = self.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(obj) = weak.upgrade() {
-                obj.reveal_message(post_id);
+        self.set_chat(None);
+        self.set_chat(Some(&channel));
+
+        // The rebuild installs its fresh model asynchronously; wait until the
+        // normal (non-thread) window is in place, then jump to the anchor post.
+        let generation = imp.generation.get();
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                for _ in 0..200 {
+                    if !obj.is_current_chat(generation, channel_id) {
+                        return;
+                    }
+                    let ready = obj
+                        .history_model()
+                        .is_some_and(|model| model.thread().is_none());
+                    if ready {
+                        obj.reveal_message(post_id);
+                        return;
+                    }
+                    glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                }
             }
-        });
+        ));
     }
 
     pub(crate) fn view_messages(&self) {
@@ -2966,10 +3003,10 @@ impl ChatHistory {
 }
 
 /// Live state while the view shows a single comment thread instead of a whole
-/// chat: how to route sends and how to return to the channel post.
+/// chat: how to route sends and how to return to the channel post. The channel
+/// itself stays the current chat the whole time, so it needs no recording.
 #[derive(Clone, Debug)]
 pub(crate) struct ThreadUi {
-    channel_chat_id: i64,
     post_id: i64,
     discussion_chat_id: i64,
     message_thread_id: i64,
