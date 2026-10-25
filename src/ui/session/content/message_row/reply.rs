@@ -25,9 +25,12 @@ mod imp {
     pub(crate) struct MessageReply {
         pub(super) sender_color_class: RefCell<Option<String>>,
         pub(super) bindings: RefCell<Vec<gtk::ExpressionWatch>>,
-        /// The replied-to message id when it's in the same chat (0 otherwise), so
+        /// The replied-to message id when it can be jumped to (0 otherwise), so
         /// clicking the preview can jump to it.
         pub(super) replied_message_id: Cell<i64>,
+        /// The chat the replied-to message lives in; when it differs from the
+        /// viewing chat the jump switches chats (Replies chat quotes).
+        pub(super) replied_chat_id: Cell<i64>,
 
         #[property(get, set, construct_only)]
         pub(super) message: glib::WeakRef<model::Message>,
@@ -84,10 +87,17 @@ mod imp {
                 obj,
                 move |gesture, _, _, _| {
                     let message_id = obj.imp().replied_message_id.get();
+                    let chat_id = obj.imp().replied_chat_id.get();
                     if message_id != 0
                         && let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&obj)
                     {
-                        chat_history.focus_message(message_id);
+                        let viewing_same_chat = chat_id == 0
+                            || chat_history.chat().is_some_and(|chat| chat.id() == chat_id);
+                        if viewing_same_chat {
+                            chat_history.focus_message(message_id);
+                        } else if let Some(session) = utils::ancestor::<_, ui::Session>(&obj) {
+                            session.select_chat_and_reveal(chat_id, message_id);
+                        }
                         gesture.set_state(gtk::EventSequenceState::Claimed);
                     }
                 }
@@ -131,15 +141,26 @@ impl MessageReply {
         match message.reply_to().unwrap().0 {
             tdlib::enums::MessageReplyTo::Message(reply_to) => {
                 let chat = if reply_to.chat_id != 0 {
-                    message.chat_().session_().chat(reply_to.chat_id)
+                    message.chat_().session_().try_chat(reply_to.chat_id)
                 } else {
-                    message.chat_()
+                    Some(message.chat_())
+                };
+                // The origin chat may be unknown to this account (left, or never
+                // loaded): the Replies chat quotes replies from arbitrary chats.
+                // Keep the quote inert instead of crashing on it.
+                let Some(chat) = chat else {
+                    imp.message_label.set_label(&gettext("Deleted message"));
+                    return;
                 };
 
-                // Only same-chat replies can be focused in the current history.
-                if reply_to.chat_id == 0 || reply_to.chat_id == message.chat_().id() {
-                    imp.replied_message_id.set(reply_to.message_id);
-                }
+                // Same-chat replies focus in place; cross-chat ones (the Replies
+                // chat mirrors replies from other chats) switch chats first.
+                imp.replied_message_id.set(reply_to.message_id);
+                imp.replied_chat_id.set(if reply_to.chat_id != 0 {
+                    reply_to.chat_id
+                } else {
+                    message.chat_().id()
+                });
 
                 match chat.fetch_message(reply_to.message_id).await {
                     Ok(message) => self.update_from_message(&message, is_outgoing),

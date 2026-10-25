@@ -1,4 +1,5 @@
 use std::cell::OnceCell;
+use std::cell::RefCell;
 
 use glib::Properties;
 use gtk::glib;
@@ -6,6 +7,7 @@ use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
 use crate::model;
+use crate::types::ChatId;
 use crate::types::MessageId;
 
 #[derive(Clone, Debug, glib::Boxed)]
@@ -49,6 +51,10 @@ mod imp {
         pub(super) date: OnceCell<i32>,
         #[property(get, set, construct_only)]
         pub(super) origin: OnceCell<model::MessageForwardOrigin>,
+        /// The message this one was last forwarded from, when TDLib knows it
+        /// (Saved Messages, the Replies chat, discussion mirrors). Rust-side
+        /// only: it drives the "View in Chat" affordance.
+        pub(super) source: RefCell<Option<tdlib::types::ForwardSource>>,
     }
 
     #[glib::object_subclass]
@@ -106,9 +112,20 @@ impl MessageForwardInfo {
             },
         };
 
-        glib::Object::builder()
+        let obj: Self = glib::Object::builder()
             .property("date", forward_info.date)
             .property("origin", origin)
-            .build()
+            .build();
+        obj.imp().source.replace(forward_info.source);
+        obj
+    }
+
+    /// The last-forwarded-from message, when known and living in another chat:
+    /// the target of the "View in Chat" affordance.
+    pub(crate) fn view_in_chat(&self, current_chat_id: ChatId) -> Option<(ChatId, MessageId)> {
+        self.imp().source.borrow().as_ref().and_then(|source| {
+            (source.chat_id != 0 && source.message_id != 0 && source.chat_id != current_chat_id)
+                .then_some((source.chat_id, source.message_id))
+        })
     }
 }

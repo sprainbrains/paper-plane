@@ -1,0 +1,35 @@
+using Gtk 4.0;
+
+// The "View in Chat" bar shown on messages mirrored into another chat (the
+// Replies chat, Saved Messages): tapping it jumps to the original message.
+// Populated via `set_message`; the label is set from Rust for translation.
+template $PaplMessageViewInChatBar : Button {
+  styles ["view-in-chat-bar", "flat"]
+
+  Box {
+    spacing: 8;
+
+    Image {
+      valign: center;
+      icon-name: "message-comments-symbolic";
+      pixel-size: 16;
+
+      styles ["dim-label"]
+    }
+
+    Label label {
+      hexpand: true;
+      xalign: 0;
+      valign: center;
+      ellipsize: end;
+    }
+
+    Image {
+      valign: center;
+      icon-name: "pan-end-symbolic";
+      pixel-size: 14;
+
+      styles ["dim-label"]
+    }
+  }
+}

@@ -596,6 +596,14 @@ messagebubble .comments-bar {
   background-color: alpha(currentcolor, 0.06);
 }
 
+/* "View in Chat" bar on mirrored messages (Replies chat, Saved Messages). */
+messagebubble .view-in-chat-bar {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background-color: alpha(currentcolor, 0.06);
+}
+
 messagebubble.document .sender {
   margin-bottom: 3px;
 }

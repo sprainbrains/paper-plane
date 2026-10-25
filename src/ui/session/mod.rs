@@ -57,6 +57,7 @@ pub(crate) use self::content::MessageText;
 pub(crate) use self::content::MessageVenue;
 pub(crate) use self::content::MessageVideo;
 pub(crate) use self::content::MessageVideoNote;
+pub(crate) use self::content::MessageViewInChatBar;
 pub(crate) use self::content::MessageVoiceNote;
 pub(crate) use self::content::SendMediaWindow;
 pub(crate) use self::preferences_window::PreferencesWindow;
@@ -80,6 +81,7 @@ pub(crate) use self::sidebar::Sidebar;
 pub(crate) use self::switcher::Switcher;
 use crate::model;
 use crate::types::ChatId;
+use crate::types::MessageId;
 use crate::ui;
 use crate::utils;
 
@@ -394,6 +396,14 @@ impl Session {
             self.imp().content.arm_return_to(current.id(), chat_id);
         }
         self.select_chat(chat_id);
+    }
+
+    /// Switches to `chat_id` (remembering the current chat for the back arrow)
+    /// and reveals `message_id` there once the history has loaded. Used by the
+    /// "View in Chat" affordance and cross-chat reply quotes.
+    pub(crate) fn select_chat_and_reveal(&self, chat_id: ChatId, message_id: MessageId) {
+        self.imp().content.arm_reveal(chat_id, message_id);
+        self.select_chat_with_return(chat_id);
     }
 
     /// Opens the chat info window for `chat_id`, creating the private chat first

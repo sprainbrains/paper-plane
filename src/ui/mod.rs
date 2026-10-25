@@ -83,6 +83,7 @@ pub(crate) use self::session::MessageText;
 pub(crate) use self::session::MessageVenue;
 pub(crate) use self::session::MessageVideo;
 pub(crate) use self::session::MessageVideoNote;
+pub(crate) use self::session::MessageViewInChatBar;
 pub(crate) use self::session::MessageVoiceNote;
 pub(crate) use self::session::PreferencesWindow;
 pub(crate) use self::session::Row as SessionRow;
@@ -142,6 +143,7 @@ pub(crate) fn init() {
     DocumentRow::static_type();
     MessageAlbum::static_type();
     MessageCommentsBar::static_type();
+    MessageViewInChatBar::static_type();
     MessageBase::static_type();
     MessageBubble::static_type();
     MessageDocument::static_type();
