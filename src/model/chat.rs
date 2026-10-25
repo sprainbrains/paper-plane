@@ -108,10 +108,6 @@ mod imp {
         pub(super) draft_message: RefCell<Option<model::BoxedDraftMessage>>,
         #[property(get)]
         pub(super) notification_settings: RefCell<model::BoxedChatNotificationSettings>,
-        /// The external source the chat was added from, if any (e.g. a public
-        /// service announcement). Surfaced as a leading badge in chat titles.
-        #[property(get)]
-        pub(super) source: RefCell<Option<model::BoxedChatSource>>,
         #[property(get = Self::actions)]
         pub(super) actions: OnceCell<model::ChatActionList>,
         #[property(get)]
@@ -424,18 +420,6 @@ impl Chat {
             .notification_settings
             .replace(notification_settings);
         self.notify_notification_settings();
-    }
-
-    /// Records the external source a chat was added from (from a chat position).
-    /// Only a `Some` source updates the value; ordinary position updates leave the
-    /// existing badge in place.
-    pub(crate) fn set_source(&self, source: Option<tdlib::enums::ChatSource>) {
-        let boxed = source.map(model::BoxedChatSource);
-        if self.imp().source.borrow().eq(&boxed) {
-            return;
-        }
-        self.imp().source.replace(boxed);
-        self.notify_source();
     }
 
     /// The Telegram-issued verification state of the chat's participant or group,

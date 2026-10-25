@@ -9,12 +9,11 @@ template $PaplChatTitle : Box {
   spacing: 4;
   valign: center;
 
-  Image source_icon {
+  // Leading badge for an external (bot-provided) verifier, e.g. a state media
+  // registration: the verifier's custom emoji, resolved asynchronously.
+  $PaplSticker verifier_icon {
     visible: false;
     valign: center;
-    icon-name: "chat-source-symbolic";
-
-    styles ["chat-badge", "chat-source"]
   }
 
   Label title_label {

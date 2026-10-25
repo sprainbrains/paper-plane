@@ -182,12 +182,6 @@ pub(crate) struct BoxedChatPermissions(pub(crate) ChatPermissions);
 #[boxed_type(name = "BoxedVerificationStatus", nullable)]
 pub(crate) struct BoxedVerificationStatus(pub(crate) tdlib::types::VerificationStatus);
 
-/// The external source a chat was added from (e.g. a public service announcement).
-/// `nullable` so the property is `None` for ordinary chats.
-#[derive(Clone, Debug, PartialEq, glib::Boxed)]
-#[boxed_type(name = "BoxedChatSource", nullable)]
-pub(crate) struct BoxedChatSource(pub(crate) tdlib::enums::ChatSource);
-
 #[derive(Clone, Debug, PartialEq, glib::Boxed)]
 #[boxed_type(name = "BoxedDraftMessage", nullable)]
 pub(crate) struct BoxedDraftMessage(pub(crate) DraftMessage);
