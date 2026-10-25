@@ -582,7 +582,8 @@ impl Application {
             return;
         };
         let chat = session.chat(chat_id);
-        ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0).present();
+        ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0, None)
+            .present();
     }
 
     /// Types text into the open send-media window's caption entry, so the
@@ -658,7 +659,7 @@ impl Application {
         };
         let chat = model.chat(chat_id);
         let send_window =
-            ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0);
+            ui::SendMediaWindow::new(window.upcast_ref::<gtk::Window>(), &chat, paths, 0, None);
         let action = if as_file {
             "send-media-window.send-as-file"
         } else {

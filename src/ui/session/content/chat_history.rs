@@ -116,12 +116,6 @@ mod imp {
         pub(super) content_overlay: TemplateChild<gtk::Overlay>,
         #[template_child]
         pub(super) background: TemplateChild<ui::Background>,
-        #[template_child]
-        pub(super) thread_header: TemplateChild<gtk::Revealer>,
-        #[template_child]
-        pub(super) thread_anchor_row: TemplateChild<ui::ChatHistoryRow>,
-        #[template_child]
-        pub(super) thread_divider_label: TemplateChild<gtk::Label>,
         /// Non-empty while the view shows a single comment thread instead of the
         /// whole chat. Records how to return to the channel post.
         pub(super) thread: RefCell<Option<super::ThreadUi>>,
@@ -746,9 +740,6 @@ impl ChatHistory {
         // Thread mode is scoped to the chat it was opened from: any real chat
         // change (and the forced rebuild when backing out of a thread) leaves it.
         imp.thread.borrow_mut().take();
-        imp.thread_header.set_reveal_child(false);
-        imp.thread_header.set_visible(false);
-        imp.thread_anchor_row.set_item(None);
         // The back arrow only exists for chats opened from within another chat:
         // the switch armed at request time claims the pending return when it
         // actually lands; any other switch (sidebar, search, …) clears it.
@@ -2824,6 +2815,16 @@ impl ChatHistory {
         })
     }
 
+    /// The `MessageTopic` to route sends through while viewing a comment thread
+    /// (media windows and pickers that cannot reach the composer's own path).
+    pub(crate) fn thread_topic(&self) -> Option<tdlib::enums::MessageTopic> {
+        self.thread_send_context().map(|(_, message_thread_id)| {
+            tdlib::enums::MessageTopic::Thread(tdlib::types::MessageTopicThread {
+                message_thread_id,
+            })
+        })
+    }
+
     /// Opens the comment thread of a channel post: swaps the list to a thread
     /// model, pins the anchor post in a header, and arms a return to the channel.
     pub(crate) fn open_thread(&self, anchor: &model::Message) {
@@ -2878,6 +2879,7 @@ impl ChatHistory {
 
         let context = model::ThreadContext {
             message_thread_id: info.message_thread_id,
+            anchor: anchor.clone(),
         };
         let model = model::ChatHistoryModel::new_thread(&discussion_chat, context);
         model.connect_items_changed(clone!(
@@ -2894,23 +2896,14 @@ impl ChatHistory {
         imp.list_view.set_model(Some(&selection));
         *imp.model.borrow_mut() = Some(model.clone());
 
-        // Anchor post + "start of discussion" header.
-        imp.thread_anchor_row.set_item(Some(
-            model::ChatHistoryItem::for_message(anchor.clone()).upcast(),
-        ));
-        // The anchor *is* this thread: a bar opening it from inside it is moot.
-        // (The bind-time tree is detached, so the bar can't tell on its own.)
-        if let Some(bar) = utils::descendant::<_, ui::MessageCommentsBar>(&*imp.thread_anchor_row) {
-            bar.set_suppressed(true);
-        }
-        imp.thread_header.set_reveal_child(true);
-        imp.thread_header.set_visible(true);
-
-        // Header: discussion identity + back arrow.
+        // Header: discussion identity + back arrow. The composer follows the
+        // same retarget: writing in a thread is writing in the discussion group,
+        // so its permissions (and draft) are the discussion's.
         imp.header_chat_title.set_chat(Some(&discussion_chat));
         imp.header_avatar
             .set_item(Some(discussion_chat.clone().upcast()));
         imp.back_button.set_visible(true);
+        imp.chat_action_bar.set_chat(Some(&discussion_chat));
 
         // Load the comments, then stick to the bottom (newest comment).
         utils::spawn(clone!(
@@ -2932,13 +2925,12 @@ impl ChatHistory {
             return;
         };
         let imp = self.imp();
-        imp.thread_header.set_reveal_child(false);
-        imp.thread_header.set_visible(false);
-        imp.thread_anchor_row.set_item(None);
 
         // The channel never stopped being the *current* chat (thread mode only
-        // swapped the list model), so re-entering it takes a forced rebuild:
-        // closing and immediately reopening the same chat.
+        // swapped the list model and the composer's target), so re-entering it
+        // takes a forced rebuild: closing and immediately reopening the same
+        // chat. The chat-property notify also pulls the composer back to the
+        // channel through the template binding.
         let Some(channel) = self.chat() else {
             return;
         };

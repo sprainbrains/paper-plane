@@ -278,6 +278,25 @@ enum StickerRemoval {
 const PICKER_PRELOAD_ROWS: u32 = 5;
 
 impl ContentPicker {
+    /// Where a picked sticker/GIF should actually go: the picker's chat, or —
+    /// while the open view is a comment thread — the discussion chat under the
+    /// thread's topic. The picker hangs off `Session`, so the thread context is
+    /// resolved through the active chat view rather than the widget tree.
+    fn thread_send_target(&self, chat: &model::Chat) -> (i64, Option<tdlib::enums::MessageTopic>) {
+        let thread = utils::ancestor::<_, ui::Session>(self)
+            .and_then(|session| utils::descendant::<_, ui::ChatHistory>(&session))
+            .and_then(|history| history.thread_send_context());
+        match thread {
+            Some((discussion_chat_id, message_thread_id)) => (
+                discussion_chat_id,
+                Some(tdlib::enums::MessageTopic::Thread(
+                    tdlib::types::MessageTopicThread { message_thread_id },
+                )),
+            ),
+            None => (chat.id(), None),
+        }
+    }
+
     fn emoji_model(&self) -> &gio::ListStore {
         self.imp().emoji_model.get().unwrap()
     }
@@ -1901,6 +1920,7 @@ impl ContentPicker {
         let Some(chat) = self.imp().chat.upgrade() else {
             return;
         };
+        let (chat_id, topic) = self.thread_send_target(&chat);
         let content = tdlib::enums::InputMessageContent::InputMessageSticker(
             tdlib::types::InputMessageSticker {
                 sticker: tdlib::types::InputSticker {
@@ -1916,8 +1936,8 @@ impl ContentPicker {
         );
         utils::spawn(async move {
             if let Err(e) = tdlib::functions::send_message(
-                chat.id(),
-                None,
+                chat_id,
+                topic,
                 None,
                 None,
                 content,
@@ -1957,6 +1977,7 @@ impl ContentPicker {
             return;
         };
         self.emit_by_name::<()>("content-picked", &[]);
+        let (chat_id, topic) = self.thread_send_target(&chat);
         let content = tdlib::enums::InputMessageContent::InputMessageAnimation(
             tdlib::types::InputMessageAnimation {
                 animation: tdlib::types::InputAnimation {
@@ -1976,8 +1997,8 @@ impl ContentPicker {
         );
         utils::spawn(async move {
             if let Err(e) = tdlib::functions::send_message(
-                chat.id(),
-                None,
+                chat_id,
+                topic,
                 None,
                 None,
                 content,

@@ -442,8 +442,15 @@ impl ChatActionBar {
                 return;
             };
 
-            ui::SendMediaWindow::new(&parent, &chat, paths, self.imp().state.get().replying())
-                .present();
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.thread_topic());
+            ui::SendMediaWindow::new(
+                &parent,
+                &chat,
+                paths,
+                self.imp().state.get().replying(),
+                topic,
+            )
+            .present();
         }
     }
 
@@ -584,7 +591,7 @@ impl ChatActionBar {
         self.imp().chat.upgrade()
     }
 
-    fn set_chat(&self, chat: Option<&model::Chat>) {
+    pub(crate) fn set_chat(&self, chat: Option<&model::Chat>) {
         if self.chat().as_ref() == chat {
             return;
         }

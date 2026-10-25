@@ -19,6 +19,12 @@ pub(crate) enum ChatHistoryItemType {
     /// A "unread messages" separator placed before the first unread message. Carries
     /// the `last_read_inbox_message_id` boundary it was created for.
     UnreadDivider(i64),
+    /// The channel post a comment thread is anchored to, rendered as the topmost
+    /// row of the thread window. Deliberately hidden from `message()`/pagination:
+    /// its id lives in the channel's id space, not the discussion's.
+    ThreadAnchor(model::Message),
+    /// The "Start of discussion" pill between the thread anchor and its comments.
+    ThreadIntro,
 }
 
 mod imp {
@@ -70,6 +76,16 @@ impl ChatHistoryItem {
 
     pub(crate) fn for_unread_divider(last_read_message_id: i64) -> Self {
         let type_ = ChatHistoryItemType::UnreadDivider(last_read_message_id);
+        glib::Object::builder().property("type", type_).build()
+    }
+
+    pub(crate) fn for_thread_anchor(message: model::Message) -> Self {
+        let type_ = ChatHistoryItemType::ThreadAnchor(message);
+        glib::Object::builder().property("type", type_).build()
+    }
+
+    pub(crate) fn for_thread_intro() -> Self {
+        let type_ = ChatHistoryItemType::ThreadIntro;
         glib::Object::builder().property("type", type_).build()
     }
 

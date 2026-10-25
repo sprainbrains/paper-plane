@@ -26,6 +26,10 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) paths: RefCell<Vec<String>>,
         pub(super) reply_to: OnceCell<i64>,
+        /// Comment-thread topic to send into, when the media was composed from
+        /// a thread view (`None` for ordinary chats). The window is a separate
+        /// top-level, so the caller resolves it before construction.
+        pub(super) topic: RefCell<Option<tdlib::enums::MessageTopic>>,
         pub(super) emoji_chooser: RefCell<Option<gtk::EmojiChooser>>,
         #[template_child]
         pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
@@ -138,6 +142,7 @@ impl SendMediaWindow {
         chat: &model::Chat,
         paths: Vec<String>,
         reply_to: i64,
+        topic: Option<tdlib::enums::MessageTopic>,
     ) -> Self {
         let obj: Self = glib::Object::builder()
             .property("transient-for", parent)
@@ -148,6 +153,7 @@ impl SendMediaWindow {
         imp.chat.set(Some(chat));
         imp.paths.replace(paths);
         imp.reply_to.set(reply_to).unwrap();
+        *imp.topic.borrow_mut() = topic;
         obj.update_preview();
 
         obj
@@ -324,6 +330,7 @@ impl SendMediaWindow {
 
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
+        let topic = imp.topic.borrow().clone();
 
         let reply_to_message_id = *imp.reply_to.get().unwrap();
         let reply_to = if reply_to_message_id != 0 {
@@ -344,7 +351,7 @@ impl SendMediaWindow {
         let result = if contents.len() == 1 {
             tdlib::functions::send_message(
                 chat_id,
-                None,
+                topic,
                 reply_to,
                 None,
                 contents.into_iter().next().unwrap(),
@@ -358,7 +365,7 @@ impl SendMediaWindow {
             for chunk in contents.chunks(ALBUM_MAX_MEMBERS) {
                 if let Err(e) = tdlib::functions::send_message_album(
                     chat_id,
-                    None,
+                    topic.clone(),
                     reply_to.take(),
                     None,
                     chunk.to_vec(),
