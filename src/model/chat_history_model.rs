@@ -52,6 +52,12 @@ mod imp {
         pub(super) new_message_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) deleted_message_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) is_loading: Cell<bool>,
+        /// Consecutive empty "older" pages since the last non-empty one. Right
+        /// after a chat is opened TDLib can serve only the locally stored
+        /// window while its server fetch is still in flight, so an early empty
+        /// page is retried a few times before the history is declared
+        /// exhausted (otherwise the initial view sticks on a stub window).
+        pub(super) empty_page_retries: Cell<u32>,
         pub(super) list: RefCell<VecDeque<model::ChatHistoryItem>>,
         /// Whether the loaded window includes the chat's newest message. `false` after
         /// jumping to an old message, until the gap is closed by loading newer ones.
@@ -266,8 +272,18 @@ impl ChatHistoryModel {
         let messages = result.map_err(ChatHistoryError::Tdlib)?;
 
         if messages.is_empty() {
+            // Thread windows are authoritative per fetch: no server-sync race
+            // to wait out, an empty page is simply the end.
+            let window_is_stub =
+                imp.thread.borrow().is_none() && imp.list.borrow().len() <= limit as usize;
+            if window_is_stub && imp.empty_page_retries.get() < 10 {
+                imp.empty_page_retries.set(imp.empty_page_retries.get() + 1);
+                glib::timeout_future(std::time::Duration::from_millis(150)).await;
+                return Ok(true);
+            }
             return Ok(false);
         }
+        imp.empty_page_retries.set(0);
 
         self.append(messages);
         Ok(true)
