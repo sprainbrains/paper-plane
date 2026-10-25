@@ -53,6 +53,10 @@ mod imp {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) chat_handler: RefCell<Option<glib::SignalHandlerId>>,
         pub(super) model: RefCell<Option<model::ChatHistoryModel>>,
+        /// Whether a spacer (bottom-fill) re-measure is already pending.
+        pub(super) spacer_update_pending: std::cell::Cell<bool>,
+        /// The model whose signals are currently wired to the spacer update.
+        pub(super) spacer_model: RefCell<Option<model::ChatHistoryModel>>,
         pub(super) generation: Cell<u64>,
         /// When set, the header shows a back arrow to this chat: the current
         /// chat was opened from within it (mention info window, forward header).
@@ -322,6 +326,16 @@ mod imp {
             self.pinned_content.set_cursor_from_name(Some("pointer"));
 
             let adj = self.list_view.vadjustment().unwrap();
+            // Viewport metric changes can open up (or eat) bottom slack.
+            for metric in ["notify::upper", "notify::page-size"] {
+                let weak = obj.downgrade();
+                adj.connect_local(metric, true, move |_| {
+                    if let Some(obj) = weak.upgrade() {
+                        obj.update_spacer();
+                    }
+                    None
+                });
+            }
             adj.connect_value_changed(clone!(
                 #[weak]
                 obj,
@@ -917,11 +931,17 @@ impl ChatHistory {
                         // no layout runs at all (frozen page-sized extents used to keep
                         // the loop pulling the entire history). Always load the first
                         // page unconditionally, and extend only while the view is mapped.
+                        // The bottom-filling spacer pins `upper` to `page_size` on short
+                        // chats, so extension is additionally capped to a few pages.
                         let mut first_page = true;
+                        let mut extensions = 0;
                         while first_page
-                            || (imp.list_view.is_mapped() && adj.upper() <= adj.page_size())
+                            || (imp.list_view.is_mapped()
+                                && adj.upper() <= adj.page_size()
+                                && extensions < 4)
                         {
                             first_page = false;
+                            extensions += 1;
                             let result = model.load_older_messages(30).await;
                             if !obj.is_current_history(generation, chat_id, &model) {
                                 return;
@@ -1040,6 +1060,7 @@ impl ChatHistory {
             imp.list_view.set_model(Some(&selection));
 
             imp.model.replace(Some(model));
+            self.hook_spacer_item();
         }
 
         imp.chat.set(chat);
@@ -1049,6 +1070,89 @@ impl ChatHistory {
     /// The chat history data model backing the list, if a chat is loaded.
     pub(crate) fn history_model(&self) -> Option<model::ChatHistoryModel> {
         self.imp().model.borrow().clone()
+    }
+
+    /// Wire the window's shared spacer item to the model's change signals so
+    /// its fill height tracks the viewport. The model holds one spacer item
+    /// per window; the rows bind to it and follow its `slack` property.
+    fn hook_spacer_item(&self) {
+        let obj = self;
+        let imp = self.imp();
+        let Some(model) = imp.model.borrow().clone() else {
+            return;
+        };
+        if imp
+            .spacer_model
+            .borrow()
+            .as_ref()
+            .is_some_and(|prev| prev == &model)
+        {
+            return;
+        }
+        *imp.spacer_model.borrow_mut() = Some(model.clone());
+
+        model.connect_items_changed(clone!(
+            #[weak]
+            obj,
+            move |_, _, _, _| {
+                obj.update_spacer();
+            }
+        ));
+        let weak = obj.downgrade();
+        model.connect_local("spacer-needs-update", true, move |_| {
+            if let Some(obj) = weak.upgrade() {
+                obj.update_spacer();
+            }
+            None
+        });
+        obj.update_spacer();
+    }
+
+    /// Coalesce spacer re-measures into one per frame: setting the slack
+    /// re-lays out the list, which feeds back through the adjustment and
+    /// item notifications; the loop stops when the value settles.
+    pub(crate) fn update_spacer(&self) {
+        let imp = self.imp();
+        if imp.spacer_update_pending.replace(true) {
+            return;
+        }
+        let weak = glib::WeakRef::new();
+        weak.set(Some(self));
+        glib::idle_add_local_once(move || {
+            let Some(obj) = weak.upgrade() else {
+                return;
+            };
+            obj.imp().spacer_update_pending.set(false);
+            obj.do_update_spacer();
+        });
+    }
+
+    fn do_update_spacer(&self) {
+        let imp = self.imp();
+        let Some(model) = imp.model.borrow().clone() else {
+            return;
+        };
+        let Some(spacer) = model.spacer_item() else {
+            return;
+        };
+        if !imp.list_view.is_realized() {
+            return;
+        }
+        let Some(adj) = imp.list_view.vadjustment() else {
+            return;
+        };
+        // The adjustment's `upper` is clamped to at least `page_size`, so it
+        // cannot reveal slack; the list's vertical natural height is the full
+        // content extent (that is what feeds `upper` beyond the viewport).
+        let (_, natural, _, _) = imp.list_view.measure(gtk::Orientation::Vertical, -1);
+        // Transient during a window reset the measure may have seen the
+        // spacer alone; filling the whole viewport then would overshoot the
+        // real content — wait for a measurement that includes it.
+        if natural <= spacer.slack() {
+            return;
+        }
+        let target = (adj.page_size() - natural as f64).max(0.0).round() as i32;
+        spacer.set_slack(target);
     }
 
     /// Snapshot of every layer between the model and the screen (chat binding,

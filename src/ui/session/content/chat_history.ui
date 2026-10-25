@@ -401,19 +401,6 @@
                   <object class="GtkScrolledWindow" id="scrolled_window">
                     <property name="hscrollbar-policy">never</property>
                     <property name="child">
-                      <object class="GtkBox">
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <!-- Bottom-aligns histories shorter than the viewport
-                               (Telegram pins messages to the floor); collapses
-                               to zero once the list overflows and the scrolling
-                               takes over. The scrolled window auto-wraps this
-                               box in a viewport. -->
-                          <object class="GtkBox">
-                            <property name="vexpand">True</property>
-                          </object>
-                        </child>
-                        <child>
                       <object class="AdwClampScrollable">
                         <property name="maximum-size">800</property>
                         <property name="tightening-threshold">600</property>
@@ -444,8 +431,6 @@
                             </property>
                           </object>
                         </property>
-                      </object>
-                        </child>
                       </object>
                     </property>
                   </object>

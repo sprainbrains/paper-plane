@@ -1,4 +1,6 @@
+use std::cell::Cell;
 use std::cell::OnceCell;
+use std::sync::OnceLock;
 
 use glib::Properties;
 use glib::prelude::*;
@@ -25,6 +27,14 @@ pub(crate) enum ChatHistoryItemType {
     ThreadAnchor(model::Message),
     /// The "Start of discussion" pill between the thread anchor and its comments.
     ThreadIntro,
+    /// Invisible filler pinned at the oldest end (screen top). It absorbs the
+    /// slack whenever the loaded window is shorter than the viewport, so short
+    /// chats sit at the bottom the way Telegram renders them; with taller
+    /// content it collapses to zero height. It is not a message and never
+    /// participates in pagination, grouping or dividers. The height to fill is
+    /// published on the item's `slack` property (a single instance is shared
+    /// per window), so the row needs no widget-tree access to render it.
+    Spacer,
 }
 
 mod imp {
@@ -35,6 +45,8 @@ mod imp {
     pub(crate) struct ChatHistoryItem {
         #[property(set, construct_only)]
         pub(super) type_: OnceCell<ChatHistoryItemType>,
+        /// Fill height for the spacer variant, owned by the chat history view.
+        pub(super) slack: Cell<i32>,
     }
 
     #[glib::object_subclass]
@@ -45,11 +57,38 @@ mod imp {
 
     impl ObjectImpl for ChatHistoryItem {
         fn properties() -> &'static [glib::ParamSpec] {
-            Self::derived_properties()
+            static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
+            PROPERTIES.get_or_init(|| {
+                let mut props = Self::derived_properties().to_vec();
+                props.push(
+                    glib::ParamSpecInt::builder("slack")
+                        .minimum(0)
+                        .default_value(0)
+                        .explicit_notify()
+                        .build(),
+                );
+                props
+            })
         }
 
         fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
-            self.derived_set_property(id, value, pspec)
+            match pspec.name() {
+                "slack" => {
+                    let slack = value.get().unwrap();
+                    if self.slack.get() != slack {
+                        self.slack.set(slack);
+                        self.obj().notify("slack");
+                    }
+                }
+                _ => self.derived_set_property(id, value, pspec),
+            }
+        }
+
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            match pspec.name() {
+                "slack" => self.slack.get().to_value(),
+                _ => self.derived_property(id, pspec),
+            }
         }
     }
 }
@@ -87,6 +126,19 @@ impl ChatHistoryItem {
     pub(crate) fn for_thread_intro() -> Self {
         let type_ = ChatHistoryItemType::ThreadIntro;
         glib::Object::builder().property("type", type_).build()
+    }
+
+    pub(crate) fn for_spacer() -> Self {
+        let type_ = ChatHistoryItemType::Spacer;
+        glib::Object::builder().property("type", type_).build()
+    }
+
+    pub(crate) fn slack(&self) -> i32 {
+        self.imp().slack.get()
+    }
+
+    pub(crate) fn set_slack(&self, slack: i32) {
+        self.set_property("slack", slack.max(0));
     }
 
     pub(crate) fn type_(&self) -> &ChatHistoryItemType {

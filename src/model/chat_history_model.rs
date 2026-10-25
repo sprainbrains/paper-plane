@@ -2,11 +2,13 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
+use std::sync::OnceLock;
 
 use gio::prelude::*;
 use gio::subclass::prelude::*;
 use glib::Properties;
 use glib::clone;
+use glib::subclass::Signal;
 use gtk::gio;
 use gtk::glib;
 use thiserror::Error;
@@ -38,7 +40,9 @@ pub(crate) struct ThreadContext {
     pub anchor: model::Message,
 }
 
-/// Number of synthetic tail items a thread window keeps at its oldest end.
+/// Number of synthetic tail items every window keeps at its oldest end: the
+/// bottom-filling spacer, plus (in thread mode) the intro pill and the anchor.
+const SPACER_TAIL_ITEMS: usize = 1;
 const THREAD_TAIL_ITEMS: usize = 2;
 
 mod imp {
@@ -66,6 +70,10 @@ mod imp {
         /// `chat`: loads via the thread API and only accepts messages belonging to
         /// the thread.
         pub(super) thread: RefCell<Option<super::ThreadContext>>,
+        /// The one spacer item this window pins at its oldest end. Shared
+        /// across window resets so the view's row keeps its binding and the
+        /// chat history view keeps one notification target.
+        pub(super) spacer_item: RefCell<Option<model::ChatHistoryItem>>,
     }
 
     #[glib::object_subclass]
@@ -82,6 +90,11 @@ mod imp {
 
         fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
             self.derived_property(id, pspec)
+        }
+
+        fn signals() -> &'static [Signal] {
+            static SIGNALS: OnceLock<Vec<Signal>> = OnceLock::new();
+            SIGNALS.get_or_init(|| vec![Signal::builder("spacer-needs-update").build()])
         }
 
         fn dispose(&self) {
@@ -140,6 +153,7 @@ impl ChatHistoryModel {
         obj.imp().chat.set(Some(chat));
         obj.imp().newest_loaded.set(true);
         *obj.imp().thread.borrow_mut() = thread;
+        obj.imp().list.borrow_mut().push_back(obj.spacer().clone());
         obj.seed_thread_tail();
 
         let new_message_handler = chat.connect_new_message(clone!(
@@ -178,21 +192,79 @@ impl ChatHistoryModel {
         obj
     }
 
+    /// The window's shared spacer item (created on first use).
+    fn spacer(&self) -> model::ChatHistoryItem {
+        let imp = self.imp();
+        if imp.spacer_item.borrow().is_none() {
+            *imp.spacer_item.borrow_mut() = Some(model::ChatHistoryItem::for_spacer());
+        }
+        imp.spacer_item.borrow().clone().unwrap()
+    }
+
+    /// The shared bottom-fill spacer item of this window.
+    pub(crate) fn spacer_item(&self) -> Option<model::ChatHistoryItem> {
+        self.imp().spacer_item.borrow().clone()
+    }
+
+    /// Tells the history view its fill-height (spacer) measurement is stale.
+    pub(crate) fn spacer_needs_update(&self) {
+        let signal = glib::subclass::SignalId::lookup(
+            "spacer-needs-update",
+            <Self as glib::prelude::StaticType>::static_type(),
+        )
+        .expect("spacer-needs-update signal is registered");
+        self.emit::<()>(signal, &[] as &[&dyn glib::prelude::ToValue]);
+    }
+
     pub(crate) fn thread(&self) -> Option<ThreadContext> {
         self.imp().thread.borrow().clone()
     }
 
-    /// Appends the synthetic thread tail — the "Start of discussion" pill and
-    /// the channel post, oldest end (screen top) — to an empty or just-cleared
-    /// window. Does not emit: fresh models are bound after seeding, and the one
-    /// re-seeding caller reports the change itself.
+    /// Empties the window and re-pins its synthetic tail (spacer, plus the
+    /// thread intro and anchor), reporting both changes to the view.
+    fn reset_window(&self) {
+        let imp = self.imp();
+        let removed = imp.list.borrow().len();
+        imp.list.borrow_mut().clear();
+        self.upcast_ref::<gio::ListModel>()
+            .items_changed(0, removed as u32, 0);
+
+        imp.list.borrow_mut().push_back(self.spacer().clone());
+        self.seed_thread_tail();
+        let tail = self.tail_len() as u32;
+        self.upcast_ref::<gio::ListModel>()
+            .items_changed(0, 0, tail);
+        self.spacer_needs_update();
+    }
+
+    /// Inserts the synthetic thread tail — the "Start of discussion" pill and
+    /// the channel post — above the spacer, at the oldest end (screen top), of
+    /// an empty or just-cleared window. Does not emit: fresh models are bound
+    /// after seeding, and the one re-seeding caller reports the change itself.
     fn seed_thread_tail(&self) {
         let Some(thread) = self.thread() else {
             return;
         };
-        let mut list = self.imp().list.borrow_mut();
-        list.push_back(model::ChatHistoryItem::for_thread_intro());
-        list.push_back(model::ChatHistoryItem::for_thread_anchor(thread.anchor));
+        let imp = self.imp();
+        // Stay below the spacer, which must remain the very top row.
+        let at = imp.list.borrow().len() - SPACER_TAIL_ITEMS;
+        imp.list
+            .borrow_mut()
+            .insert(at, model::ChatHistoryItem::for_thread_intro());
+        imp.list.borrow_mut().insert(
+            at + 1,
+            model::ChatHistoryItem::for_thread_anchor(thread.anchor),
+        );
+    }
+
+    /// Synthetic items pinned at the storage back (screen top).
+    fn tail_len(&self) -> usize {
+        SPACER_TAIL_ITEMS
+            + if self.imp().thread.borrow().is_some() {
+                THREAD_TAIL_ITEMS
+            } else {
+                0
+            }
     }
 
     /// Whether a message belongs in this window: always in a normal chat, and only
@@ -311,17 +383,7 @@ impl ChatHistoryModel {
         imp.is_loading.set(false);
         let messages = result.map_err(ChatHistoryError::Tdlib)?;
 
-        let removed = imp.list.borrow().len();
-        imp.list.borrow_mut().clear();
-        self.upcast_ref::<gio::ListModel>()
-            .items_changed(0, removed as u32, 0);
-
-        if self.thread().is_some() {
-            // The window is anchored to its post: re-pin the thread tail.
-            self.seed_thread_tail();
-            self.upcast_ref::<gio::ListModel>()
-                .items_changed(0, 0, THREAD_TAIL_ITEMS as u32);
-        }
+        self.reset_window();
 
         let newest_loaded = chat.last_message().is_none_or(|last| {
             messages
@@ -381,10 +443,7 @@ impl ChatHistoryModel {
         if imp.is_loading.get() {
             return Err(ChatHistoryError::AlreadyLoading);
         }
-        let removed = imp.list.borrow().len();
-        imp.list.borrow_mut().clear();
-        self.upcast_ref::<gio::ListModel>()
-            .items_changed(0, removed as u32, 0);
+        self.reset_window();
         imp.newest_loaded.set(true);
         // A single request can come back short: TDLib serves the messages it
         // already has in memory and streams the rest from its database
@@ -626,9 +685,9 @@ impl ChatHistoryModel {
             let mut list = imp.list.borrow_mut();
             let old_len = list.len();
             let tail = if imp.thread.borrow().is_some() {
-                THREAD_TAIL_ITEMS
+                SPACER_TAIL_ITEMS + THREAD_TAIL_ITEMS
             } else {
-                0
+                SPACER_TAIL_ITEMS
             };
 
             // The batch item adjacent to the window may continue an album that
@@ -763,7 +822,8 @@ impl ChatHistoryModel {
                     // as "past the target" so the comparator stays monotonic across
                     // the id-space break.
                     model::ChatHistoryItemType::ThreadAnchor(_)
-                    | model::ChatHistoryItemType::ThreadIntro => Ordering::Greater,
+                    | model::ChatHistoryItemType::ThreadIntro
+                    | model::ChatHistoryItemType::Spacer => Ordering::Greater,
                 })
                 .ok()
             });
