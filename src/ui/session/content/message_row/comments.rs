@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
@@ -24,6 +26,10 @@ mod imp {
         pub(super) count_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) icon: TemplateChild<gtk::Image>,
+        /// Set on the anchor post's bar while its thread is open: a tree query
+        /// cannot answer that at bind time (content widgets bind detached), so
+        /// the thread view suppresses the bar explicitly.
+        pub(super) suppressed: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -67,6 +73,15 @@ impl MessageCommentsBar {
         glib::Object::new()
     }
 
+    /// Permanently hides the bar on this bubble (used for the thread anchor post,
+    /// where opening the thread from inside it is pointless).
+    pub(crate) fn set_suppressed(&self, suppressed: bool) {
+        self.imp().suppressed.set(suppressed);
+        if suppressed {
+            self.set_visible(false);
+        }
+    }
+
     /// Binds the bar to a message: shown only for posts in a channel that has a
     /// discussion thread. Populates the count text and replier avatars.
     pub(crate) fn set_message(&self, message: Option<&model::Message>) {
@@ -76,6 +91,11 @@ impl MessageCommentsBar {
             self.set_visible(false);
             return;
         };
+
+        if imp.suppressed.get() {
+            self.set_visible(false);
+            return;
+        }
 
         let is_channel = matches!(
             message.chat_().chat_type(),
