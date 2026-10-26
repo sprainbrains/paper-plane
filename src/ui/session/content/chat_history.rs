@@ -2723,13 +2723,20 @@ impl ChatHistory {
         }
         let stable_frames = Rc::new(Cell::new(0u32));
         let first_frame_time = Rc::new(Cell::new(0i64));
+        // A window reset (backing out of a thread, a jump) relayouts over the
+        // next frames: `upper` and the row's offset keep moving while rows
+        // realise. Until they stop, a frame where target == value is
+        // meaningless — centering against a stale short `upper` clamps the
+        // target to the top of the window and the loop "lands" there, on the
+        // oldest loaded posts instead of the anchor.
+        let last_geom = Rc::new(Cell::new(None::<(f64, f64)>));
         let id = self.add_tick_callback(move |obj, clock| {
             let imp = obj.imp();
             let now = clock.frame_time();
             if first_frame_time.get() == 0 {
                 first_frame_time.set(now);
             }
-            let deadline = now - first_frame_time.get() > 700_000;
+            let deadline = now - first_frame_time.get() > 1_500_000;
 
             match obj.find_message_row(message_id) {
                 Some(row) => {
@@ -2740,11 +2747,18 @@ impl ChatHistory {
                             - (viewport - bounds.height() as f64) / 2.0;
                         let max = (adj.upper() - adj.page_size()).max(adj.lower());
                         let target = target.clamp(adj.lower(), max);
+                        let geom = (adj.upper(), f64::from(bounds.y()));
+                        let frozen = last_geom.get().is_some_and(|(upper, y)| {
+                            (upper - geom.0).abs() < 1.0 && (y - geom.1).abs() < 1.0
+                        });
+                        last_geom.set(Some(geom));
                         if (target - adj.value()).abs() > 1.0 {
                             adj.set_value(target);
                             stable_frames.set(0);
-                        } else {
+                        } else if frozen {
                             stable_frames.set(stable_frames.get() + 1);
+                        } else {
+                            stable_frames.set(0);
                         }
                     }
                 }
@@ -2755,6 +2769,7 @@ impl ChatHistory {
                             .scroll_to(position, gtk::ListScrollFlags::empty(), None);
                     }
                     stable_frames.set(0);
+                    last_geom.set(None);
                 }
             }
 
@@ -3408,31 +3423,14 @@ impl ChatHistory {
         };
         let channel_id = channel.id();
         let post_id = thread.post_id;
+        // Hand the anchor to the rebuild's own open flow: revealing it while
+        // that flow is still streaming the first window races two loaders
+        // over one model and centers on transient layout — the list lands on
+        // the top of the freshly reset window (a week of old posts) instead
+        // of the anchor.
+        imp.pending_reveal.set(Some((channel_id, post_id)));
         self.set_chat(None);
         self.set_chat(Some(&channel));
-
-        // The rebuild installs its fresh model asynchronously; wait until the
-        // normal (non-thread) window is in place, then jump to the anchor post.
-        let generation = imp.generation.get();
-        utils::spawn(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            async move {
-                for _ in 0..200 {
-                    if !obj.is_current_chat(generation, channel_id) {
-                        return;
-                    }
-                    let ready = obj
-                        .history_model()
-                        .is_some_and(|model| model.thread().is_none());
-                    if ready {
-                        obj.reveal_message(post_id);
-                        return;
-                    }
-                    glib::timeout_future(std::time::Duration::from_millis(50)).await;
-                }
-            }
-        ));
     }
 
     pub(crate) fn view_messages(&self) {
