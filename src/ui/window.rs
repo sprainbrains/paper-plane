@@ -100,6 +100,28 @@ mod imp {
                 self.obj().close();
             }
 
+            if key == gdk::Key::Escape && modifier.is_empty() {
+                let obj = self.obj();
+                // An open media viewer swallows the key first; this is the
+                // safety net for when focus escaped the overlay.
+                if self.media_viewer.is_visible() {
+                    self.media_viewer.close();
+                    return glib::Propagation::Stop;
+                }
+                // The sidebar keeps Escape for itself (search, folder rail);
+                // everywhere else it walks the chat ladder: selection, thread
+                // back, close the chat.
+                let focus_in_sidebar =
+                    <gtk::Window as gtk::prelude::GtkWindowExt>::focus(obj.upcast_ref())
+                        .is_some_and(|focus| utils::ancestor::<_, ui::Sidebar>(&focus).is_some());
+                if !focus_in_sidebar
+                    && let Some(session) = utils::descendant::<_, ui::Session>(&*obj)
+                    && session.handle_escape()
+                {
+                    return glib::Propagation::Stop;
+                }
+            }
+
             glib::Propagation::Proceed
         }
 

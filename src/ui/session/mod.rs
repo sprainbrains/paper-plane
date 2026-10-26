@@ -648,6 +648,18 @@ impl Session {
         imp.split_view.set_show_content(false);
         imp.sidebar.begin_chats_search();
     }
+
+    /// Window-level Escape inside the chat area (the sidebar keeps its own
+    /// plans for the key — see the caller). After the content ran its ladder,
+    /// a closed chat on a collapsed layout returns to the chat list.
+    pub(crate) fn handle_escape(&self) -> bool {
+        let imp = self.imp();
+        let consumed = imp.content.handle_escape();
+        if consumed && imp.content.chat().is_none() && imp.split_view.is_collapsed() {
+            imp.split_view.set_show_content(false);
+        }
+        consumed
+    }
 }
 
 /// Follow a mirrored message's reply chain inside its chat looking for the

@@ -3245,6 +3245,13 @@ impl ChatHistory {
         });
     }
 
+    /// Whether [`go_back`](Self::go_back) has somewhere to go: a comment
+    /// thread, or a chat this one was opened from. Lets the Escape ladder
+    /// distinguish "back" from "close the chat".
+    pub(crate) fn has_back_target(&self) -> bool {
+        self.imp().thread.borrow().is_some() || self.imp().return_chat.get().is_some()
+    }
+
     /// Returns to the chat this one was opened from (header back arrow). The
     /// switch clears `return_chat` and hides the arrow.
     pub(crate) fn go_back(&self) {

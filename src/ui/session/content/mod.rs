@@ -260,6 +260,27 @@ impl Content {
         self.imp().chat_history.jump_to_thread(post, comment);
     }
 
+    /// The Escape ladder for the chat area: cancel an active message
+    /// selection, return from a thread or origin jump, and finally close the
+    /// chat so the "no chat selected" placeholder shows again. Returns
+    /// whether the key press was consumed.
+    pub(crate) fn handle_escape(&self) -> bool {
+        let imp = self.imp();
+        if imp.chat_history.is_selection_mode() {
+            imp.chat_history.clear_selection();
+            return true;
+        }
+        if imp.chat_history.has_back_target() {
+            imp.chat_history.go_back();
+            return true;
+        }
+        if self.chat().is_some() {
+            self.set_chat(None);
+            return true;
+        }
+        false
+    }
+
     fn set_chat(&self, chat: Option<&model::Chat>) {
         if self.chat().as_ref() == chat {
             return;
