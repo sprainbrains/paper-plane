@@ -1,6 +1,7 @@
 use std::cell::Cell;
 
 use glib::Properties;
+use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::glib;
 use gtk::prelude::*;
@@ -17,6 +18,11 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/chat_folder/bar.ui")]
     pub(crate) struct Bar {
         pub(super) vertical: Cell<bool>,
+        /// Whether the startup auto-selection of the first folder has been
+        /// claimed (by the folder list arriving, or by the user clicking).
+        pub(super) first_folder_claimed: Cell<bool>,
+        /// Whether the folder list's `items-changed` watch is connected.
+        pub(super) folder_watch_wired: Cell<bool>,
         #[property(get, set)]
         pub(super) chat_folder_list: glib::WeakRef<model::ChatFolderList>,
         #[property(get, set)]
@@ -68,9 +74,44 @@ mod imp {
     impl Bar {
         #[template_callback]
         fn on_notify_chat_folder_list(&self) {
-            if self.obj().chat_folder_list().is_some() {
-                self.on_list_view_activated(0);
+            let Some(folder_list) = self.obj().chat_folder_list() else {
+                return;
+            };
+
+            // At startup the folder list is still empty (it only holds "All
+            // Chats"), so selecting position 0 there is not the user's ask:
+            // they want the first folder. Watch for the real list arriving
+            // from `updateChatFolders` and claim the first folder once —
+            // unless the user picked something in the meantime.
+            if !self.folder_watch_wired.replace(true) {
+                folder_list.connect_items_changed(clone!(
+                    #[weak(rename_to = obj)]
+                    self,
+                    move |list, _, _, _| obj.auto_select_first_folder(list),
+                ));
             }
+
+            self.auto_select_first_folder(&folder_list);
+            if folder_list.n_items() == 1 {
+                // No folders (yet): "All Chats" is the only choice.
+                self.selection.select_item(0, true);
+            }
+        }
+
+        /// Selects the first folder (skipping "All Chats" wherever the user
+        /// parked it) once per session, on the folder list's first real
+        /// content; a user click on the bar takes precedence.
+        fn auto_select_first_folder(&self, list: &model::ChatFolderList) {
+            if self.first_folder_claimed.get() || list.n_items() < 2 {
+                return;
+            }
+            self.first_folder_claimed.set(true);
+            let first = if list.main_chat_list_position() == 0 {
+                1
+            } else {
+                0
+            };
+            self.selection.select_item(first, true);
         }
 
         #[template_callback]
@@ -105,6 +146,9 @@ mod imp {
 
         #[template_callback]
         fn on_list_view_activated(&self, position: u32) {
+            // A real activation (click/keyboard) is the user's choice: the
+            // startup auto-selection must not override it later.
+            self.first_folder_claimed.set(true);
             self.selection.select_item(position, true);
         }
 
