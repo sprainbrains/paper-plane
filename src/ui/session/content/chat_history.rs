@@ -1175,16 +1175,18 @@ impl ChatHistory {
     /// laid out the fresh window (tick callbacks run before layout, so the
     /// first frames may still show the pre-scroll position):
     ///
-    /// - In-window case (`from_anchor` false): view pinned to the newest end
-    ///   and the divider on screen — the chat simply stays open there
-    ///   (tdesktop); what is visible counts as seen. Divider above the fold —
-    ///   pin it to the viewport top.
+    /// - In-window case (`from_anchor` false): the view is pinned to the
+    ///   newest end; if the divider is on screen the chat stays open there
+    ///   (tdesktop), otherwise it is jumped to with one scroll.
     /// - Anchor case (`from_anchor` true): the window was re-anchored around
-    ///   the boundary; always land with the divider pinned to the top, never
-    ///   at the window's transient bottom.
+    ///   the boundary; land with the divider at the viewport top.
     ///
-    /// Read-state flushing stays suppressed until the landing is decided
-    /// (see `imp::settle_pending`).
+    /// The jump is a single scroll, never a chase: late media loads may move
+    /// the divider a little afterwards, and following it would sweep the
+    /// backlog through the viewport (jumps for the user, wrong read marks).
+    /// Read-state flushing stays suppressed until the landing settled, and
+    /// then credits only the rows actually inside the viewport (see
+    /// `flush_visible_viewed`).
     fn settle_unread_open(&self, generation: u64, chat_id: i64, from_anchor: bool) {
         let imp = self.imp();
         if let Some(id) = imp.divider_tick.take() {
@@ -1203,8 +1205,7 @@ impl ChatHistory {
         imp.divider_tick.replace(Some(id));
     }
 
-    /// One frame of the landing decision; returns `true` once settled (the
-    /// tick is then removed with the chat switch or the next open).
+    /// One frame of the landing decision; returns `true` once settled.
     fn settle_unread_open_tick(
         &self,
         generation: u64,
@@ -1212,21 +1213,19 @@ impl ChatHistory {
         from_anchor: bool,
         frames: &std::cell::Cell<u32>,
     ) -> bool {
-        let finish = |obj: &Self| obj.imp().settle_pending.set(false);
         if !self.is_current_chat(generation, chat_id) {
-            finish(self);
+            self.imp().settle_pending.set(false);
             return true;
         }
         let Some(position) = self.unread_divider_position() else {
-            // The divider vanished (everything got read meanwhile):
-            // stay at the newest end and flush what is visible.
-            finish(self);
-            self.view_messages();
+            // The divider vanished (everything got read meanwhile): stay at
+            // the newest end and credit what is visible.
+            self.settle_at_current_position();
             return true;
         };
         let imp = self.imp();
         let Some(adj) = imp.list_view.vadjustment() else {
-            finish(self);
+            self.imp().settle_pending.set(false);
             return true;
         };
         let divider_row = self.find_row(|row| {
@@ -1236,109 +1235,73 @@ impl ChatHistory {
                     matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_))
                 })
         });
-        match divider_row.as_ref().and_then(|row| {
-            row.compute_bounds(&*imp.scrolled_window)
-                .map(|bounds| bounds.y())
-        }) {
-            Some(y) if from_anchor || f64::from(y) < -1.0 => {
-                // The anchored window always lands on the divider; the
-                // in-window case only when it sits above the fold.
-                self.pin_divider_to_top(&adj, f64::from(y));
-            }
-            Some(_) => {
-                // Divider on screen while the view is at the newest end: the
-                // chat stays open as-is; what is visible now counts as seen.
-                imp.settle_pending.set(false);
-                self.set_sticky(true);
-                self.view_messages();
+        match divider_row
+            .as_ref()
+            .and_then(|row| row.compute_bounds(&*imp.scrolled_window))
+        {
+            Some(bounds) => {
+                let y = f64::from(bounds.y());
+                if from_anchor || y < -1.0 {
+                    // Land with the divider at the viewport top: one scroll,
+                    // clamped, no further corrections.
+                    imp.is_auto_scrolling.set(false);
+                    self.set_sticky(false);
+                    let max = (adj.upper() - adj.page_size()).max(adj.lower());
+                    let target = (adj.value() + y).clamp(adj.lower(), max);
+                    adj.set_value(target);
+                } else {
+                    self.set_sticky(true);
+                }
+                self.settle_at_current_position();
+                true
             }
             None => {
-                // Not realized yet: queue a minimal visibility scroll (applied
-                // by the next layout) and align once it lands on screen.
+                // Not realized yet: ask the list to bring it into view (the
+                // scroll is applied by the next layout) and decide then.
                 if frames.get() < 30 {
                     frames.set(frames.get() + 1);
                     imp.list_view
                         .scroll_to(position, gtk::ListScrollFlags::empty(), None);
                     return false;
                 }
-                imp.settle_pending.set(false);
-                self.view_messages();
+                self.settle_at_current_position();
+                true
             }
         }
-        true
     }
 
-    /// Scrolls so the unread divider's top edge sits at the viewport top.
-    /// Forgets what the transient layout had mapped: only the rows the jump
-    /// brings into view should be marked as read, and the flush waits for
-    /// that layout to settle.
-    fn pin_divider_to_top(&self, adj: &gtk::Adjustment, divider_top: f64) {
+    /// The landing is final: credit exactly the messages inside the viewport
+    /// now. Rebuilding the set (instead of flushing whatever map/unmap
+    /// collected) is what keeps the initial-layout over-realization storm —
+    /// where the list briefly maps every row — from marking the backlog read.
+    fn settle_at_current_position(&self) {
         let imp = self.imp();
-        imp.is_auto_scrolling.set(false);
-        // The viewed set is *not* cleared: rows that stay mapped across the
-        // jump are seen in the landing position too, and re-adding only
-        // happens on the next map — clearing here would silently drop them
-        // and the unread count would never move. Rows that leave the viewport
-        // are removed by their `unmap` handler.
         imp.settle_pending.set(false);
-        self.set_sticky(false);
-        let align = |adj: &gtk::Adjustment, y: f64| {
-            let max = (adj.upper() - adj.page_size()).max(adj.lower());
-            let target = (adj.value() + y).clamp(adj.lower(), max);
-            adj.set_value(target);
+        let Some(viewport) = imp.list_view.vadjustment().map(|adj| adj.page_size()) else {
+            return;
         };
-        align(adj, divider_top);
-        // Late media loads resize rows around the divider and can drag it off
-        // the top; keep it there while the layout settles (same budget as
-        // `focus_message`'s centering loop). Corrections go upward only:
-        // following the divider down would sweep the unread backlog through
-        // the viewport and mark it read without the user ever seeing it.
-        if let Some(id) = imp.divider_tick.take() {
-            id.remove();
-        }
-        let started = std::time::Instant::now();
-        let id = self.add_tick_callback(move |obj, _clock| {
-            if started.elapsed() >= std::time::Duration::from_millis(700) {
-                // The landing is final: flush the rows it brought on screen
-                // (no further scroll will fire the regular flush path).
-                obj.view_messages();
-                return glib::ControlFlow::Break;
-            }
-            let imp = obj.imp();
-            let Some(position) = obj.unread_divider_position() else {
-                obj.view_messages();
-                return glib::ControlFlow::Break;
+        let scrolled = &*imp.scrolled_window;
+        let mut visible: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        self.for_each_row(|row| {
+            let Some(item) = row.item().and_downcast::<model::ChatHistoryItem>() else {
+                return;
             };
-            let Some(row) = obj.find_row(|row| {
-                row.item()
-                    .and_downcast::<model::ChatHistoryItem>()
-                    .is_some_and(|item| {
-                        matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_))
-                    })
-            }) else {
-                return glib::ControlFlow::Continue;
-            };
-            if let Some(bounds) = row.compute_bounds(&*imp.scrolled_window)
-                && f64::from(bounds.y()) < -1.0
-            {
-                imp.list_view
-                    .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+            let messages = item.messages();
+            if messages.is_empty() {
+                return;
             }
-            glib::ControlFlow::Continue
-        });
-        imp.divider_tick.replace(Some(id));
-        utils::spawn(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            async move {
-                // A few frames for the jump's layout to realize the new rows;
-                // `view_messages` then flushes exactly what landed on screen.
-                for _ in 0..3 {
-                    glib::timeout_future(std::time::Duration::from_millis(50)).await;
+            if let Some(bounds) = row.compute_bounds(scrolled) {
+                let top = f64::from(bounds.y());
+                let bottom = top + f64::from(bounds.height());
+                if top < viewport && bottom > 0.0 {
+                    visible.extend(messages.iter().map(|message| message.id()));
                 }
-                obj.view_messages();
             }
-        ));
+        });
+        let changed = !visible.is_empty();
+        *imp.viewed_message_ids.borrow_mut() = visible;
+        imp.viewed_message_ids_changed.set(changed);
+        self.view_messages();
     }
 
     /// Coalesce spacer re-measures into one per frame: setting the slack

@@ -41,11 +41,15 @@ impl ChatType {
                 Self::Private(user)
             }
             BasicGroup(data) => {
-                let basic_group = session.basic_group(data.basic_group_id);
+                // The type-before-id guarantee covers the update stream but not
+                // direct request results; a placeholder keeps chat
+                // construction from panicking and converges when the real
+                // object arrives.
+                let basic_group = session.basic_group_or_fetch(data.basic_group_id);
                 Self::BasicGroup(basic_group)
             }
             Supergroup(data) => {
-                let supergroup = session.supergroup(data.supergroup_id);
+                let supergroup = session.supergroup_or_fetch(data.supergroup_id, data.is_channel);
                 Self::Supergroup(supergroup)
             }
             Secret(data) => {

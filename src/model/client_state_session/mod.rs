@@ -170,7 +170,7 @@ impl ClientStateSession {
     /// relative `model::Chat` exists in the list.
     pub(crate) fn chat(&self, id: ChatId) -> model::Chat {
         self.try_chat(id)
-            .expect("Failed to get expected model::Chat")
+            .unwrap_or_else(|| panic!("Failed to get expected model::Chat {id}"))
     }
 
     /// Returns the `model::Chat` of the specified id, materializing it through
@@ -281,32 +281,102 @@ impl ClientStateSession {
         placeholder
     }
 
-    /// Returns the `model::BasicGroup` of the specified id. Panics if the basic group is not present.
-    ///
-    /// Note that TDLib guarantees that types are always returned before their ids,
-    /// so if you use an id returned by TDLib, it should be expected that the
-    /// relative `model::BasicGroup` exists in the list.
-    pub(crate) fn basic_group(&self, basic_group_id: i64) -> model::BasicGroup {
-        self.imp()
-            .basic_groups
-            .borrow()
-            .get(&basic_group_id)
-            .expect("Failed to get expected model::BasicGroup")
-            .clone()
+    /// Returns the `model::Supergroup` of the specified id, if present.
+    pub(crate) fn try_supergroup(&self, id: i64) -> Option<model::Supergroup> {
+        self.imp().supergroups.borrow().get(&id).cloned()
     }
 
-    /// Returns the `model::Supergroup` of the specified id. Panics if the supergroup is not present.
-    ///
-    /// Note that TDLib guarantees that types are always returned before their ids,
-    /// so if you use an id returned by TDLib, it should be expected that the
-    /// relative `model::Supergroup` exists in the list.
-    pub(crate) fn supergroup(&self, supergroup_id: i64) -> model::Supergroup {
+    /// Returns the `model::BasicGroup` of the specified id, if present.
+    pub(crate) fn try_basic_group(&self, id: i64) -> Option<model::BasicGroup> {
+        self.imp().basic_groups.borrow().get(&id).cloned()
+    }
+
+    /// Returns the `model::Supergroup` of the specified id, inserting a
+    /// placeholder and fetching the real object in the background when TDLib
+    /// has not announced it yet (the type-before-id guarantee covers the update
+    /// stream, not direct request results).
+    pub(crate) fn supergroup_or_fetch(
+        &self,
+        supergroup_id: i64,
+        is_channel: bool,
+    ) -> model::Supergroup {
+        if let Some(supergroup) = self.try_supergroup(supergroup_id) {
+            return supergroup;
+        }
+        log::warn!("Supergroup {supergroup_id} referenced before being loaded; fetching it");
+        let placeholder = model::Supergroup::new_placeholder(supergroup_id, is_channel);
         self.imp()
             .supergroups
-            .borrow()
-            .get(&supergroup_id)
-            .expect("Failed to get expected model::Supergroup")
-            .clone()
+            .borrow_mut()
+            .insert(supergroup_id, placeholder.clone());
+        let client_id = self.client_().id();
+        utils::spawn(clone!(
+            #[weak(rename_to = session)]
+            self,
+            async move {
+                match tdlib::functions::get_supergroup(supergroup_id, client_id).await {
+                    Ok(tdlib::enums::Supergroup::Supergroup(supergroup)) => {
+                        session.upsert_supergroup(supergroup);
+                    }
+                    Err(e) => log::warn!("Failed to fetch supergroup {supergroup_id}: {e:?}"),
+                }
+            }
+        ));
+        placeholder
+    }
+
+    /// Inserts or refreshes (in place) the `model::Supergroup` for a TDLib
+    /// supergroup, so objects referenced through placeholders converge on the
+    /// real data without orphaning anything already bound to them.
+    pub(crate) fn upsert_supergroup(&self, td_supergroup: tdlib::types::Supergroup) {
+        let mut supergroups = self.imp().supergroups.borrow_mut();
+        match supergroups.entry(td_supergroup.id) {
+            Entry::Occupied(entry) => entry.get().update(td_supergroup),
+            Entry::Vacant(entry) => {
+                entry.insert(model::Supergroup::from(td_supergroup));
+            }
+        }
+    }
+
+    /// Returns the `model::BasicGroup` of the specified id, inserting a
+    /// placeholder and fetching the real object in the background when TDLib
+    /// has not announced it yet.
+    pub(crate) fn basic_group_or_fetch(&self, basic_group_id: i64) -> model::BasicGroup {
+        if let Some(basic_group) = self.try_basic_group(basic_group_id) {
+            return basic_group;
+        }
+        log::warn!("Basic group {basic_group_id} referenced before being loaded; fetching it");
+        let placeholder = model::BasicGroup::new_placeholder(basic_group_id);
+        self.imp()
+            .basic_groups
+            .borrow_mut()
+            .insert(basic_group_id, placeholder.clone());
+        let client_id = self.client_().id();
+        utils::spawn(clone!(
+            #[weak(rename_to = session)]
+            self,
+            async move {
+                match tdlib::functions::get_basic_group(basic_group_id, client_id).await {
+                    Ok(tdlib::enums::BasicGroup::BasicGroup(basic_group)) => {
+                        session.upsert_basic_group(basic_group);
+                    }
+                    Err(e) => log::warn!("Failed to fetch basic group {basic_group_id}: {e:?}"),
+                }
+            }
+        ));
+        placeholder
+    }
+
+    /// Inserts or refreshes (in place) the `model::BasicGroup` for a TDLib
+    /// basic group.
+    pub(crate) fn upsert_basic_group(&self, td_basic_group: tdlib::types::BasicGroup) {
+        let mut basic_groups = self.imp().basic_groups.borrow_mut();
+        match basic_groups.entry(td_basic_group.id) {
+            Entry::Occupied(entry) => entry.get().update(td_basic_group),
+            Entry::Vacant(entry) => {
+                entry.insert(model::BasicGroup::from(td_basic_group));
+            }
+        }
     }
 
     /// Returns the `model::SecretChat` of the specified id. Panics if the secret chat is not present.
@@ -483,15 +553,7 @@ impl ClientStateSession {
             MessageMentionRead(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageSendSucceeded(ref data) => self.chat(data.message.chat_id).handle_update(update),
             NewMessage(ref data) => self.chat(data.message.chat_id).handle_update(update),
-            BasicGroup(data) => {
-                let mut basic_groups = self.imp().basic_groups.borrow_mut();
-                match basic_groups.entry(data.basic_group.id) {
-                    Entry::Occupied(entry) => entry.get().update(data.basic_group),
-                    Entry::Vacant(entry) => {
-                        entry.insert(model::BasicGroup::from(data.basic_group));
-                    }
-                }
-            }
+            BasicGroup(data) => self.upsert_basic_group(data.basic_group),
             File(update) => {
                 self.handle_file_update(update.file);
             }
@@ -523,15 +585,7 @@ impl ClientStateSession {
                     }
                 }
             }
-            Supergroup(data) => {
-                let mut supergroups = self.imp().supergroups.borrow_mut();
-                match supergroups.entry(data.supergroup.id) {
-                    Entry::Occupied(entry) => entry.get().update(data.supergroup),
-                    Entry::Vacant(entry) => {
-                        entry.insert(model::Supergroup::from(data.supergroup));
-                    }
-                }
-            }
+            Supergroup(data) => self.upsert_supergroup(data.supergroup),
             UnreadChatCount(data) => {
                 self.chat_list(data.chat_list)
                     .set_unread_chat_count(data.unread_count);

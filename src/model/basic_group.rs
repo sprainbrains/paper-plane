@@ -48,6 +48,14 @@ glib::wrapper! {
     pub(crate) struct BasicGroup(ObjectSubclass<imp::BasicGroup>);
 }
 
+impl BasicGroup {
+    /// A minimal placeholder for a basic group referenced before TDLib has
+    /// announced it; refreshed in place when the real object arrives.
+    pub(crate) fn new_placeholder(id: i64) -> Self {
+        glib::Object::builder().property("id", id).build()
+    }
+}
+
 impl From<tdlib::types::BasicGroup> for BasicGroup {
     fn from(td_basic_group: tdlib::types::BasicGroup) -> Self {
         let obj: Self = glib::Object::builder()

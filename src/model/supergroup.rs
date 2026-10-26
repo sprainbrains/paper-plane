@@ -83,6 +83,15 @@ impl From<tdlib::types::Supergroup> for Supergroup {
 }
 
 impl Supergroup {
+    /// A minimal placeholder for a supergroup referenced before TDLib has
+    /// announced it; refreshed in place when the real object arrives.
+    pub(crate) fn new_placeholder(id: i64, is_channel: bool) -> Self {
+        glib::Object::builder()
+            .property("id", id)
+            .property("is-channel", is_channel)
+            .build()
+    }
+
     fn set_username(&self, username: String) {
         if self.username() == username {
             return;
