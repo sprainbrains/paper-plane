@@ -216,6 +216,26 @@ impl ClientStateSession {
         }
     }
 
+    /// TDLib announces chats through `updateNewChat` before any response that
+    /// references them, but updates are consumed by a separate task: a response
+    /// can be handled before its announcements land there. Materialize every
+    /// sender chat of freshly fetched messages before they enter the model, so
+    /// building a `MessageSender::Chat` never races an unknown id.
+    pub(crate) async fn ensure_sender_chats<'a>(
+        &self,
+        messages: impl IntoIterator<Item = &'a tdlib::types::Message>,
+    ) {
+        let mut seen = std::collections::HashSet::new();
+        for message in messages {
+            if let tdlib::enums::MessageSender::Chat(data) = &message.sender_id
+                && seen.insert(data.chat_id)
+                && self.try_chat(data.chat_id).is_none()
+            {
+                self.chat_or_fetch(data.chat_id).await;
+            }
+        }
+    }
+
     /// Returns the `model::User` of the specified id, or `None` if it has not been
     /// loaded yet.
     pub(crate) fn try_user(&self, user_id: UserId) -> Option<model::User> {

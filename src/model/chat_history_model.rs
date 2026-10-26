@@ -23,6 +23,8 @@ pub(crate) enum ChatHistoryError {
     Tdlib(tdlib::types::Error),
     #[error("The chat is no longer available")]
     ChatUnavailable,
+    #[error("TDLib is still catching up on a long backlog to reach the message")]
+    TimedOut,
 }
 
 /// Identifies the comment thread a [`ChatHistoryModel`] is showing. The model's
@@ -379,7 +381,19 @@ impl ChatHistoryModel {
         let chat = self.chat().ok_or(ChatHistoryError::ChatUnavailable)?;
 
         imp.is_loading.set(true);
-        let result = self.load_page(&chat, message_id, -25, 51).await;
+        // TDLib refuses to answer a history request around a message it has a
+        // gap before — on chats with a huge unread backlog it downloads the
+        // whole gap first, which can take minutes. Bound the wait: the caller
+        // falls back to opening at the newest end rather than freezing.
+        let load = std::pin::pin!(self.load_page(&chat, message_id, -25, 51));
+        let deadline = std::pin::pin!(glib::timeout_future(std::time::Duration::from_secs(3)));
+        let result = match futures::future::select(load, deadline).await {
+            futures::future::Either::Left((result, _)) => result,
+            futures::future::Either::Right(((), _load)) => {
+                imp.is_loading.set(false);
+                return Err(ChatHistoryError::TimedOut);
+            }
+        };
         imp.is_loading.set(false);
         let messages = result.map_err(ChatHistoryError::Tdlib)?;
 

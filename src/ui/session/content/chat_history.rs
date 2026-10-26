@@ -163,9 +163,14 @@ mod imp {
         /// The running focus-settling loop; a new focus cancels the previous one so two
         /// jumps in quick succession don't fight over the scroll position.
         pub(super) focus_tick: RefCell<Option<gtk::TickCallbackId>>,
-        /// Pending "jump to the unread divider only if off-screen" decision
-        /// for a freshly opened chat (see `jump_to_divider_when_laid_out`).
+        /// Pending unread-open landing decision for a freshly opened chat
+        /// (see `settle_unread_open`).
         pub(super) divider_tick: RefCell<Option<gtk::TickCallbackId>>,
+        /// While the landing decision is pending, read-state flushing is
+        /// suppressed: the transient layout (newest window before a jump) must
+        /// never mark its rows read — TDLib's read state is a watermark, so one
+        /// newest id would silently consume the entire unread backlog.
+        pub(super) settle_pending: std::cell::Cell<bool>,
         #[template_child]
         pub(super) pinned_view: TemplateChild<gtk::Box>,
         #[template_child]
@@ -791,6 +796,7 @@ impl ChatHistory {
         if let Some(id) = imp.divider_tick.take() {
             id.remove();
         }
+        imp.settle_pending.set(false);
 
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
@@ -893,8 +899,6 @@ impl ChatHistory {
                     let scrollbar = imp.scrolled_window.vscrollbar();
                     scrollbar.set_visible(false);
 
-                    let adj = imp.list_view.vadjustment().unwrap();
-
                     // Chats with unread messages open at the first unread one
                     // only when that boundary sits above the fold (tdesktop):
                     // load the newest end first and keep the viewport pinned
@@ -918,11 +922,21 @@ impl ChatHistory {
                     // chats, so extension is additionally capped to a few pages.
                     let mut first_page = true;
                     let mut extensions = 0;
-                    while first_page
-                        || (imp.list_view.is_mapped()
-                            && adj.upper() <= adj.page_size()
-                            && extensions < 4)
-                    {
+                    loop {
+                        if !first_page {
+                            // Stop once the window holds a full page of messages
+                            // (spacer included: 30 + 1). The first reply after
+                            // `openChat` can be a small local stub, and the
+                            // bottom-filling spacer means a short window is no
+                            // reason to pull more — only the stub is. Capped for
+                            // the pathological case.
+                            if !imp.list_view.is_mapped()
+                                || model.n_items() >= 31
+                                || extensions >= 4
+                            {
+                                break;
+                            }
+                        }
                         first_page = false;
                         extensions += 1;
                         let result = model.load_older_messages(30).await;
@@ -944,26 +958,39 @@ impl ChatHistory {
                         // batches stream in: the reversed list grows at its top,
                         // and leaving `value` at 0 showed the oldest loaded
                         // message until the final scroll (the "jump to the top"
-                        // users watch on every open).
-                        adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
+                        // users watch on every open). `scroll_to` is position-
+                        // based and applied by the very next layout, so it never
+                        // mis-targets against a stale adjustment.
+                        imp.list_view.scroll_to(
+                            model.n_items().saturating_sub(1),
+                            gtk::ListScrollFlags::empty(),
+                            None,
+                        );
                     }
 
                     let mut jumped = false;
                     if wants_unread_jump {
                         if model.insert_unread_divider(last_read_inbox_message_id) {
-                            // The read boundary is inside the loaded window:
-                            // stay at the newest end, and let the first frames
-                            // decide whether the divider is off-screen.
-                            obj.set_sticky(true);
-                            obj.scroll_down();
-                            obj.jump_to_divider_when_laid_out(generation, chat_id);
+                            // The read boundary is inside the loaded window: the
+                            // view is already pinned to the newest end, and the
+                            // settle tick decides whether the divider is on screen
+                            // (stay as opened) or above the fold (jump to it).
+                            // Re-pin first: the divider row shifted the bottom a
+                            // few pixels below the fold.
+                            imp.list_view.scroll_to(
+                                model.n_items().saturating_sub(1),
+                                gtk::ListScrollFlags::empty(),
+                                None,
+                            );
+                            obj.settle_unread_open(generation, chat_id, false);
                             jumped = true;
                         } else {
                             // The boundary predates the loaded window: re-anchor
                             // the window *around* it in a single request (the
                             // same jump machinery `reveal_message` uses; walking
                             // the backlog batch-wise never reaches it on long
-                            // chats).
+                            // chats). The settle tick then pins the divider to
+                            // the viewport top.
                             let mut attempt = 0;
                             loop {
                                 let result =
@@ -977,49 +1004,33 @@ impl ChatHistory {
                                         break;
                                     }
                                     Err(model::ChatHistoryError::AlreadyLoading)
-                                        if attempt < 30 =>
+                                        if attempt < 10 =>
                                     {
                                         attempt += 1;
                                         glib::timeout_future(std::time::Duration::from_millis(100))
                                             .await;
                                     }
                                     Err(e) => {
-                                        log::warn!(
-                                            "Couldn't anchor the history at the first unread: {e}"
-                                        );
+                                        // A timeout just means TDLib is still
+                                        // catching up on the backlog: opening
+                                        // at the newest end is the fallback.
+                                        log::info!("Not anchoring at the first unread: {e}");
                                         break;
                                     }
                                 }
                             }
-                            if obj.unread_divider_position().is_some() {
-                                // Drop any auto-scroll still in flight so it cannot
-                                // finish at the bottom and re-latch `sticky` over the
-                                // jump, and forget what the transient bottom-pinned
-                                // layout had mapped: only the rows the user actually
-                                // sees should be marked as read.
-                                imp.is_auto_scrolling.set(false);
-                                imp.viewed_message_ids.borrow_mut().clear();
-                                imp.viewed_message_ids_changed.set(false);
-                                obj.set_sticky(false);
-                                // Let the list realise the fresh window before
-                                // scrolling to the divider (the one-idle delay
-                                // `reveal_message` uses).
-                                glib::idle_add_local_once(clone!(
-                                    #[weak]
-                                    obj,
-                                    move || {
-                                        if !obj.is_current_chat(generation, chat_id) {
-                                            return;
-                                        }
-                                        if let Some(position) = obj.unread_divider_position() {
-                                            obj.imp().list_view.scroll_to(
-                                                position,
-                                                gtk::ListScrollFlags::empty(),
-                                                None,
-                                            );
-                                        }
-                                    }
-                                ));
+                            if let Some(position) = obj.unread_divider_position() {
+                                // Queue the landing scroll before the fresh
+                                // window is ever laid out, so the first visible
+                                // frame is the divider — not the window's top.
+                                imp.list_view.scroll_to(
+                                    position,
+                                    gtk::ListScrollFlags::empty(),
+                                    None,
+                                );
+                                // The anchored window must always land on the
+                                // divider, never on its transient bottom.
+                                obj.settle_unread_open(generation, chat_id, true);
                                 jumped = true;
                             }
                         }
@@ -1040,15 +1051,23 @@ impl ChatHistory {
                     } else if let Some((_, reveal_id)) = reveal {
                         obj.reveal_message(reveal_id);
                     } else if !jumped {
-                        adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
+                        imp.list_view.scroll_to(
+                            model.n_items().saturating_sub(1),
+                            gtk::ListScrollFlags::empty(),
+                            None,
+                        );
                         obj.set_sticky(true);
-                        obj.scroll_down();
                     }
 
                     scrollbar.set_visible(true);
                     imp.is_loading_messages.set(false);
 
-                    obj.view_messages();
+                    // When a settle tick owns the landing position, it also owns
+                    // the first read flush: what is visible before it settles is
+                    // transient layout, not something the user saw.
+                    if !imp.settle_pending.get() {
+                        obj.view_messages();
+                    }
                 }
             ));
 
@@ -1152,76 +1171,174 @@ impl ChatHistory {
         }
     }
 
-    /// Decides where a freshly opened unread chat lands: with the view pinned
-    /// to the newest end, jump to the unread divider only when it sits above
-    /// the fold; when it is on screen the chat simply stays open (the way
-    /// tdesktop opens). Runs across a few frames until the layout has
-    /// realized the bottom rows — until then the geometry is unknowable.
-    fn jump_to_divider_when_laid_out(&self, generation: u64, chat_id: i64) {
+    /// Decides where a freshly opened unread chat lands, once the list has
+    /// laid out the fresh window (tick callbacks run before layout, so the
+    /// first frames may still show the pre-scroll position):
+    ///
+    /// - In-window case (`from_anchor` false): view pinned to the newest end
+    ///   and the divider on screen — the chat simply stays open there
+    ///   (tdesktop); what is visible counts as seen. Divider above the fold —
+    ///   pin it to the viewport top.
+    /// - Anchor case (`from_anchor` true): the window was re-anchored around
+    ///   the boundary; always land with the divider pinned to the top, never
+    ///   at the window's transient bottom.
+    ///
+    /// Read-state flushing stays suppressed until the landing is decided
+    /// (see `imp::settle_pending`).
+    fn settle_unread_open(&self, generation: u64, chat_id: i64, from_anchor: bool) {
         let imp = self.imp();
         if let Some(id) = imp.divider_tick.take() {
             id.remove();
         }
+        imp.settle_pending.set(true);
         let frames = Rc::new(std::cell::Cell::new(0));
         let id = self.add_tick_callback(move |obj, _clock| {
-            if !obj.is_current_chat(generation, chat_id) {
+            let settled = obj.settle_unread_open_tick(generation, chat_id, from_anchor, &frames);
+            if settled {
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+        imp.divider_tick.replace(Some(id));
+    }
+
+    /// One frame of the landing decision; returns `true` once settled (the
+    /// tick is then removed with the chat switch or the next open).
+    fn settle_unread_open_tick(
+        &self,
+        generation: u64,
+        chat_id: i64,
+        from_anchor: bool,
+        frames: &std::cell::Cell<u32>,
+    ) -> bool {
+        let finish = |obj: &Self| obj.imp().settle_pending.set(false);
+        if !self.is_current_chat(generation, chat_id) {
+            finish(self);
+            return true;
+        }
+        let Some(position) = self.unread_divider_position() else {
+            // The divider vanished (everything got read meanwhile):
+            // stay at the newest end and flush what is visible.
+            finish(self);
+            self.view_messages();
+            return true;
+        };
+        let imp = self.imp();
+        let Some(adj) = imp.list_view.vadjustment() else {
+            finish(self);
+            return true;
+        };
+        let divider_row = self.find_row(|row| {
+            row.item()
+                .and_downcast::<model::ChatHistoryItem>()
+                .is_some_and(|item| {
+                    matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_))
+                })
+        });
+        match divider_row.as_ref().and_then(|row| {
+            row.compute_bounds(&*imp.scrolled_window)
+                .map(|bounds| bounds.y())
+        }) {
+            Some(y) if from_anchor || f64::from(y) < -1.0 => {
+                // The anchored window always lands on the divider; the
+                // in-window case only when it sits above the fold.
+                self.pin_divider_to_top(&adj, f64::from(y));
+            }
+            Some(_) => {
+                // Divider on screen while the view is at the newest end: the
+                // chat stays open as-is; what is visible now counts as seen.
+                imp.settle_pending.set(false);
+                self.set_sticky(true);
+                self.view_messages();
+            }
+            None => {
+                // Not realized yet: queue a minimal visibility scroll (applied
+                // by the next layout) and align once it lands on screen.
+                if frames.get() < 30 {
+                    frames.set(frames.get() + 1);
+                    imp.list_view
+                        .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+                    return false;
+                }
+                imp.settle_pending.set(false);
+                self.view_messages();
+            }
+        }
+        true
+    }
+
+    /// Scrolls so the unread divider's top edge sits at the viewport top.
+    /// Forgets what the transient layout had mapped: only the rows the jump
+    /// brings into view should be marked as read, and the flush waits for
+    /// that layout to settle.
+    fn pin_divider_to_top(&self, adj: &gtk::Adjustment, divider_top: f64) {
+        let imp = self.imp();
+        imp.is_auto_scrolling.set(false);
+        // The viewed set is *not* cleared: rows that stay mapped across the
+        // jump are seen in the landing position too, and re-adding only
+        // happens on the next map — clearing here would silently drop them
+        // and the unread count would never move. Rows that leave the viewport
+        // are removed by their `unmap` handler.
+        imp.settle_pending.set(false);
+        self.set_sticky(false);
+        let align = |adj: &gtk::Adjustment, y: f64| {
+            let max = (adj.upper() - adj.page_size()).max(adj.lower());
+            let target = (adj.value() + y).clamp(adj.lower(), max);
+            adj.set_value(target);
+        };
+        align(adj, divider_top);
+        // Late media loads resize rows around the divider and can drag it off
+        // the top; keep it there while the layout settles (same budget as
+        // `focus_message`'s centering loop). Corrections go upward only:
+        // following the divider down would sweep the unread backlog through
+        // the viewport and mark it read without the user ever seeing it.
+        if let Some(id) = imp.divider_tick.take() {
+            id.remove();
+        }
+        let started = std::time::Instant::now();
+        let id = self.add_tick_callback(move |obj, _clock| {
+            if started.elapsed() >= std::time::Duration::from_millis(700) {
+                // The landing is final: flush the rows it brought on screen
+                // (no further scroll will fire the regular flush path).
+                obj.view_messages();
                 return glib::ControlFlow::Break;
             }
+            let imp = obj.imp();
             let Some(position) = obj.unread_divider_position() else {
-                // The divider vanished (everything got read meanwhile):
-                // stay at the newest end and flush what is visible.
                 obj.view_messages();
                 return glib::ControlFlow::Break;
             };
-            let imp = obj.imp();
-            let divider_row = obj.find_row(|row| {
+            let Some(row) = obj.find_row(|row| {
                 row.item()
                     .and_downcast::<model::ChatHistoryItem>()
                     .is_some_and(|item| {
                         matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_))
                     })
-            });
-            let jump = match &divider_row {
-                Some(row) => row
-                    .compute_bounds(&*imp.scrolled_window)
-                    .map(|bounds| bounds.y() < 0.0),
-                // The divider is not realized. Once any newer row is, it sits
-                // above the realized margin — i.e. off-screen.
-                None if imp.list_view.is_realized() && obj.find_row(|_| true).is_some() => {
-                    Some(true)
-                }
-                None => None,
+            }) else {
+                return glib::ControlFlow::Continue;
             };
-            match jump {
-                Some(true) => {
-                    // Above the fold: jump to it. Forget what the bottom-pinned
-                    // layout had mapped so only the rows the user actually sees
-                    // are marked read.
-                    imp.is_auto_scrolling.set(false);
-                    imp.viewed_message_ids.borrow_mut().clear();
-                    imp.viewed_message_ids_changed.set(false);
-                    obj.set_sticky(false);
-                    imp.list_view
-                        .scroll_to(position, gtk::ListScrollFlags::empty(), None);
-                }
-                Some(false) => {
-                    // On screen: the chat stays open at the newest end; what
-                    // is visible now counts as seen.
-                    obj.set_sticky(true);
-                    obj.view_messages();
-                }
-                None => {
-                    // Layout has not settled yet — give it a few frames.
-                    if frames.get() < 30 {
-                        frames.set(frames.get() + 1);
-                        return glib::ControlFlow::Continue;
-                    }
-                    obj.view_messages();
-                }
+            if let Some(bounds) = row.compute_bounds(&*imp.scrolled_window)
+                && f64::from(bounds.y()) < -1.0
+            {
+                imp.list_view
+                    .scroll_to(position, gtk::ListScrollFlags::empty(), None);
             }
-            glib::ControlFlow::Break
+            glib::ControlFlow::Continue
         });
         imp.divider_tick.replace(Some(id));
+        utils::spawn(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                // A few frames for the jump's layout to realize the new rows;
+                // `view_messages` then flushes exactly what landed on screen.
+                for _ in 0..3 {
+                    glib::timeout_future(std::time::Duration::from_millis(50)).await;
+                }
+                obj.view_messages();
+            }
+        ));
     }
 
     /// Coalesce spacer re-measures into one per frame: setting the slack
@@ -3302,7 +3419,7 @@ impl ChatHistory {
         // Rows mapping while the initial window streams in are not "seen"
         // yet: the open flow decides the landing position first (bottom or
         // unread divider) and flushes afterwards.
-        if imp.is_loading_messages.get() {
+        if imp.is_loading_messages.get() || imp.settle_pending.get() {
             return;
         }
 

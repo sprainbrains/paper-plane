@@ -545,10 +545,14 @@ impl Chat {
         let client_id = self.session_().client_().id();
         let result = tdlib::functions::get_message(self.id(), id, client_id).await;
 
-        result.map(|r| {
+        let message = result.map(|r| {
             let tdlib::enums::Message::Message(message) = r;
-            self.upsert_message(message)
-        })
+            message
+        })?;
+        self.session_()
+            .ensure_sender_chats(std::iter::once(&message))
+            .await;
+        Ok(self.upsert_message(message))
     }
 
     /// Loads a page of messages newest-first. `from_id` is the newest id to
@@ -568,6 +572,9 @@ impl Chat {
 
         let tdlib::enums::Messages::Messages(data) = result?;
 
+        self.session_()
+            .ensure_sender_chats(data.messages.iter().flatten())
+            .await;
         let loaded_messages: Vec<model::Message> = data
             .messages
             .into_iter()
@@ -602,6 +609,9 @@ impl Chat {
 
         let tdlib::enums::Messages::Messages(data) = result?;
 
+        self.session_()
+            .ensure_sender_chats(data.messages.iter().flatten())
+            .await;
         Ok(data
             .messages
             .into_iter()
