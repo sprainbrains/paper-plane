@@ -2031,6 +2031,92 @@ msgstr "Сеансы"
 msgid "All Chats"
 msgstr "Все чаты"
 
+#: src/ui/session/sidebar/chat_folder/row_menu.blp
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Edit Folder"
+msgstr "Изменить папку"
+
+#: src/ui/session/sidebar/chat_folder/row_menu.blp
+msgid "Mark All as Read"
+msgstr "Пометить все как прочитанное"
+
+#: src/ui/session/sidebar/chat_folder/row_menu.blp
+msgid "_Remove"
+msgstr "_Удалить"
+
+#: src/ui/session/sidebar/chat_folder/row.rs
+msgid "Failed to mark some chats as read"
+msgstr "Не удалось пометить некоторые чаты как прочитанные"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Cancel"
+msgstr "Отмена"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Save"
+msgstr "Сохранить"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Folder Name"
+msgstr "Название папки"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Folder Icon"
+msgstr "Значок папки"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Include"
+msgstr "Включить"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Exclude"
+msgstr "Исключить"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Chat Types"
+msgstr "Типы чатов"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+#: src/ui/session/contacts_window/mod.blp
+msgid "Contacts"
+msgstr "Контакты"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Non-Contacts"
+msgstr "Не контакты"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Groups"
+msgstr "Группы"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Channels"
+msgstr "Каналы"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Bots"
+msgstr "Боты"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Search Chats"
+msgstr "Поиск чатов"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Muted"
+msgstr "Заглушённые"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Read"
+msgstr "Прочитанные"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.blp
+msgid "Archived"
+msgstr "Архивные"
+
+#: src/ui/session/sidebar/chat_folder/edit_window.rs
+msgid "Failed to save folder: {error}"
+msgstr "Не удалось сохранить папку: {error}"
+
 #: src/ui/session/sidebar/mod.blp:203
 msgid "Archived Chats"
 msgstr "Архивные чаты"
@@ -2128,9 +2214,6 @@ msgstr "{seconds} с"
 #~ "href=\"https://opendatacommons.org/licenses/odbl\">лицензией открытых баз "
 #~ "данных Open Data Commons </a> (ODbL) организацией <a href=\"https://"
 #~ "osmfoundation.org\">aOpenStreetMap Foundation</a> (OSMF)."
-
-#~ msgid "Contacts"
-#~ msgstr "Контакты"
 
 #~ msgid "Unknown"
 #~ msgstr "Неизвестно"

@@ -4,7 +4,10 @@ using Adw 1;
 template $PaplSidebarChatFolderEditWindow: Adw.Window {
   title: _("Edit Folder");
   modal: true;
-  default-width: 400;
+  // 400 fit the English header ("Cancel | Include Exclude | Save"); the
+  // Russian tab titles ("Включить"/"Исключить") ellipsized at that
+  // width; 520 gives the header switcher its natural size.
+  default-width: 520;
   default-height: 680;
 
   content: Adw.ToolbarView {
