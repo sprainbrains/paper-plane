@@ -168,6 +168,11 @@ mod imp {
         /// Pending unread-open landing decision for a freshly opened chat
         /// (see `settle_unread_open`).
         pub(super) divider_tick: RefCell<Option<gtk::TickCallbackId>>,
+        /// Last exact content height of the spacer's window (measured while
+        /// every row was realized), and the item count it belongs to. See
+        /// `do_update_spacer`.
+        pub(super) spacer_content: std::cell::Cell<i32>,
+        pub(super) spacer_items: std::cell::Cell<u32>,
         /// While the landing decision is pending, read-state flushing is
         /// suppressed: the transient layout (newest window before a jump) must
         /// never mark its rows read — TDLib's read state is a watermark, so one
@@ -1358,17 +1363,50 @@ impl ChatHistory {
         let Some(adj) = imp.list_view.vadjustment() else {
             return;
         };
-        // The adjustment's `upper` is clamped to at least `page_size`, so it
-        // cannot reveal slack; the list's vertical natural height is the full
-        // content extent (that is what feeds `upper` beyond the viewport).
-        let (_, natural, _, _) = imp.list_view.measure(gtk::Orientation::Vertical, -1);
-        // Transient during a window reset the measure may have seen the
-        // spacer alone; filling the whole viewport then would overshoot the
-        // real content — wait for a measurement that includes it.
-        if natural <= spacer.slack() {
-            return;
-        }
-        let target = (adj.page_size() - natural as f64).max(0.0).round() as i32;
+        // Measure the content from the rows themselves, not from the list's
+        // natural height: the list estimates unrealized rows from the median
+        // of the realized ones, and once a grown spacer pushes every message
+        // out of view the realized set is just the spacer — the estimate
+        // collapses, the spacer reads the window as empty and grows again.
+        // Two self-consistent states (full spacer / none) toggled at frame
+        // rate: the stroboscope on short chats. Summing realized rows is exact
+        // while they are on screen; the last exact measurement is cached
+        // (keyed by item count) for the frames where the grown spacer hides
+        // them.
+        let items = model.n_items();
+        let mut total = 0i32;
+        let mut count = 0u32;
+        let mut tallest = 0i32;
+        self.for_each_row(|row| {
+            let is_spacer = row
+                .item()
+                .and_downcast::<model::ChatHistoryItem>()
+                .is_some_and(|item| matches!(item.type_(), model::ChatHistoryItemType::Spacer));
+            if is_spacer {
+                return;
+            }
+            let (_, natural, _, _) = row.measure(gtk::Orientation::Vertical, -1);
+            total += natural;
+            count += 1;
+            tallest = tallest.max(natural);
+        });
+        let unrealized = items.saturating_sub(1).saturating_sub(count);
+        let content = if count == 0 {
+            // Only the spacer is on screen: trust the last exact measurement
+            // for this window, or leave the slack alone until rows come back.
+            if imp.spacer_items.get() != items {
+                return;
+            }
+            imp.spacer_content.get()
+        } else {
+            let measured = total + tallest * unrealized as i32;
+            if unrealized == 0 {
+                imp.spacer_content.set(measured);
+                imp.spacer_items.set(items);
+            }
+            measured
+        };
+        let target = (adj.page_size() - content as f64).max(0.0).round() as i32;
         spacer.set_slack(target);
     }
 
