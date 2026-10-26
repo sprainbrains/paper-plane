@@ -421,13 +421,19 @@ mod imp {
                                 model,
                                 async move {
                                     let result = model.load_newer_messages(30).await;
+                                    // Release the trigger before deciding whether
+                                    // the answer still belongs to this window: a
+                                    // task that dies (panic in the load) or lands
+                                    // after a chat switch must never leave the
+                                    // guard set — that wedges older/newer loading
+                                    // for the whole view lifetime.
+                                    obj.imp().is_loading_messages.set(false);
                                     if !obj.is_current_history(generation, chat_id, &model) {
                                         return;
                                     }
                                     if let Err(model::ChatHistoryError::Tdlib(e)) = result {
                                         log::warn!("Couldn't load newer chat messages: {e:?}");
                                     }
-                                    obj.imp().is_loading_messages.set(false);
                                 }
                             ));
                             return;
@@ -453,13 +459,13 @@ mod imp {
                                 model,
                                 async move {
                                     let result = model.load_older_messages(2).await;
+                                    obj.imp().is_loading_messages.set(false);
                                     if !obj.is_current_history(generation, chat_id, &model) {
                                         return;
                                     }
                                     if let Err(model::ChatHistoryError::Tdlib(e)) = result {
                                         log::warn!("Couldn't load more chat messages: {e:?}");
                                     }
-                                    obj.imp().is_loading_messages.set(false);
                                 }
                             ));
                         }

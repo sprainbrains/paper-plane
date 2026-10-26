@@ -770,8 +770,12 @@ impl ChatHistoryModel {
                 }
             }
 
-            let added = list.len() - old_len + removed;
-            let position = if front { 0 } else { list.len() - added - tail };
+            // A merge can take out more boundary items than the batch brings
+            // in (album joined across a skipped day divider: two removed, one
+            // merged item), so the list may be *shorter* than it started.
+            // `list.len() - old_len` then underflows; add the removals back
+            // first to keep the arithmetic in unsigned range.
+            let (added, position) = emit_range(old_len, removed, list.len(), tail, front);
             (position, removed, added)
         };
 
@@ -885,6 +889,23 @@ impl ChatHistoryModel {
 
         self.emit_items_changed_with_dividers(index as u32, removed, added);
     }
+}
+
+/// Describes a batch insert into the storage as an `(added, position)` pair:
+/// `removed` boundary items left a list of `old_len`, and the merged batch
+/// brought it to `new_len`. The first added item sits at storage index
+/// `new_len - added - tail` (above the synthetic tail) for an append, and at
+/// 0 for a prepend.
+fn emit_range(
+    old_len: usize,
+    removed: usize,
+    new_len: usize,
+    tail: usize,
+    front: bool,
+) -> (usize, usize) {
+    let added = new_len + removed - old_len;
+    let position = if front { 0 } else { new_len - added - tail };
+    (added, position)
 }
 
 /// Translates a change notification from newest-first storage coordinates to the
@@ -1094,6 +1115,7 @@ mod tests {
 
     use super::album_group_ranges;
     use super::day_divider_offsets;
+    use super::emit_range;
     use super::remove_trailing_day_divider;
     use super::view_emit_position;
     use crate::model;
@@ -1172,5 +1194,17 @@ mod tests {
     #[test]
     fn album_group_ranges_of_empty_batch_is_empty() {
         assert_eq!(album_group_ranges(&[]), []);
+    }
+
+    #[test]
+    fn emit_range_of_a_shrinking_merge_stays_in_unsigned_range() {
+        // Two boundary items (album edge + skipped day divider) merge with a
+        // one-item batch: the list ends up shorter than it started. The old
+        // `new_len - old_len + removed` order underflowed exactly here.
+        assert_eq!(emit_range(40, 2, 39, 1, false), (1, 37));
+        // A plain append of three items.
+        assert_eq!(emit_range(40, 0, 43, 1, false), (3, 39));
+        // A prepend merging one boundary item with a two-item batch.
+        assert_eq!(emit_range(40, 1, 41, 1, true), (2, 0));
     }
 }
