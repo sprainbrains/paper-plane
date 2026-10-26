@@ -33,6 +33,11 @@ mod imp {
     pub(crate) struct ChatActionBar {
         pub(super) chat: glib::WeakRef<model::Chat>,
         pub(super) chat_action_in_cooldown: Cell<bool>,
+        /// Thread ("comments") mode: the composer targets a discussion group
+        /// only as the vehicle for commenting on a channel post. Commenting
+        /// does not require joining the group, so a `Left` status must not
+        /// replace the entry with a "Join" button here.
+        pub(super) comments_mode: std::cell::Cell<bool>,
         pub(super) state: Cell<ChatActionBarState>,
         pub(super) state_change_generation: Cell<u64>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
@@ -647,6 +652,17 @@ impl ChatActionBar {
         self.notify("chat");
     }
 
+    /// Marks the composer as writing comments into a channel thread (see
+    /// `imp::comments_mode`). Called by the history view on entering and
+    /// leaving thread mode.
+    pub(crate) fn set_comments_mode(&self, on: bool) {
+        if self.imp().comments_mode.get() == on {
+            return;
+        }
+        self.imp().comments_mode.set(on);
+        self.update_stack_page();
+    }
+
     pub(crate) fn reply_to_message_id(&self, id: MessageId) {
         self.set_state(ChatActionBarState::Replying(id));
         // Focus the composer so the user can start typing the reply immediately.
@@ -709,7 +725,7 @@ impl ChatActionBar {
                     {
                         imp.action_bar_stack.set_visible_child_name("restricted");
                     }
-                    tdlib::enums::ChatMemberStatus::Left => {
+                    tdlib::enums::ChatMemberStatus::Left if !imp.comments_mode.get() => {
                         imp.action_bar_stack.set_visible_child_name("join");
                     }
                     _ => {

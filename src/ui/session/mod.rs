@@ -367,18 +367,27 @@ impl Session {
                 #[weak(rename_to = obj)]
                 self,
                 async move {
-                    match tdlib::functions::create_private_chat(
-                        id,
-                        true,
-                        obj.model().unwrap().client_().id(),
-                    )
-                    .await
-                    {
-                        Ok(tdlib::enums::Chat::Chat(data)) => obj
-                            .imp()
-                            .sidebar
-                            .set_selected_chat(obj.model().unwrap().try_chat(data.id).as_ref()),
-                        Err(e) => log::warn!("Failed to create private chat: {e:?}"),
+                    let model = obj.model().unwrap();
+                    if id > 0 {
+                        // Positive ids are private chats: create (or ensure)
+                        // one before selecting.
+                        match tdlib::functions::create_private_chat(id, true, model.client_().id())
+                            .await
+                        {
+                            Ok(tdlib::enums::Chat::Chat(data)) => obj
+                                .imp()
+                                .sidebar
+                                .set_selected_chat(model.try_chat(data.id).as_ref()),
+                            Err(e) => log::warn!("Failed to create private chat: {e:?}"),
+                        }
+                        return;
+                    }
+                    // Groups and channels can be referenced by id without ever
+                    // appearing in a chat list (a discussion group reached from
+                    // the Replies bot): `createPrivateChat` would reject them,
+                    // so materialize the chat through `getChat` instead.
+                    if let Some(chat) = model.chat_or_fetch(id).await {
+                        obj.imp().sidebar.set_selected_chat(Some(&chat));
                     }
                 }
             )),
@@ -652,7 +661,10 @@ async fn resolve_thread_origin(
     chat_id: ChatId,
     message_id: MessageId,
 ) -> Option<(ChatId, MessageId, Option<MessageId>)> {
-    let chat = session.try_chat(chat_id)?;
+    // The discussion chat is often not in any chat list (reached only through
+    // the Replies bot), so it may be missing from the model: materialize it
+    // rather than bailing out into a plain group reveal.
+    let chat = session.chat_or_fetch(chat_id).await?;
     let mut current = message_id;
     // Reply chains are shallow in practice; the bound only guards against a
     // TDLib quirk turning the walk into a loop.

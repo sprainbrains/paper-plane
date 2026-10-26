@@ -173,6 +173,32 @@ impl ClientStateSession {
             .expect("Failed to get expected model::Chat")
     }
 
+    /// Returns the `model::Chat` of the specified id, materializing it through
+    /// `getChat` when the chat never surfaced in an update (e.g. a discussion
+    /// group only referenced by a channel's `linked_chat_id`, reached through
+    /// the Replies bot). Returns `None` when TDLib cannot provide the chat.
+    pub(crate) async fn chat_or_fetch(&self, id: ChatId) -> Option<model::Chat> {
+        if let Some(chat) = self.try_chat(id) {
+            return Some(chat);
+        }
+        let client_id = self.client_().id();
+        if let Err(e) = tdlib::functions::get_chat(id, client_id).await {
+            log::warn!("Failed to fetch chat {id}: {e:?}");
+            return None;
+        }
+        // The chat lands in our map through `updateNewChat`; normally the
+        // update precedes the response, but give the update loop a beat in
+        // case the response was processed first.
+        for _ in 0..20 {
+            if let Some(chat) = self.try_chat(id) {
+                return Some(chat);
+            }
+            glib::timeout_future(std::time::Duration::from_millis(50)).await;
+        }
+        log::warn!("Chat {id} did not materialize after getChat");
+        None
+    }
+
     pub(crate) fn upsert_user(&self, td_user: tdlib::types::User) -> model::User {
         let mut users = self.imp().users.borrow_mut();
 

@@ -163,6 +163,9 @@ mod imp {
         /// The running focus-settling loop; a new focus cancels the previous one so two
         /// jumps in quick succession don't fight over the scroll position.
         pub(super) focus_tick: RefCell<Option<gtk::TickCallbackId>>,
+        /// Pending "jump to the unread divider only if off-screen" decision
+        /// for a freshly opened chat (see `jump_to_divider_when_laid_out`).
+        pub(super) divider_tick: RefCell<Option<gtk::TickCallbackId>>,
         #[template_child]
         pub(super) pinned_view: TemplateChild<gtk::Box>,
         #[template_child]
@@ -762,6 +765,7 @@ impl ChatHistory {
         // Thread mode is scoped to the chat it was opened from: any real chat
         // change (and the forced rebuild when backing out of a thread) leaves it.
         imp.thread.borrow_mut().take();
+        self.chat_action_bar_settling_comments_mode_off();
         // The back arrow only exists for chats opened from within another chat:
         // the switch armed at request time claims the pending return when it
         // actually lands; any other switch (sidebar, search, …) clears it.
@@ -782,6 +786,9 @@ impl ChatHistory {
         imp.pinned_index.set(0);
         imp.pinned_view.set_visible(false);
         if let Some(id) = imp.focus_tick.take() {
+            id.remove();
+        }
+        if let Some(id) = imp.divider_tick.take() {
             id.remove();
         }
 
@@ -850,6 +857,7 @@ impl ChatHistory {
             let generation = imp.generation.get();
             let chat_id = chat.id();
             let client_id = chat.session_().client_().id();
+            let chat_clone = chat.clone();
             utils::spawn(clone!(
                 #[weak(rename_to = obj)]
                 self,
@@ -874,141 +882,146 @@ impl ChatHistory {
                         return;
                     }
 
+                    // Chats reached by id through a jump (the Replies bot's
+                    // "View in Chat") may hold a placeholder membership
+                    // status (`Left`) until their full info has been fetched
+                    // from the server, which would wrongly replace the
+                    // composer with a "Join" button. Request it on open, the
+                    // way tdesktop loads full chat info.
+                    obj.request_full_info(&chat_clone);
+
                     let scrollbar = imp.scrolled_window.vscrollbar();
                     scrollbar.set_visible(false);
 
                     let adj = imp.list_view.vadjustment().unwrap();
 
-                    // Chats with unread messages open at the first unread one, not at
-                    // the newest end: anchor the history window *around* the read
-                    // boundary in a single request (the same jump machinery
-                    // `reveal_message` uses). Walking the backlog batch-wise from the
-                    // newest end both fails on long chats (the capped search never
-                    // reaches the boundary) and briefly maps the newest messages,
-                    // which `view_messages()` would then mark as read.
+                    // Chats with unread messages open at the first unread one
+                    // only when that boundary sits above the fold (tdesktop):
+                    // load the newest end first and keep the viewport pinned
+                    // there while batches stream in, then decide between
+                    // "stay as opened" and "jump to the divider".
                     let wants_unread_jump = unread_count > 0 && last_read_inbox_message_id != 0;
-                    let mut anchored = false;
-                    if wants_unread_jump {
-                        // A scroll-edge load may be in flight; wait it out rather than
-                        // fall back to the newest end.
-                        let mut attempt = 0;
-                        loop {
-                            let result =
-                                model.load_around_message(last_read_inbox_message_id).await;
-                            if !obj.is_current_history(generation, chat_id, &model) {
-                                return;
-                            }
-                            match result {
-                                Ok(()) => {
-                                    anchored = true;
-                                    break;
-                                }
-                                Err(model::ChatHistoryError::AlreadyLoading) if attempt < 30 => {
-                                    attempt += 1;
-                                    glib::timeout_future(std::time::Duration::from_millis(100))
-                                        .await;
-                                }
-                                Err(e) => {
-                                    log::warn!(
-                                        "Couldn't anchor the history at the first unread: {e}"
-                                    );
-                                    break;
-                                }
-                            }
-                        }
-                    }
 
-                    if !anchored {
-                        // Prefill the viewport from the newest end: seed a full first
-                        // page, then keep loading older batches until the loaded window
-                        // is taller than the visible area.
-                        //
-                        // The adjustment's extents only refresh during a layout pass, so
-                        // they cannot be trusted before the new model has been laid out:
-                        // right after a chat switch they still describe the *previous*
-                        // chat (a stale tall upper used to skip this loop entirely,
-                        // leaving the fresh chat blank), and while the window is unmapped
-                        // no layout runs at all (frozen page-sized extents used to keep
-                        // the loop pulling the entire history). Always load the first
-                        // page unconditionally, and extend only while the view is mapped.
-                        // The bottom-filling spacer pins `upper` to `page_size` on short
-                        // chats, so extension is additionally capped to a few pages.
-                        let mut first_page = true;
-                        let mut extensions = 0;
-                        while first_page
-                            || (imp.list_view.is_mapped()
-                                && adj.upper() <= adj.page_size()
-                                && extensions < 4)
-                        {
-                            first_page = false;
-                            extensions += 1;
-                            let result = model.load_older_messages(30).await;
-                            if !obj.is_current_history(generation, chat_id, &model) {
-                                return;
-                            }
-                            match result {
-                                Ok(can_load_more) => {
-                                    if !can_load_more {
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    log::warn!("Couldn't load initial history messages: {e}");
+                    // Prefill the viewport from the newest end: seed a full first
+                    // page, then keep loading older batches until the loaded window
+                    // is taller than the visible area.
+                    //
+                    // The adjustment's extents only refresh during a layout pass, so
+                    // they cannot be trusted before the new model has been laid out:
+                    // right after a chat switch they still describe the *previous*
+                    // chat (a stale tall upper used to skip this loop entirely,
+                    // leaving the fresh chat blank), and while the window is unmapped
+                    // no layout runs at all (frozen page-sized extents used to keep
+                    // the loop pulling the entire history). Always load the first
+                    // page unconditionally, and extend only while the view is mapped.
+                    // The bottom-filling spacer pins `upper` to `page_size` on short
+                    // chats, so extension is additionally capped to a few pages.
+                    let mut first_page = true;
+                    let mut extensions = 0;
+                    while first_page
+                        || (imp.list_view.is_mapped()
+                            && adj.upper() <= adj.page_size()
+                            && extensions < 4)
+                    {
+                        first_page = false;
+                        extensions += 1;
+                        let result = model.load_older_messages(30).await;
+                        if !obj.is_current_history(generation, chat_id, &model) {
+                            return;
+                        }
+                        match result {
+                            Ok(can_load_more) => {
+                                if !can_load_more {
                                     break;
                                 }
                             }
+                            Err(e) => {
+                                log::warn!("Couldn't load initial history messages: {e}");
+                                break;
+                            }
                         }
+                        // Keep the viewport parked at the newest end while the
+                        // batches stream in: the reversed list grows at its top,
+                        // and leaving `value` at 0 showed the oldest loaded
+                        // message until the final scroll (the "jump to the top"
+                        // users watch on every open).
+                        adj.set_value((adj.upper() - adj.page_size()).max(adj.lower()));
                     }
 
                     let mut jumped = false;
                     if wants_unread_jump {
-                        // The anchored window straddles the read boundary, so the
-                        // divider lands at once; the capped walk only runs when the
-                        // anchor failed and the window came from the newest end.
-                        if !model.insert_unread_divider(last_read_inbox_message_id) {
-                            let mut guard = 0;
-                            while !model.insert_unread_divider(last_read_inbox_message_id)
-                                && guard < 40
-                            {
-                                let result = model.load_older_messages(10).await;
+                        if model.insert_unread_divider(last_read_inbox_message_id) {
+                            // The read boundary is inside the loaded window:
+                            // stay at the newest end, and let the first frames
+                            // decide whether the divider is off-screen.
+                            obj.set_sticky(true);
+                            obj.scroll_down();
+                            obj.jump_to_divider_when_laid_out(generation, chat_id);
+                            jumped = true;
+                        } else {
+                            // The boundary predates the loaded window: re-anchor
+                            // the window *around* it in a single request (the
+                            // same jump machinery `reveal_message` uses; walking
+                            // the backlog batch-wise never reaches it on long
+                            // chats).
+                            let mut attempt = 0;
+                            loop {
+                                let result =
+                                    model.load_around_message(last_read_inbox_message_id).await;
                                 if !obj.is_current_history(generation, chat_id, &model) {
                                     return;
                                 }
                                 match result {
-                                    Ok(true) => guard += 1,
-                                    _ => break,
+                                    Ok(()) => {
+                                        model.insert_unread_divider(last_read_inbox_message_id);
+                                        break;
+                                    }
+                                    Err(model::ChatHistoryError::AlreadyLoading)
+                                        if attempt < 30 =>
+                                    {
+                                        attempt += 1;
+                                        glib::timeout_future(std::time::Duration::from_millis(100))
+                                            .await;
+                                    }
+                                    Err(e) => {
+                                        log::warn!(
+                                            "Couldn't anchor the history at the first unread: {e}"
+                                        );
+                                        break;
+                                    }
                                 }
                             }
-                        }
-                        if obj.unread_divider_position().is_some() {
-                            // Drop any auto-scroll still in flight so it cannot finish
-                            // at the bottom and re-latch `sticky` over the jump, and
-                            // forget what the transient pre-jump layout had mapped:
-                            // only the rows the user actually sees should be marked as
-                            // read.
-                            imp.is_auto_scrolling.set(false);
-                            imp.viewed_message_ids.borrow_mut().clear();
-                            imp.viewed_message_ids_changed.set(false);
-                            obj.set_sticky(false);
-                            // Let the list realise the fresh window before scrolling to
-                            // the divider (the one-idle delay `reveal_message` uses).
-                            glib::idle_add_local_once(clone!(
-                                #[weak]
-                                obj,
-                                move || {
-                                    if !obj.is_current_chat(generation, chat_id) {
-                                        return;
+                            if obj.unread_divider_position().is_some() {
+                                // Drop any auto-scroll still in flight so it cannot
+                                // finish at the bottom and re-latch `sticky` over the
+                                // jump, and forget what the transient bottom-pinned
+                                // layout had mapped: only the rows the user actually
+                                // sees should be marked as read.
+                                imp.is_auto_scrolling.set(false);
+                                imp.viewed_message_ids.borrow_mut().clear();
+                                imp.viewed_message_ids_changed.set(false);
+                                obj.set_sticky(false);
+                                // Let the list realise the fresh window before
+                                // scrolling to the divider (the one-idle delay
+                                // `reveal_message` uses).
+                                glib::idle_add_local_once(clone!(
+                                    #[weak]
+                                    obj,
+                                    move || {
+                                        if !obj.is_current_chat(generation, chat_id) {
+                                            return;
+                                        }
+                                        if let Some(position) = obj.unread_divider_position() {
+                                            obj.imp().list_view.scroll_to(
+                                                position,
+                                                gtk::ListScrollFlags::empty(),
+                                                None,
+                                            );
+                                        }
                                     }
-                                    if let Some(position) = obj.unread_divider_position() {
-                                        obj.imp().list_view.scroll_to(
-                                            position,
-                                            gtk::ListScrollFlags::empty(),
-                                            None,
-                                        );
-                                    }
-                                }
-                            ));
-                            jumped = true;
+                                ));
+                                jumped = true;
+                            }
                         }
                     }
 
@@ -1106,6 +1119,109 @@ impl ChatHistory {
             None
         });
         obj.update_spacer();
+    }
+
+    /// Leaving thread mode (any chat switch rebuilds the window): the composer
+    /// is a plain chat composer again, where `Left` means "Join".
+    fn chat_action_bar_settling_comments_mode_off(&self) {
+        self.imp().chat_action_bar.set_comments_mode(false);
+    }
+
+    /// Asks TDLib for the chat's full info, which refreshes our membership
+    /// status (and permissions) from the server. A chat materialized from an
+    /// id reference alone can carry a placeholder `Left` status, which the
+    /// composer would otherwise render as a bogus "Join" button.
+    fn request_full_info(&self, chat: &model::Chat) {
+        let client_id = chat.session_().client_().id();
+        match chat.chat_type() {
+            model::ChatType::Supergroup(data) => {
+                let supergroup_id = data.id();
+                utils::spawn(async move {
+                    let _ =
+                        tdlib::functions::get_supergroup_full_info(supergroup_id, client_id).await;
+                });
+            }
+            model::ChatType::BasicGroup(data) => {
+                let basic_group_id = data.id();
+                utils::spawn(async move {
+                    let _ = tdlib::functions::get_basic_group_full_info(basic_group_id, client_id)
+                        .await;
+                });
+            }
+            _ => {}
+        }
+    }
+
+    /// Decides where a freshly opened unread chat lands: with the view pinned
+    /// to the newest end, jump to the unread divider only when it sits above
+    /// the fold; when it is on screen the chat simply stays open (the way
+    /// tdesktop opens). Runs across a few frames until the layout has
+    /// realized the bottom rows — until then the geometry is unknowable.
+    fn jump_to_divider_when_laid_out(&self, generation: u64, chat_id: i64) {
+        let imp = self.imp();
+        if let Some(id) = imp.divider_tick.take() {
+            id.remove();
+        }
+        let frames = Rc::new(std::cell::Cell::new(0));
+        let id = self.add_tick_callback(move |obj, _clock| {
+            if !obj.is_current_chat(generation, chat_id) {
+                return glib::ControlFlow::Break;
+            }
+            let Some(position) = obj.unread_divider_position() else {
+                // The divider vanished (everything got read meanwhile):
+                // stay at the newest end and flush what is visible.
+                obj.view_messages();
+                return glib::ControlFlow::Break;
+            };
+            let imp = obj.imp();
+            let divider_row = obj.find_row(|row| {
+                row.item()
+                    .and_downcast::<model::ChatHistoryItem>()
+                    .is_some_and(|item| {
+                        matches!(item.type_(), model::ChatHistoryItemType::UnreadDivider(_))
+                    })
+            });
+            let jump = match &divider_row {
+                Some(row) => row
+                    .compute_bounds(&*imp.scrolled_window)
+                    .map(|bounds| bounds.y() < 0.0),
+                // The divider is not realized. Once any newer row is, it sits
+                // above the realized margin — i.e. off-screen.
+                None if imp.list_view.is_realized() && obj.find_row(|_| true).is_some() => {
+                    Some(true)
+                }
+                None => None,
+            };
+            match jump {
+                Some(true) => {
+                    // Above the fold: jump to it. Forget what the bottom-pinned
+                    // layout had mapped so only the rows the user actually sees
+                    // are marked read.
+                    imp.is_auto_scrolling.set(false);
+                    imp.viewed_message_ids.borrow_mut().clear();
+                    imp.viewed_message_ids_changed.set(false);
+                    obj.set_sticky(false);
+                    imp.list_view
+                        .scroll_to(position, gtk::ListScrollFlags::empty(), None);
+                }
+                Some(false) => {
+                    // On screen: the chat stays open at the newest end; what
+                    // is visible now counts as seen.
+                    obj.set_sticky(true);
+                    obj.view_messages();
+                }
+                None => {
+                    // Layout has not settled yet — give it a few frames.
+                    if frames.get() < 30 {
+                        frames.set(frames.get() + 1);
+                        return glib::ControlFlow::Continue;
+                    }
+                    obj.view_messages();
+                }
+            }
+            glib::ControlFlow::Break
+        });
+        imp.divider_tick.replace(Some(id));
     }
 
     /// Coalesce spacer re-measures into one per frame: setting the slack
@@ -3045,12 +3161,16 @@ impl ChatHistory {
                     obj.imp().thread.borrow_mut().take();
                     return;
                 };
-                obj.setup_thread_model(info, &anchor);
+                obj.setup_thread_model(info, &anchor).await;
             }
         ));
     }
 
-    fn setup_thread_model(&self, info: tdlib::types::MessageThreadInfo, anchor: &model::Message) {
+    async fn setup_thread_model(
+        &self,
+        info: tdlib::types::MessageThreadInfo,
+        anchor: &model::Message,
+    ) {
         let imp = self.imp();
         // The user may have backed out or switched chats while the request was
         // in flight; never install a thread over a rebuilt or different window.
@@ -3063,7 +3183,18 @@ impl ChatHistory {
             thread.message_thread_id = info.message_thread_id;
         }
         let session = anchor.chat_().session_();
-        let discussion_chat = session.chat(info.chat_id);
+        // The discussion group is often only referenced by the channel's
+        // `linked_chat_id` and never surfaced in an update (a jump from the
+        // Replies bot): materialize it instead of expecting the map to have
+        // it already.
+        let Some(discussion_chat) = session.chat_or_fetch(info.chat_id).await else {
+            log::warn!("Thread discussion chat {} is unavailable", info.chat_id);
+            self.imp().thread.borrow_mut().take();
+            return;
+        };
+        // The composer will be retargeted to the discussion group: make sure
+        // its membership status is fresh (see `request_full_info`).
+        self.request_full_info(&discussion_chat);
 
         let context = model::ThreadContext {
             message_thread_id: info.message_thread_id,
@@ -3092,6 +3223,9 @@ impl ChatHistory {
             .set_item(Some(discussion_chat.clone().upcast()));
         imp.back_button.set_visible(true);
         imp.chat_action_bar.set_chat(Some(&discussion_chat));
+        // Commenting through the thread works without joining the discussion
+        // group; keep the entry even while its status reads `Left`.
+        imp.chat_action_bar.set_comments_mode(true);
 
         // Load the comments, then stick to the bottom (newest comment) unless
         // the jump asked for a specific comment to reveal.
@@ -3164,6 +3298,13 @@ impl ChatHistory {
 
     pub(crate) fn view_messages(&self) {
         let imp = self.imp();
+
+        // Rows mapping while the initial window streams in are not "seen"
+        // yet: the open flow decides the landing position first (bottom or
+        // unread divider) and flushes afterwards.
+        if imp.is_loading_messages.get() {
+            return;
+        }
 
         if imp.viewed_message_ids_changed.get() {
             let Some(chat) = self.chat() else {
