@@ -22,6 +22,9 @@ mod imp {
     #[properties(wrapper_type = super::Row)]
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/chat_folder/row.ui")]
     pub(crate) struct Row {
+        /// This row's context menu; see the sidebar row's comment on why the
+        /// popover must not be shared between rows.
+        pub(super) menu: std::cell::OnceCell<gtk::PopoverMenu>,
         #[property(get, set, construct_only)]
         pub(super) chat_folder_bar: OnceCell<ui::SidebarChatFolderBar>,
         #[property(get, set)]
@@ -105,11 +108,12 @@ mod imp {
 
         fn dispose(&self) {
             self.dispose_template();
-            // `dispose_template` leaves the template's root box parented on this widget
-            // subclass, and the context menu is a single popover owned by the bar and
-            // re-parented onto whichever row is right-clicked (see `show_menu`) — neither
-            // is cleared. Unparent whatever remains so list recycling doesn't finalize the
-            // row with live children (and take the bar's shared popover down with it).
+            if let Some(menu) = self.menu.get() {
+                menu.unparent();
+            }
+            // `dispose_template` leaves the template's root box parented on this
+            // widget subclass. Unparent whatever remains so list recycling
+            // doesn't finalize the row with live children.
             while let Some(child) = self.obj().first_child() {
                 child.unparent();
             }
@@ -145,10 +149,17 @@ mod imp {
             let obj = &*self.obj();
 
             if obj.is_folder() {
-                let popover_menu = obj.chat_folder_bar().popover_menu();
+                let popover_menu = self.menu.get_or_init(|| {
+                    gtk::Builder::from_resource(
+                        "/app/drey/paper-plane/ui/session/sidebar/chat_folder/row_menu.ui",
+                    )
+                    .object::<gtk::PopoverMenu>("popover_menu")
+                    .unwrap()
+                });
 
-                popover_menu.unparent();
-                popover_menu.set_parent(obj);
+                if popover_menu.parent().is_none() {
+                    popover_menu.set_parent(obj);
+                }
                 popover_menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));
                 popover_menu.set_halign(match obj.direction() {
                     gtk::TextDirection::Ltr => gtk::Align::Start,

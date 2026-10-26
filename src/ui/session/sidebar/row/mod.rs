@@ -22,6 +22,13 @@ mod imp {
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/row.ui")]
     pub(crate) struct Row {
         pub(super) item: glib::WeakRef<model::ChatListItem>,
+        /// This row's context menu. Built lazily and parented to this row only:
+        /// a popover shared between rows resolves its menu-model actions against
+        /// the widget hierarchy captured at construction, so re-parenting it on
+        /// every popup silently breaks every item (see the history of this
+        /// comment's bug). One popover per row keeps the action muxer chain
+        /// stable.
+        pub(super) menu: OnceCell<gtk::PopoverMenu>,
         pub(super) item_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) session_signal_group: OnceCell<glib::SignalGroup>,
@@ -99,16 +106,35 @@ mod imp {
             self.show_menu(x as i32, y as i32);
         }
 
+        fn menu(&self) -> gtk::PopoverMenu {
+            let obj = &*self.obj();
+            self.menu
+                .get_or_init(|| {
+                    let menu = gtk::Builder::from_resource(
+                        "/app/drey/paper-plane/ui/session/sidebar/row_menu.ui",
+                    )
+                    .object::<gtk::PopoverMenu>("menu")
+                    .unwrap();
+
+                    menu.set_halign(if obj.direction() == gtk::TextDirection::Rtl {
+                        gtk::Align::End
+                    } else {
+                        gtk::Align::Start
+                    });
+
+                    menu
+                })
+                .clone()
+        }
+
         fn show_menu(&self, x: i32, y: i32) {
             let obj = &*self.obj();
-            let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(obj) else {
-                return;
-            };
-            let menu = sidebar.row_menu();
+            let menu = self.menu();
 
             menu.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 0, 0)));
-            menu.unparent();
-            menu.set_parent(obj);
+            if menu.parent().is_none() {
+                menu.set_parent(obj);
+            }
             menu.popup();
         }
     }
@@ -225,6 +251,9 @@ mod imp {
         }
 
         fn dispose(&self) {
+            if let Some(menu) = self.menu.get() {
+                menu.unparent();
+            }
             self.dispose_template();
             // dispose_template leaves the template's unnamed root children (the avatar and
             // the content box) parented, which warns and leaks on finalize; unparent

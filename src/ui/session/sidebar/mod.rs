@@ -50,7 +50,6 @@ mod imp {
         pub(super) selected_chat: glib::WeakRef<model::Chat>,
         #[property(get, set = Self::set_session, explicit_notify)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
-        pub(super) row_menu: OnceCell<gtk::PopoverMenu>,
         // Kept alive so the `vertical-folders` change handler stays connected.
         pub(super) settings: OnceCell<utils::PaperPlaneSettings>,
         // The currently displayed chat list and its "loading" notify handler, so the
@@ -300,23 +299,7 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for Sidebar {
-        fn direction_changed(&self, previous_direction: gtk::TextDirection) {
-            let obj = self.obj();
-
-            if obj.direction() == previous_direction {
-                return;
-            }
-
-            if let Some(menu) = self.row_menu.get() {
-                menu.set_halign(if obj.direction() == gtk::TextDirection::Rtl {
-                    gtk::Align::End
-                } else {
-                    gtk::Align::Start
-                });
-            }
-        }
-    }
+    impl WidgetImpl for Sidebar {}
 
     fn set_header_loading(title_stack: &gtk::Stack, loading: bool) {
         if loading {
@@ -355,28 +338,6 @@ impl Sidebar {
             bar.set_vexpand(false);
             imp.main_view.add_top_bar(&bar);
         }
-    }
-
-    pub(crate) fn row_menu(&self) -> &gtk::PopoverMenu {
-        self.imp().row_menu.get_or_init(|| {
-            let menu =
-                gtk::Builder::from_resource("/app/drey/paper-plane/ui/session/sidebar/row_menu.ui")
-                    .object::<gtk::PopoverMenu>("menu")
-                    .unwrap();
-
-            menu.set_halign(if self.direction() == gtk::TextDirection::Rtl {
-                gtk::Align::End
-            } else {
-                gtk::Align::Start
-            });
-
-            // The menu is shared and re-parented onto whichever row was clicked. Detach it
-            // when it closes so it is never left parented to a row that is later destroyed
-            // (e.g. list recycling or window close), which would dangle its parent pointer.
-            menu.connect_closed(|menu| menu.unparent());
-
-            menu
-        })
     }
 
     pub(crate) fn show_sessions(&self) {

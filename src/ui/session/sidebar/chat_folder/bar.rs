@@ -1,5 +1,4 @@
 use std::cell::Cell;
-use std::cell::OnceCell;
 
 use glib::Properties;
 use gtk::CompositeTemplate;
@@ -17,7 +16,6 @@ mod imp {
     #[properties(wrapper_type = super::Bar)]
     #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/chat_folder/bar.ui")]
     pub(crate) struct Bar {
-        pub(super) popover_menu: OnceCell<gtk::PopoverMenu>,
         pub(super) vertical: Cell<bool>,
         #[property(get, set)]
         pub(super) chat_folder_list: glib::WeakRef<model::ChatFolderList>,
@@ -60,9 +58,6 @@ mod imp {
         }
 
         fn dispose(&self) {
-            if let Some(popover_menu) = self.popover_menu.get() {
-                popover_menu.unparent();
-            }
             self.dispose_template();
         }
     }
@@ -180,18 +175,5 @@ impl Bar {
             imp.scrolled_window.set_propagate_natural_height(true);
             self.remove_css_class("vertical");
         }
-    }
-
-    pub(crate) fn popover_menu(&self) -> gtk::PopoverMenu {
-        self.imp()
-            .popover_menu
-            .get_or_init(|| {
-                gtk::Builder::from_resource(
-                    "/app/drey/paper-plane/ui/session/sidebar/chat_folder/row_menu.ui",
-                )
-                .object::<gtk::PopoverMenu>("popover_menu")
-                .unwrap()
-            })
-            .to_owned()
     }
 }
