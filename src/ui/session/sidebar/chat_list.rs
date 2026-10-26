@@ -21,8 +21,12 @@ mod imp {
     pub(crate) struct ChatList {
         pub(super) marked_as_unread_handler: RefCell<Option<(model::Chat, glib::SignalHandlerId)>>,
         /// Subscriptions to the bound model list that drive the loading
-        /// placeholder (its `loading` property and `items-changed`).
-        pub(super) placeholder_handlers: RefCell<Vec<glib::SignalHandlerId>>,
+        /// placeholder (its `loading` property and `items-changed`). Each id
+        /// carries the list it was connected to: `notify::chat-list` fires
+        /// *after* the property moved on, so disconnecting through the
+        /// current property hits the new list with the old list's ids
+        /// ("instance has no handler with id" and a leaked subscription).
+        pub(super) placeholder_handlers: RefCell<Vec<(model::ChatList, glib::SignalHandlerId)>>,
         #[property(get, set = Self::set_selected_chat, nullable, explicit_notify)]
         pub(super) selected_chat: glib::WeakRef<model::Chat>,
         #[property(get, set)]
@@ -97,12 +101,8 @@ mod imp {
         }
 
         fn disconnect_placeholder_handlers(&self) {
-            if let Some(list) = self.obj().chat_list() {
-                for handler in self.placeholder_handlers.borrow_mut().drain(..) {
-                    list.disconnect(handler);
-                }
-            } else {
-                self.placeholder_handlers.borrow_mut().clear();
+            for (list, handler) in self.placeholder_handlers.borrow_mut().drain(..) {
+                list.disconnect(handler);
             }
         }
 
@@ -189,7 +189,11 @@ mod imp {
                         move |_, _, _, _| widget.imp().update_placeholder()
                     )),
                 ];
-                self.placeholder_handlers.borrow_mut().extend(handlers);
+                self.placeholder_handlers.borrow_mut().extend(
+                    handlers
+                        .into_iter()
+                        .map(|handler| (chat_list.clone(), handler)),
+                );
             }
 
             self.update_placeholder();
