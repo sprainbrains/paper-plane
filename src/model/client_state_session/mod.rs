@@ -216,6 +216,28 @@ impl ClientStateSession {
         }
     }
 
+    /// Returns the `model::Chat` of the specified id, creating an in-place
+    /// placeholder when a message references a sender chat that has not been
+    /// announced yet (TDLib's type-before-id guarantee does not cover the
+    /// `last_message` embedded in `updateNewChat` itself). The placeholder is
+    /// materialized through `getChat` and completed by the resulting
+    /// `updateNewChat`.
+    pub(crate) fn chat_or_placeholder(&self, id: ChatId) -> model::Chat {
+        if let Some(chat) = self.try_chat(id) {
+            return chat;
+        }
+        log::warn!("Chat {id} referenced before being announced; creating a placeholder");
+        let chat = model::Chat::new_placeholder_for_sender(self, id);
+        self.imp().chats.borrow_mut().insert(id, chat.clone());
+        let client_id = self.client_().id();
+        utils::spawn(async move {
+            if let Err(e) = tdlib::functions::get_chat(id, client_id).await {
+                log::warn!("Failed to fetch placeholder chat {id}: {e:?}");
+            }
+        });
+        chat
+    }
+
     /// TDLib announces chats through `updateNewChat` before any response that
     /// references them, but updates are consumed by a separate task: a response
     /// can be handled before its announcements land there. Materialize every
@@ -512,9 +534,16 @@ impl ClientStateSession {
         match update {
             NewChat(data) => {
                 // No need to update the chat positions here, tdlib sends
-                // the correct chat positions in other updates later
-                let chat = model::Chat::new(self, data.chat);
-                self.imp().chats.borrow_mut().insert(chat.id(), chat);
+                // the correct chat positions in other updates later. A
+                // placeholder may already exist (referenced as a message
+                // sender); complete it in place instead of orphaning it.
+                match self.try_chat(data.chat.id) {
+                    Some(chat) => chat.update_from_td(data.chat),
+                    None => {
+                        let chat = model::Chat::new(self, data.chat);
+                        self.imp().chats.borrow_mut().insert(chat.id(), chat);
+                    }
+                }
             }
             ChatTitle(ref data) => self.chat(data.chat_id).handle_update(update),
             ChatPhoto(ref data) => self.chat(data.chat_id).handle_update(update),

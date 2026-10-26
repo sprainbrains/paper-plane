@@ -169,7 +169,7 @@ impl MessageVideo {
         imp.generation.set(imp.generation.get().wrapping_add(1));
         let generation = imp.generation.get();
         if let Some(media) = imp.media.take() {
-            media.pause();
+            utils::retire_media(&media);
         }
 
         match content {

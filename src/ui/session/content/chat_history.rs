@@ -80,8 +80,10 @@ mod imp {
         /// for the identity the (hidden) sidebar would otherwise convey. On the expanded
         /// layout the sidebar already shows it, so the header avatar is hidden.
         pub(super) compact: Cell<bool>,
+        /// Message ids credited as read by the last `view_messages` request.
+        /// Recomputed from the rows actually intersecting the viewport on each
+        /// flush (see `visible_message_ids`), not accumulated from map/unmap.
         pub(super) viewed_message_ids: RefCell<HashSet<i64>>,
-        pub(super) viewed_message_ids_changed: Cell<bool>,
         pub(super) selection_mode: Cell<bool>,
         pub(super) selected_message_ids: RefCell<HashSet<i64>>,
         /// State for an in-progress selection drag: whether one is active, the anchor
@@ -171,6 +173,12 @@ mod imp {
         /// never mark its rows read — TDLib's read state is a watermark, so one
         /// newest id would silently consume the entire unread backlog.
         pub(super) settle_pending: std::cell::Cell<bool>,
+        /// Set when a chat with an unread backlog could not be anchored at the
+        /// boundary and opened at the newest end instead: the backlog stays
+        /// unread until the user actually scrolls (the first wheel/touchpad
+        /// event lifts the guard), mirroring tdesktop's behavior of not
+        /// consuming unread the user never looked at.
+        pub(super) backlog_guard: std::cell::Cell<bool>,
         #[template_child]
         pub(super) pinned_view: TemplateChild<gtk::Box>,
         #[template_child]
@@ -467,6 +475,9 @@ mod imp {
                 #[upgrade_or]
                 glib::Propagation::Proceed,
                 move |_, _dx, dy| {
+                    // A real scroll ends the backlog protection: from now on
+                    // what passes the viewport is genuinely being read.
+                    obj.imp().backlog_guard.set(false);
                     if !obj.imp().selection_dragging.get() {
                         return glib::Propagation::Proceed;
                     }
@@ -714,20 +725,6 @@ impl ChatHistory {
         ));
     }
 
-    pub(crate) fn add_to_viewed_message_ids(&self, message_id: i64) {
-        let imp = self.imp();
-        if imp.viewed_message_ids.borrow_mut().insert(message_id) {
-            imp.viewed_message_ids_changed.set(true);
-        }
-    }
-
-    pub(crate) fn remove_from_viewed_message_ids(&self, message_id: i64) {
-        let imp = self.imp();
-        if imp.viewed_message_ids.borrow_mut().remove(&message_id) {
-            imp.viewed_message_ids_changed.set(true);
-        }
-    }
-
     pub(crate) fn message_menu(&self) -> &ui::MessageMenu {
         self.imp().message_menu.get_or_init(|| {
             let menu = ui::MessageMenu::new();
@@ -797,6 +794,8 @@ impl ChatHistory {
             id.remove();
         }
         imp.settle_pending.set(false);
+        imp.backlog_guard.set(false);
+        imp.viewed_message_ids.borrow_mut().clear();
 
         if let Some(chat) = old_chat {
             chat.disconnect(imp.chat_handler.replace(None).unwrap());
@@ -1032,6 +1031,12 @@ impl ChatHistory {
                                 // divider, never on its transient bottom.
                                 obj.settle_unread_open(generation, chat_id, true);
                                 jumped = true;
+                            } else {
+                                // TDLib could not reach the boundary in time;
+                                // the chat opens at the newest end, but this
+                                // accidental exposure must not consume the
+                                // backlog.
+                                imp.backlog_guard.set(true);
                             }
                         }
                     }
@@ -1220,7 +1225,7 @@ impl ChatHistory {
         let Some(position) = self.unread_divider_position() else {
             // The divider vanished (everything got read meanwhile): stay at
             // the newest end and credit what is visible.
-            self.settle_at_current_position();
+            self.schedule_settle_flush();
             return true;
         };
         let imp = self.imp();
@@ -1252,7 +1257,7 @@ impl ChatHistory {
                 } else {
                     self.set_sticky(true);
                 }
-                self.settle_at_current_position();
+                self.schedule_settle_flush();
                 true
             }
             None => {
@@ -1264,10 +1269,47 @@ impl ChatHistory {
                         .scroll_to(position, gtk::ListScrollFlags::empty(), None);
                     return false;
                 }
-                self.settle_at_current_position();
+                self.schedule_settle_flush();
                 true
             }
         }
+    }
+
+    /// Credit the landing once the layout has *stabilized*, watching it across
+    /// frames. Two storms make an immediate flush wrong: the first layout
+    /// briefly stacks every row inside the viewport (over-realization), and
+    /// not-yet-downloaded media collapses rows to slivers, so a "viewport"
+    /// sample taken too early spans a hundred unread messages. While the
+    /// geometry keeps changing, wait; flush when it stops changing (or after
+    /// a grace cap, so a slow connection still marks something).
+    fn schedule_settle_flush(&self) {
+        let imp = self.imp();
+        if let Some(id) = imp.divider_tick.take() {
+            id.remove();
+        }
+        let last = Rc::new(std::cell::Cell::new((-1.0f64, -1.0f64)));
+        let stable = Rc::new(std::cell::Cell::new(0u32));
+        let started = std::time::Instant::now();
+        let id = self.add_tick_callback(move |obj, _clock| {
+            let imp = obj.imp();
+            let Some(adj) = imp.list_view.vadjustment() else {
+                obj.settle_at_current_position();
+                return glib::ControlFlow::Break;
+            };
+            let now = (adj.value(), adj.upper());
+            if now == last.get() {
+                stable.set(stable.get() + 1);
+            } else {
+                stable.set(0);
+                last.set(now);
+            }
+            if stable.get() >= 2 || started.elapsed() >= std::time::Duration::from_millis(2500) {
+                obj.settle_at_current_position();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
+        imp.divider_tick.replace(Some(id));
     }
 
     /// The landing is final: credit exactly the messages inside the viewport
@@ -1277,30 +1319,9 @@ impl ChatHistory {
     fn settle_at_current_position(&self) {
         let imp = self.imp();
         imp.settle_pending.set(false);
-        let Some(viewport) = imp.list_view.vadjustment().map(|adj| adj.page_size()) else {
-            return;
-        };
-        let scrolled = &*imp.scrolled_window;
-        let mut visible: std::collections::HashSet<i64> = std::collections::HashSet::new();
-        self.for_each_row(|row| {
-            let Some(item) = row.item().and_downcast::<model::ChatHistoryItem>() else {
-                return;
-            };
-            let messages = item.messages();
-            if messages.is_empty() {
-                return;
-            }
-            if let Some(bounds) = row.compute_bounds(scrolled) {
-                let top = f64::from(bounds.y());
-                let bottom = top + f64::from(bounds.height());
-                if top < viewport && bottom > 0.0 {
-                    visible.extend(messages.iter().map(|message| message.id()));
-                }
-            }
-        });
-        let changed = !visible.is_empty();
-        *imp.viewed_message_ids.borrow_mut() = visible;
-        imp.viewed_message_ids_changed.set(changed);
+        // Force a re-evaluation: the landing changed what is visible, and the
+        // last-sent set may describe the pre-jump viewport.
+        imp.viewed_message_ids.borrow_mut().clear();
         self.view_messages();
     }
 
@@ -3382,35 +3403,80 @@ impl ChatHistory {
         // Rows mapping while the initial window streams in are not "seen"
         // yet: the open flow decides the landing position first (bottom or
         // unread divider) and flushes afterwards.
-        if imp.is_loading_messages.get() || imp.settle_pending.get() {
+        if imp.is_loading_messages.get() || imp.settle_pending.get() || imp.backlog_guard.get() {
             return;
         }
 
-        if imp.viewed_message_ids_changed.get() {
-            let Some(chat) = self.chat() else {
-                return;
-            };
-            imp.viewed_message_ids_changed.set(false);
+        let Some(chat) = self.chat() else {
+            return;
+        };
 
-            let chat_id = chat.id();
-            let client_id = chat.session_().client_().id();
-            let viewed_message_ids =
-                Vec::from_iter(imp.viewed_message_ids.borrow().iter().copied());
-
-            utils::spawn(async move {
-                if let Err(e) = tdlib::functions::view_messages(
-                    chat_id,
-                    viewed_message_ids,
-                    None,
-                    true,
-                    client_id,
-                )
-                .await
-                {
-                    log::warn!("Failed to mark messages as viewed: {e:?}");
-                }
-            });
+        // Credit exactly what intersects the viewport now. Accumulating
+        // map/unmap events instead would over-mark on two occasions that
+        // happen on every open: the first layout briefly maps the whole
+        // window, and the realized margin keeps rows "mapped" after they
+        // scroll out of view.
+        let visible = self.visible_message_ids();
+        let visible_set: HashSet<i64> = visible.iter().copied().collect();
+        if visible_set.is_empty() || visible_set == *imp.viewed_message_ids.borrow() {
+            return;
         }
+        *imp.viewed_message_ids.borrow_mut() = visible_set;
+
+        let chat_id = chat.id();
+        let client_id = chat.session_().client_().id();
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::view_messages(chat_id, visible, None, true, client_id).await
+            {
+                log::warn!("Failed to mark messages as viewed: {e:?}");
+            }
+        });
+    }
+
+    /// Message ids of the rows currently intersecting the viewport (albums
+    /// count with all their members).
+    fn visible_message_ids(&self) -> Vec<i64> {
+        let imp = self.imp();
+        let Some(adj) = imp.list_view.vadjustment() else {
+            return Vec::new();
+        };
+        let viewport = adj.page_size();
+        let scrolled = &*imp.scrolled_window;
+        let mut ids: HashSet<i64> = HashSet::new();
+        self.for_each_row(|row| {
+            // Albums count with all their members; sponsored slots with their id.
+            let message_ids: Vec<i64> = match row.item() {
+                Some(item) if item.downcast_ref::<model::ChatHistoryItem>().is_some() => item
+                    .downcast::<model::ChatHistoryItem>()
+                    .unwrap()
+                    .messages()
+                    .iter()
+                    .map(|message| message.id())
+                    .collect(),
+                Some(item) => item
+                    .downcast::<model::SponsoredMessage>()
+                    .ok()
+                    .map(|message| vec![message.message_id()])
+                    .unwrap_or_default(),
+                None => Vec::new(),
+            };
+            if message_ids.is_empty() {
+                return;
+            }
+            if let Some(bounds) = row.compute_bounds(scrolled) {
+                let top = f64::from(bounds.y());
+                // Rows whose media has not downloaded yet collapse to a sliver
+                // far shorter than the real bubble. Marking them would consume
+                // a stack of messages the user never actually saw, so require
+                // a credible height; grown rows are credited on the next flush.
+                let credible = bounds.height() >= 40.0;
+                if credible && top < viewport && top + f64::from(bounds.height()) > 0.0 {
+                    ids.extend(message_ids);
+                }
+            }
+        });
+        Vec::from_iter(ids)
     }
 }
 

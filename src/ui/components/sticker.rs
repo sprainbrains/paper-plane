@@ -62,6 +62,7 @@ mod imp {
         fn dispose(&self) {
             self.generation.set(self.generation.get().wrapping_add(1));
             if let Some(child) = self.child.replace(None) {
+                super::Sticker::retire_media_of(&child);
                 child.unparent();
             }
         }
@@ -351,7 +352,18 @@ impl Sticker {
             child.set_parent(self);
         }
         if let Some(old) = imp.child.replace(child) {
+            Self::retire_media_of(&old);
             old.unparent();
+        }
+    }
+
+    /// A replaced or disposed child may still own a running `GtkMediaFile`
+    /// (webm sticker); retire it through the playbin-safe path.
+    fn retire_media_of(child: &gtk::Widget) {
+        if let Some(picture) = child.downcast_ref::<gtk::Picture>()
+            && let Some(media) = picture.paintable().and_downcast::<gtk::MediaFile>()
+        {
+            utils::retire_media(&media);
         }
     }
 }

@@ -1,4 +1,5 @@
 use gtk::gdk;
+use gtk::glib;
 use gtk::graphene;
 use gtk::prelude::*;
 
@@ -51,4 +52,22 @@ pub(crate) fn content_minithumbnail(
         MessageVideoNote(data) => data.video_note.minithumbnail.as_ref(),
         _ => None,
     }
+}
+
+/// Retire a played `GtkMediaFile` without racing GStreamer's playbin thread.
+///
+/// Finalizing a media stream while its pipeline is still mid state-change
+/// (play started seconds — or milliseconds — earlier) lets the streaming
+/// thread touch a freed GObject: a SIGSEGV on the `GstPlay` thread inside
+/// libgobject. A chat's first layout maps every row at once and the cull
+/// then drops a wall of freshly-started pipelines together, which is exactly
+/// when it bites. Pause the pipeline, and hold the last reference until the
+/// in-flight state changes have had time to settle before letting it drop.
+pub(crate) fn retire_media(media: &gtk::MediaFile) {
+    media.pause();
+    let media = media.clone();
+    crate::utils::spawn(async move {
+        glib::timeout_future(std::time::Duration::from_millis(500)).await;
+        drop(media);
+    });
 }

@@ -208,7 +208,7 @@ impl MediaViewer {
         }
         imp.progress.set(1.0);
         if let Some(media) = imp.media.take() {
-            media.pause();
+            utils::retire_media(&media);
         }
         imp.video.set_media_stream(gtk::MediaStream::NONE);
         imp.picture.set_paintable(gdk::Paintable::NONE);

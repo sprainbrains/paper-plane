@@ -22,6 +22,7 @@ pub(crate) use markup::parse_rich_text;
 pub(crate) use media::content_minithumbnail;
 pub(crate) use media::cover_paintable;
 pub(crate) use media::message_media_local_path;
+pub(crate) use media::retire_media;
 pub(crate) use paths::data_dir;
 pub(crate) use paths::temp_dir;
 pub(crate) use settings::PaperPlaneSettings;

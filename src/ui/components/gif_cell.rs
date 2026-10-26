@@ -363,8 +363,8 @@ impl GifCell {
 
     fn stop_media(&self) {
         if let Some(media) = self.imp().media.borrow_mut().take() {
-            media.pause();
             LIVE_GIFS.fetch_sub(1, Ordering::Relaxed);
+            utils::retire_media(&media);
         }
         // Release the playback slot so another cell can start.
         self.imp().permit.borrow_mut().take();

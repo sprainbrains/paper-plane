@@ -27,7 +27,7 @@ impl MessageSender {
 
         match sender {
             User(data) => Self::User(session.user_or_fetch(data.user_id)),
-            Chat(data) => Self::Chat(session.chat(data.chat_id)),
+            Chat(data) => Self::Chat(session.chat_or_placeholder(data.chat_id)),
         }
     }
 

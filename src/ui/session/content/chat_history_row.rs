@@ -71,44 +71,15 @@ mod imp {
     impl WidgetImpl for ChatHistoryRow {
         fn map(&self) {
             self.parent_map();
-            self.perform_history_action(ui::ChatHistory::add_to_viewed_message_ids);
             self.obj().apply_message_grouping();
             self.obj().update_selection_visual();
         }
 
         fn unmap(&self) {
             self.parent_unmap();
-            self.perform_history_action(ui::ChatHistory::remove_from_viewed_message_ids);
         }
     }
     impl BinImpl for ChatHistoryRow {}
-
-    impl ChatHistoryRow {
-        fn perform_history_action<F: Fn(&ui::ChatHistory, i64)>(&self, op: F) {
-            let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(&*self.obj()) else {
-                return;
-            };
-
-            if let Some(item) = &*self.item.borrow() {
-                if let Some(item) = item.downcast_ref::<model::ChatHistoryItem>() {
-                    match item.type_() {
-                        model::ChatHistoryItemType::Message(message) => {
-                            op(&chat_history, message.id());
-                        }
-                        // Every member of a visible album counts as viewed.
-                        model::ChatHistoryItemType::Album(members) => {
-                            for message in members {
-                                op(&chat_history, message.id());
-                            }
-                        }
-                        _ => {}
-                    }
-                } else if let Some(message) = item.downcast_ref::<model::SponsoredMessage>() {
-                    op(&chat_history, message.message_id());
-                }
-            }
-        }
-    }
 }
 
 glib::wrapper! {

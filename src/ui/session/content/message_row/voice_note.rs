@@ -130,7 +130,7 @@ impl ui::MessageBaseExt for MessageVoiceNote {
 
         // Reset any previous playback state.
         if let Some(media) = imp.media.take() {
-            media.pause();
+            utils::retire_media(&media);
         }
         imp.play_button
             .set_icon_name("media-playback-start-symbolic");

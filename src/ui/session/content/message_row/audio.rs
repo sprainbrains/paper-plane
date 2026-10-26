@@ -118,7 +118,7 @@ impl ui::MessageBaseExt for MessageAudio {
         imp.generation.set(imp.generation.get().wrapping_add(1));
 
         if let Some(media) = imp.media.take() {
-            media.pause();
+            utils::retire_media(&media);
         }
         imp.play_button
             .set_icon_name("media-playback-start-symbolic");

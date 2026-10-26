@@ -216,6 +216,55 @@ impl Chat {
         obj
     }
 
+    /// Placeholder for a chat referenced (as a message sender) before TDLib
+    /// announced it. Sender chats are always supergroups or channels, so the
+    /// id range identifies the type; `update_from_td` completes the object in
+    /// place once the real announcement arrives.
+    pub(crate) fn new_placeholder_for_sender(
+        session: &model::ClientStateSession,
+        chat_id: ChatId,
+    ) -> Self {
+        let (supergroup_id, is_channel) = if chat_id < -1000000000000000 {
+            (-(chat_id + 1000000000000000), true)
+        } else {
+            (-(chat_id + 1000000000000), false)
+        };
+        let chat_type =
+            ChatType::Supergroup(session.supergroup_or_fetch(supergroup_id, is_channel));
+        glib::Object::builder()
+            .property("session", session)
+            .property("id", chat_id)
+            .property("chat-type", chat_type)
+            .build()
+    }
+
+    /// Applies a real `tdlib::types::Chat` to an existing (placeholder) object
+    /// so everything already bound to it — messages, rows, headers — converges
+    /// on the true data without orphaning references.
+    pub(crate) fn update_from_td(&self, td_chat: tdlib::types::Chat) {
+        self.set_block_list(td_chat.block_list.map(model::BoxedBlockList));
+        self.set_title(self.localized_title(td_chat.title));
+        self.set_avatar(td_chat.photo.map(model::Avatar::from));
+        self.set_last_read_outbox_message_id(td_chat.last_read_outbox_message_id);
+        self.set_last_read_inbox_message_id(td_chat.last_read_inbox_message_id);
+        self.set_marked_as_unread(td_chat.is_marked_as_unread);
+        self.set_last_message(
+            td_chat
+                .last_message
+                .map(|message| self.upsert_message(message)),
+        );
+        self.set_unread_mention_count(td_chat.unread_mention_count);
+        self.set_unread_count(td_chat.unread_count);
+        self.set_draft_message(td_chat.draft_message.map(model::BoxedDraftMessage));
+        self.set_notification_settings(model::BoxedChatNotificationSettings(
+            td_chat.notification_settings,
+        ));
+        self.set_permissions(model::BoxedChatPermissions(td_chat.permissions));
+        self.imp()
+            .available_reactions
+            .replace(Some(td_chat.available_reactions));
+    }
+
     pub(crate) fn handle_update(&self, update: tdlib::enums::Update) {
         use tdlib::enums::Update::*;
 
