@@ -2027,6 +2027,10 @@ msgstr "Поиск"
 msgid "Sessions"
 msgstr "Сеансы"
 
+#: src/ui/session/sidebar/chat_folder/row.rs
+msgid "All Chats"
+msgstr "Все чаты"
+
 #: src/ui/session/sidebar/mod.blp:203
 msgid "Archived Chats"
 msgstr "Архивные чаты"
