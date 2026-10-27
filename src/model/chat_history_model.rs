@@ -133,6 +133,15 @@ mod imp {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum GroupIdentity {
+    ForwardUser(i64),
+    ForwardChat(i64),
+    ForwardName(String),
+    SenderUser(i64),
+    SenderChat(i64),
+}
+
 glib::wrapper! {
     pub(crate) struct ChatHistoryModel(ObjectSubclass<imp::ChatHistoryModel>)
         @implements gio::ListModel;
@@ -533,6 +542,42 @@ impl ChatHistoryModel {
     /// (bottommost) message of a run of consecutive messages from the same sender, so
     /// the row can suppress the repeated avatar/name and tighten the shared corners.
     /// Non-message items and unknown items are treated as standalone `(true, true)`.
+    /// The identity a message row is attributed to for grouping: in chats
+    /// whose bubbles carry the *forwarder's* avatar (Saved Messages, the
+    /// Replies chat, other private chats) consecutive forwards from different
+    /// people must not merge into one run — tdesktop starts a new group and
+    /// shows a new avatar per forwarder. Everywhere else it is the sender.
+    /// Kept in sync with the avatar rule in `MessageRow::set_message`.
+    fn group_identity(message: &model::Message) -> GroupIdentity {
+        let chat = message.chat_();
+        let attributed_to_forwarder = chat.is_own_chat()
+            || matches!(
+                chat.chat_type(),
+                model::ChatType::Private(_) | model::ChatType::Secret(_)
+            );
+        if attributed_to_forwarder
+            && let Some(origin) = message.forward_info().map(|info| info.origin())
+        {
+            match origin {
+                model::MessageForwardOrigin::User(user) => {
+                    return GroupIdentity::ForwardUser(user.id());
+                }
+                model::MessageForwardOrigin::Chat { chat, .. }
+                | model::MessageForwardOrigin::Channel { chat, .. } => {
+                    return GroupIdentity::ForwardChat(chat.id());
+                }
+                model::MessageForwardOrigin::HiddenUser { sender_name }
+                | model::MessageForwardOrigin::MessageImport { sender_name } => {
+                    return GroupIdentity::ForwardName(sender_name.to_string());
+                }
+            }
+        }
+        match message.sender() {
+            model::MessageSender::User(user) => GroupIdentity::SenderUser(user.id()),
+            model::MessageSender::Chat(chat) => GroupIdentity::SenderChat(chat.id()),
+        }
+    }
+
     pub(crate) fn group_flags(&self, item: &model::ChatHistoryItem) -> (bool, bool) {
         let list = self.imp().list.borrow();
         let Some(index) = list.iter().position(|candidate| candidate == item) else {
@@ -545,8 +590,8 @@ impl ChatHistoryModel {
             other
                 .and_then(model::ChatHistoryItem::message)
                 .is_some_and(|other| {
-                    other.sender().id() == message.sender().id()
-                        && other.is_outgoing() == message.is_outgoing()
+                    other.is_outgoing() == message.is_outgoing()
+                        && Self::group_identity(other) == Self::group_identity(message)
                 })
         };
         // The list runs newest (index 0) to oldest, so the visually-above (older)
