@@ -680,11 +680,25 @@ impl MessageBubble {
         formatted: &tdlib::types::FormattedText,
         message: &model::Message,
     ) {
+        self.render_blocks(utils::parse_rich_text(formatted), message);
+    }
+
+    /// Renders a rich message (`MessageRichMessage`): the block list comes from
+    /// the TDLib page-block tree instead of entity parsing, but shares the
+    /// paragraph/code/quote/photo widgets.
+    pub(crate) fn set_rich_blocks(
+        &self,
+        rich: &tdlib::types::RichMessage,
+        message: &model::Message,
+    ) {
+        self.render_blocks(utils::rich_message_to_blocks(rich), message);
+    }
+
+    fn render_blocks(&self, mut blocks: Vec<utils::RichBlock>, message: &model::Message) {
         let imp = self.imp();
         let session = message.chat_().session_();
         let spoiler_key = (message.chat_().id(), message.id());
 
-        let mut blocks = utils::parse_rich_text(formatted);
         let tail = match blocks.last() {
             Some(utils::RichBlock::Paragraph(_)) => match blocks.pop() {
                 Some(utils::RichBlock::Paragraph(inline)) => inline,

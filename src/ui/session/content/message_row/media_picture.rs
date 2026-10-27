@@ -135,6 +135,10 @@ glib::wrapper! {
 }
 
 impl MediaPicture {
+    pub(crate) fn new() -> Self {
+        glib::Object::new()
+    }
+
     pub(crate) fn paintable(&self) -> Option<gdk::Paintable> {
         self.imp().picture.paintable()
     }

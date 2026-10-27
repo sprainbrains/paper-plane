@@ -1237,9 +1237,10 @@ fn copyable_text(content: &tdlib::enums::MessageContent) -> Option<String> {
     use tdlib::enums::MessageContent::*;
 
     let text = match content {
-        MessageText(data) => &data.text.text,
-        other => &super::captioned_media_caption(other)?.text,
+        MessageText(data) => data.text.text.clone(),
+        MessageRichMessage(data) => utils::rich_message_plain(&data.message),
+        other => super::captioned_media_caption(other)?.text.clone(),
     };
 
-    (!text.is_empty()).then(|| text.clone())
+    (!text.is_empty()).then_some(text)
 }

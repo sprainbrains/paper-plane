@@ -34,6 +34,14 @@ pub(crate) fn message_content(message: &model::Message) -> String {
 
     match message.content().0 {
         MessageText(data) => data.text.text,
+        MessageRichMessage(data) => {
+            let summary = crate::utils::rich_message_summary(&data.message);
+            if summary.is_empty() {
+                gettext("Unsupported Message")
+            } else {
+                summary
+            }
+        }
         MessageLocation(_) => gettext("Location"),
         MessageLiveLocation(_) => gettext("Live Location"),
         MessageAnimation(data) => message_animation(&data.caption.text),

@@ -73,8 +73,8 @@ pub(crate) struct RichInline {
     pub(crate) custom_emoji: Vec<(usize, usize, i64)>,
 }
 
-/// A block of message text: plain paragraphs interleaved with code blocks and quotes,
-/// in text order.
+/// A block of message text: plain paragraphs interleaved with code blocks, quotes,
+/// photos, and separators, in text order.
 #[derive(Debug, Clone)]
 pub(crate) enum RichBlock {
     Paragraph(RichInline),
@@ -86,6 +86,13 @@ pub(crate) enum RichBlock {
         inline: RichInline,
         expandable: bool,
     },
+    /// A photo embedded in a rich message (`pageBlockPhoto`).
+    Photo {
+        photo: Box<tdlib::types::Photo>,
+        caption: RichInline,
+    },
+    /// A visual separator between rich-message sections.
+    Divider,
 }
 
 /// Converts a TDLib utf16 code-unit range into a byte range of `text`, `None` if the
@@ -387,6 +394,350 @@ pub(crate) fn human_friendly_duration(mut seconds: i32) -> String {
         } else {
             gettext_f("{seconds} s", &[("seconds", &seconds.to_string())])
         }
+    }
+}
+
+/// Flattens a `RichText` tree (the format of Telegram's rich messages) into the
+/// `FormattedText` the entity pipeline already renders. Styles without a matching
+/// entity (subscript, marked, fixed) keep their text; icons and anchors contribute
+/// nothing.
+pub(crate) fn rich_text_to_formatted(rich: &tdlib::enums::RichText) -> tdlib::types::FormattedText {
+    let mut text = String::new();
+    let mut entities = Vec::new();
+    rich_text_into(rich, &mut text, &mut entities);
+    tdlib::types::FormattedText { text, entities }
+}
+
+fn rich_text_into(
+    rich: &tdlib::enums::RichText,
+    text: &mut String,
+    entities: &mut Vec<tdlib::types::TextEntity>,
+) {
+    use tdlib::enums::RichText as Rt;
+    use tdlib::enums::TextEntityType as Et;
+
+    // Append `inner` wrapped in one entity spanning exactly what it produced.
+    macro_rules! styled {
+        ($inner:expr, $type:expr) => {{
+            let start = utf16_len(text);
+            rich_text_into($inner, text, entities);
+            let length = utf16_len(text) - start;
+            if length > 0 {
+                entities.push(tdlib::types::TextEntity {
+                    offset: start,
+                    length,
+                    r#type: $type,
+                });
+            }
+        }};
+    }
+
+    match rich {
+        Rt::Plain(data) => text.push_str(&data.text),
+        Rt::Bold(data) => styled!(&data.text, Et::Bold),
+        Rt::Italic(data) => styled!(&data.text, Et::Italic),
+        Rt::Underline(data) => styled!(&data.text, Et::Underline),
+        Rt::Strikethrough(data) => styled!(&data.text, Et::Strikethrough),
+        Rt::Spoiler(data) => styled!(&data.text, Et::Spoiler),
+        Rt::Subscript(data) => rich_text_into(&data.text, text, entities),
+        Rt::Superscript(data) => rich_text_into(&data.text, text, entities),
+        Rt::Marked(data) => rich_text_into(&data.text, text, entities),
+        Rt::Fixed(data) => styled!(&data.text, Et::Code),
+        Rt::DateTime(data) => styled!(
+            &data.text,
+            Et::DateTime(tdlib::types::TextEntityTypeDateTime {
+                unix_time: data.unix_time,
+                formatting_type: data.formatting_type.clone(),
+            })
+        ),
+        Rt::Mention(data) => styled!(&data.text, Et::Mention),
+        Rt::Hashtag(data) => styled!(&data.text, Et::Hashtag),
+        Rt::Cashtag(data) => styled!(&data.text, Et::Cashtag),
+        Rt::BankCardNumber(data) => styled!(&data.text, Et::BankCardNumber),
+        Rt::BotCommand(data) => styled!(&data.text, Et::BotCommand),
+        Rt::MentionName(data) => styled!(
+            &data.text,
+            Et::MentionName(tdlib::types::TextEntityTypeMentionName {
+                user_id: data.user_id,
+            })
+        ),
+        Rt::Url(data) => styled!(
+            &data.text,
+            Et::TextUrl(tdlib::types::TextEntityTypeTextUrl {
+                url: data.url.clone(),
+            })
+        ),
+        Rt::EmailAddress(data) => styled!(&data.text, Et::EmailAddress),
+        Rt::PhoneNumber(data) => styled!(&data.text, Et::PhoneNumber),
+        Rt::CustomEmoji(data) => {
+            let start = utf16_len(text);
+            text.push_str(&data.alternative_text);
+            entities.push(tdlib::types::TextEntity {
+                offset: start,
+                length: utf16_len(text) - start,
+                r#type: Et::CustomEmoji(tdlib::types::TextEntityTypeCustomEmoji {
+                    custom_emoji_id: data.custom_emoji_id,
+                }),
+            });
+        }
+        Rt::Icon(_) => {}
+        Rt::MathematicalExpression(data) => text.push_str(&data.expression),
+        Rt::Diff(data) => rich_text_into(&data.text, text, entities),
+        Rt::Reference(data) => rich_text_into(&data.text, text, entities),
+        Rt::ReferenceLink(data) => styled!(
+            &data.text,
+            Et::TextUrl(tdlib::types::TextEntityTypeTextUrl {
+                url: data.url.clone(),
+            })
+        ),
+        Rt::Anchor(_) => {}
+        Rt::AnchorLink(data) => rich_text_into(&data.text, text, entities),
+        _ => {}
+    }
+}
+
+/// The plain text of a `RichText` tree (code blocks, table cells).
+fn rich_text_plain(rich: &tdlib::enums::RichText) -> String {
+    rich_text_to_formatted(rich).text
+}
+
+/// Converts a rich message (`MessageRichMessage`, the format Telegram uses for
+/// messages with tables, headings, embedded photos, and other block-level
+/// formatting) into the block list the bubble already renders.
+pub(crate) fn rich_message_to_blocks(rich: &tdlib::types::RichMessage) -> Vec<RichBlock> {
+    let mut blocks = Vec::new();
+    rich_blocks_into(&rich.blocks, &mut blocks);
+    blocks
+}
+
+/// The full text of a rich message (copy, export): block texts joined by newlines.
+pub(crate) fn rich_message_plain(rich: &tdlib::types::RichMessage) -> String {
+    rich_message_to_blocks(rich)
+        .into_iter()
+        .filter_map(|block| match block {
+            RichBlock::Paragraph(inline) => Some(inline.plain),
+            RichBlock::Code { code, .. } => Some(code),
+            RichBlock::Quote { inline, .. } => Some(inline.plain),
+            RichBlock::Photo { caption, .. } => Some(caption.plain),
+            RichBlock::Divider => None,
+        })
+        .filter(|text| !text.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The first text of a rich message — enough for a chat-list excerpt.
+pub(crate) fn rich_message_summary(rich: &tdlib::types::RichMessage) -> String {
+    rich_message_to_blocks(rich)
+        .into_iter()
+        .find_map(|block| match block {
+            RichBlock::Paragraph(inline) if !inline.plain.trim().is_empty() => Some(inline.plain),
+            RichBlock::Code { code, .. } if !code.trim().is_empty() => Some(code),
+            RichBlock::Quote { inline, .. } if !inline.plain.trim().is_empty() => {
+                Some(inline.plain)
+            }
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn rich_blocks_into(blocks: &[tdlib::enums::PageBlock], out: &mut Vec<RichBlock>) {
+    use tdlib::enums::PageBlock as Pb;
+
+    for block in blocks {
+        match block {
+            Pb::Paragraph(data) => push_paragraph(&data.text, false, out),
+            // Headings read as bold paragraphs; tdesktop uses larger fonts, the
+            // emphasis is what carries the structure.
+            Pb::Title(data) => push_paragraph(&data.title, true, out),
+            Pb::Header(data) => push_paragraph(&data.header, true, out),
+            Pb::Subheader(data) => push_paragraph(&data.subheader, true, out),
+            Pb::SectionHeading(data) => push_paragraph(&data.text, true, out),
+            Pb::Kicker(data) => push_paragraph(&data.kicker, true, out),
+            Pb::Subtitle(data) => push_paragraph(&data.subtitle, false, out),
+            Pb::AuthorDate(data) => push_paragraph(&data.author, false, out),
+            Pb::Footer(data) => push_paragraph(&data.footer, false, out),
+            Pb::Preformatted(data) => out.push(RichBlock::Code {
+                code: rich_text_plain(&data.text),
+                language: data.language.clone(),
+            }),
+            Pb::MathematicalExpression(data) => out.push(RichBlock::Code {
+                code: data.expression.clone(),
+                language: String::new(),
+            }),
+            Pb::BlockQuote(data) => {
+                let inline = quote_inline(&data.blocks, data.credit.as_ref());
+                out.push(RichBlock::Quote {
+                    inline,
+                    expandable: false,
+                });
+            }
+            Pb::PullQuote(data) => {
+                let mut formatted = rich_text_to_formatted(&data.text);
+                if let Some(credit) = &data.credit {
+                    append_formatted(&mut formatted, "\n— ", credit);
+                }
+                out.push(RichBlock::Quote {
+                    inline: parse_inline(&formatted),
+                    expandable: false,
+                });
+            }
+            Pb::List(data) => {
+                for item in &data.items {
+                    let mut item_blocks = Vec::new();
+                    rich_blocks_into(&item.blocks, &mut item_blocks);
+                    // The label ("1.", "•") prefixes the item's first paragraph;
+                    // anything else keeps its own block.
+                    let mut prefixed = false;
+                    for block in item_blocks {
+                        match block {
+                            RichBlock::Paragraph(mut inline) if !prefixed => {
+                                inline.plain = format!("{} {}", item.label, inline.plain);
+                                inline.markup =
+                                    format!("{} {}", escape(&item.label), inline.markup);
+                                prefixed = true;
+                                out.push(RichBlock::Paragraph(inline));
+                            }
+                            other => out.push(other),
+                        }
+                    }
+                }
+            }
+            Pb::Divider => out.push(RichBlock::Divider),
+            Pb::Details(data) => rich_blocks_into(&data.blocks, out),
+            // Tables render row by row with cell separators: the content stays
+            // readable even though the grid itself is flattened.
+            Pb::Table(data) => {
+                for row in &data.cells {
+                    let mut formatted = tdlib::types::FormattedText {
+                        text: String::new(),
+                        entities: Vec::new(),
+                    };
+                    for (index, cell) in row.iter().enumerate() {
+                        if index > 0 {
+                            formatted.text.push_str("  |  ");
+                        }
+                        if let Some(text) = &cell.text {
+                            append_formatted(&mut formatted, "", text);
+                        }
+                    }
+                    if !formatted.text.trim().is_empty() {
+                        out.push(RichBlock::Paragraph(parse_inline(&formatted)));
+                    }
+                }
+            }
+            Pb::Photo(data) => {
+                if let Some(photo) = &data.photo {
+                    let caption = data
+                        .caption
+                        .as_ref()
+                        .map(|caption| parse_inline(&rich_text_to_formatted(&caption.text)))
+                        .unwrap_or_default();
+                    out.push(RichBlock::Photo {
+                        photo: Box::new(photo.clone()),
+                        caption,
+                    });
+                }
+            }
+            // Media blocks other than photos keep their caption text; the media
+            // itself needs players this view does not embed inline.
+            Pb::Video(data) => {
+                if let Some(caption) = &data.caption {
+                    push_paragraph(&caption.text, false, out);
+                }
+            }
+            Pb::Animation(data) => {
+                if let Some(caption) = &data.caption {
+                    push_paragraph(&caption.text, false, out);
+                }
+            }
+            Pb::Audio(data) => {
+                if let Some(caption) = &data.caption {
+                    push_paragraph(&caption.text, false, out);
+                }
+            }
+            Pb::VoiceNote(data) => {
+                if let Some(caption) = &data.caption {
+                    push_paragraph(&caption.text, false, out);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn push_paragraph(rich: &tdlib::enums::RichText, bold: bool, out: &mut Vec<RichBlock>) {
+    let mut formatted = rich_text_to_formatted(rich);
+    if bold {
+        let length = utf16_len(&formatted.text);
+        if length > 0 {
+            formatted.entities.push(tdlib::types::TextEntity {
+                offset: 0,
+                length,
+                r#type: tdlib::enums::TextEntityType::Bold,
+            });
+        }
+    }
+    if !formatted.text.trim().is_empty() {
+        out.push(RichBlock::Paragraph(parse_inline(&formatted)));
+    }
+}
+
+/// The quote body: its inner blocks joined into one inline run, plus the credit
+/// line prefixed with an em dash.
+fn quote_inline(
+    blocks: &[tdlib::enums::PageBlock],
+    credit: Option<&tdlib::enums::RichText>,
+) -> RichInline {
+    let mut body = Vec::new();
+    rich_blocks_into(blocks, &mut body);
+    let mut formatted = tdlib::types::FormattedText {
+        text: String::new(),
+        entities: Vec::new(),
+    };
+    for block in body {
+        match block {
+            RichBlock::Paragraph(inline) => {
+                if !formatted.text.is_empty() {
+                    formatted.text.push('\n');
+                }
+                formatted.text.push_str(&inline.plain);
+            }
+            RichBlock::Code { code, .. } => {
+                if !formatted.text.is_empty() {
+                    formatted.text.push('\n');
+                }
+                formatted.text.push_str(&code);
+            }
+            RichBlock::Quote { inline, .. } => {
+                if !formatted.text.is_empty() {
+                    formatted.text.push('\n');
+                }
+                formatted.text.push_str(&inline.plain);
+            }
+            _ => {}
+        }
+    }
+    if let Some(credit) = credit {
+        append_formatted(&mut formatted, "\n— ", credit);
+    }
+    parse_inline(&formatted)
+}
+
+/// Appends `prefix` + the plain text of `rich` to `target`, re-basing `rich`'s
+/// entities onto the joined string.
+fn append_formatted(
+    target: &mut tdlib::types::FormattedText,
+    prefix: &str,
+    rich: &tdlib::enums::RichText,
+) {
+    let added = rich_text_to_formatted(rich);
+    let offset = utf16_len(&target.text) + utf16_len(prefix);
+    target.text.push_str(prefix);
+    target.text.push_str(&added.text);
+    for mut entity in added.entities {
+        entity.offset += offset;
+        target.entities.push(entity);
     }
 }
 

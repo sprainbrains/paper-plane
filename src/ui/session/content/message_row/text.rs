@@ -132,6 +132,9 @@ fn apply_rich_text(bubble: &ui::MessageBubble, message: &model::Message) {
         tdlib::enums::MessageContent::MessageText(content) => {
             bubble.set_formatted_text(&content.text, message);
         }
+        tdlib::enums::MessageContent::MessageRichMessage(content) => {
+            bubble.set_rich_blocks(&content.message, message);
+        }
         _ => bubble.set_label(unsupported_notice()),
     }
 }

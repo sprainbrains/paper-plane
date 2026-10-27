@@ -456,6 +456,20 @@ messagebubble.outgoing .code-block .code-language {
   font-family: monospace;
 }
 
+/* Photo embedded in a rich message. */
+.rich-photo {
+  border-radius: 8px;
+}
+
+.rich-photo picture {
+  border-radius: 8px;
+}
+
+/* Section separator in a rich message. */
+.rich-divider {
+  margin: 6px 0;
+}
+
 .code-block button.code-copy {
   min-width: 16px;
   min-height: 16px;

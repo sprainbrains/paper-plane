@@ -4,6 +4,7 @@
 
 use gettextrs::gettext;
 use glib::clone;
+use gtk::gio;
 use gtk::glib;
 use gtk::pango;
 use gtk::prelude::*;
@@ -33,7 +34,118 @@ pub(super) fn block_widget(
         utils::RichBlock::Quote { inline, expandable } => {
             quote_block(inline, expandable, session, spoiler_key)
         }
+        utils::RichBlock::Photo { photo, caption } => {
+            photo_block(*photo, caption, session, spoiler_key)
+        }
+        utils::RichBlock::Divider => gtk::Separator::builder()
+            .css_classes(["rich-divider"])
+            .build()
+            .upcast(),
     }
+}
+
+/// A photo embedded in a rich message. The file download starts only while the
+/// widget is mapped (off-screen rows must do zero work) and its result is
+/// dropped when unmapped; once decoded, the texture stays.
+fn photo_block(
+    photo: tdlib::types::Photo,
+    caption: utils::RichInline,
+    session: &model::ClientStateSession,
+    spoiler_key: (i64, i64),
+) -> gtk::Widget {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let root = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(4)
+        .css_classes(["rich-photo"])
+        .build();
+
+    let best = photo.sizes.iter().max_by_key(|size| size.width);
+
+    if let Some(size) = best {
+        // MediaPicture caps its own height and keeps the aspect ratio, so the
+        // photo shrinks with a narrow bubble instead of forcing an allocation
+        // wider than the row can give it.
+        let picture = ui::MediaPicture::new();
+        picture.set_aspect_ratio(f64::from(size.width.max(1)) / f64::from(size.height.max(1)));
+        picture.set_halign(gtk::Align::Fill);
+
+        let file_id = size.photo.id;
+        let demand = Rc::new(Cell::new(false));
+        let loaded = Rc::new(Cell::new(false));
+        let session = session.clone();
+
+        picture.connect_map(clone!(
+            #[strong]
+            demand,
+            #[strong]
+            loaded,
+            #[strong]
+            session,
+            move |picture| {
+                if loaded.get() {
+                    return;
+                }
+                demand.set(true);
+                let picture = picture.clone();
+                let session = session.clone();
+                let demand = demand.clone();
+                let loaded = loaded.clone();
+                let (content_chat_id, content_message_id) = spoiler_key;
+                utils::spawn(async move {
+                    // TDLib only registers the files inside a rich message (and
+                    // web page content generally) once the content is opened;
+                    // without this the photo download would stall at 0 bytes.
+                    let _ = tdlib::functions::open_message_content(
+                        content_chat_id,
+                        content_message_id,
+                        session.client_().id(),
+                    )
+                    .await;
+                    let Ok(file) = session.download_file(file_id).await else {
+                        log::warn!("Rich photo {file_id} download failed");
+                        return;
+                    };
+                    let path = file.local.path;
+                    let result =
+                        match gio::spawn_blocking(move || utils::decode_image_from_path(&path))
+                            .await
+                        {
+                            Ok(result) => result,
+                            Err(error) => {
+                                log::warn!("Rich photo decoder task failed: {error:?}");
+                                return;
+                            }
+                        };
+                    // Unmapped while the bytes were in flight: the row is off
+                    // screen again, nothing to paint into.
+                    if !demand.get() {
+                        return;
+                    }
+                    if let Ok(texture) = result {
+                        loaded.set(true);
+                        picture.set_paintable(Some(&texture));
+                    }
+                });
+            }
+        ));
+        picture.connect_unmap(clone!(
+            #[strong]
+            demand,
+            move |_| demand.set(false)
+        ));
+        root.append(&picture);
+    }
+
+    if !caption.plain.trim().is_empty() {
+        let label = ui::MessageLabel::new();
+        label.set_rich(caption, Some(session.clone()), Some(spoiler_key));
+        root.append(&label);
+    }
+
+    root.upcast()
 }
 
 /// A tinted, rounded code block with a language tag and a copy button.
