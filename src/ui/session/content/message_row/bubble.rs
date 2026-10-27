@@ -6,8 +6,10 @@ use std::hash::Hasher;
 use std::sync::OnceLock;
 
 use adw::prelude::*;
+use gettextrs::gettext;
 use glib::clone;
 use gtk::CompositeTemplate;
+use gtk::gio;
 use gtk::glib;
 use gtk::gsk;
 use gtk::subclass::prelude::*;
@@ -68,6 +70,9 @@ mod imp {
         pub(super) group_start: Cell<bool>,
         pub(super) group_end: Cell<bool>,
         pub(super) message: glib::WeakRef<model::Message>,
+        /// Watches `reply-markup` so a bot editing only its keyboard (content
+        /// unchanged, no content notify) still rebuilds the buttons.
+        pub(super) markup_watch: RefCell<Option<gtk::ExpressionWatch>>,
         pub(super) hover_pill: RefCell<Option<gtk::Box>>,
         pub(super) hover_reaction_button: RefCell<Option<gtk::Button>>,
         #[template_child]
@@ -96,6 +101,8 @@ mod imp {
         pub(super) comments_bar: TemplateChild<ui::MessageCommentsBar>,
         #[template_child]
         pub(super) view_in_chat_bar: TemplateChild<ui::MessageViewInChatBar>,
+        #[template_child]
+        pub(super) keyboard_box: TemplateChild<gtk::Box>,
     }
 
     #[glib::object_subclass]
@@ -340,6 +347,14 @@ glib::wrapper! {
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
 }
 
+/// Opens a bot-provided URL in the system browser.
+fn open_external_link(url: &str) {
+    if url.is_empty() {
+        return;
+    }
+    gtk::UriLauncher::new(url).launch(gtk::Window::NONE, gio::Cancellable::NONE, |_| {});
+}
+
 impl MessageBubble {
     /// Opens the chat/user a forwarded message originates from (hidden origins have
     /// nothing to open).
@@ -478,12 +493,27 @@ impl MessageBubble {
         let imp = self.imp();
 
         imp.message.set(Some(message));
+        if let Some(watch) = imp.markup_watch.borrow_mut().take() {
+            watch.unwatch();
+        }
+        let watch = model::Message::this_expression("reply-markup").watch(
+            Some(message),
+            clone!(
+                #[weak]
+                message,
+                #[weak(rename_to = bubble)]
+                self,
+                move || bubble.update_reply_markup(&message)
+            ),
+        );
+        imp.markup_watch.replace(Some(watch));
         self.update_hover_reaction(message);
 
         imp.indicators.set_message(message.upcast_ref());
         imp.reactions.set_message(Some(message.clone()));
         imp.comments_bar.set_message(Some(message));
         imp.view_in_chat_bar.set_message(Some(message));
+        self.update_reply_markup(message);
 
         let is_channel = if let model::ChatType::Supergroup(data) = message.chat_().chat_type() {
             data.is_channel()
@@ -730,6 +760,124 @@ impl MessageBubble {
         self.add_css_class("with-label");
 
         self.update_indicators_position();
+    }
+
+    /// Rebuilds the bot inline keyboard under the message text. The whole box
+    /// is recreated on every bind and on markup edits (`reply-markup` notify),
+    /// so button closures never outlive the message they were built for.
+    fn update_reply_markup(&self, message: &model::Message) {
+        let imp = self.imp();
+        while let Some(child) = imp.keyboard_box.first_child() {
+            imp.keyboard_box.remove(&child);
+        }
+
+        let Some(model::BoxedReplyMarkup(tdlib::enums::ReplyMarkup::InlineKeyboard(keyboard))) =
+            message.reply_markup()
+        else {
+            imp.keyboard_box.set_visible(false);
+            return;
+        };
+
+        for row in keyboard.rows {
+            if row.is_empty() {
+                continue;
+            }
+            let row_box = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(4)
+                .homogeneous(true)
+                .build();
+            for button in row {
+                row_box.append(&self.keyboard_button(button, message));
+            }
+            imp.keyboard_box.append(&row_box);
+        }
+        imp.keyboard_box
+            .set_visible(imp.keyboard_box.first_child().is_some());
+    }
+
+    fn keyboard_button(
+        &self,
+        button: tdlib::types::InlineKeyboardButton,
+        message: &model::Message,
+    ) -> gtk::Widget {
+        use tdlib::enums::InlineKeyboardButtonType as T;
+
+        let widget = gtk::Button::builder()
+            .label(&button.text)
+            .tooltip_text(&button.text)
+            .css_classes(["inline-keyboard-button"])
+            .build();
+
+        let chat_id = message.chat_().id();
+        let message_id = message.id();
+        let session = message.chat_().session_();
+        match button.r#type {
+            T::Url(data) => {
+                widget.connect_clicked(move |_| open_external_link(&data.url));
+            }
+            T::LoginUrl(data) => {
+                widget.connect_clicked(move |_| open_external_link(&data.url));
+            }
+            T::WebApp(data) => {
+                // A full web-app surface is not implemented; opening in the
+                // browser keeps the button useful.
+                widget.connect_clicked(move |_| open_external_link(&data.url));
+            }
+            T::Callback(data) => {
+                let payload = tdlib::enums::CallbackQueryPayload::Data(
+                    tdlib::types::CallbackQueryPayloadData { data: data.data },
+                );
+                widget.connect_clicked(move |button| {
+                    let session = session.clone();
+                    let button = button.clone();
+                    let payload = payload.clone();
+                    utils::spawn(async move {
+                        let client_id = session.client_().id();
+                        match tdlib::functions::get_callback_query_answer(
+                            chat_id, message_id, payload, client_id,
+                        )
+                        .await
+                        {
+                            Ok(tdlib::enums::CallbackQueryAnswer::CallbackQueryAnswer(answer)) => {
+                                if !answer.url.is_empty() {
+                                    open_external_link(&answer.url);
+                                }
+                                if answer.show_alert && !answer.text.is_empty() {
+                                    utils::show_toast(&button, answer.text);
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Callback query failed: {e:?}");
+                                utils::show_toast(
+                                    &button,
+                                    gettext("The button is no longer available"),
+                                );
+                            }
+                        }
+                    });
+                });
+            }
+            T::CopyText(data) => {
+                let text = data.text;
+                widget.connect_clicked(move |button| {
+                    button.clipboard().set_text(&text);
+                    utils::show_toast(button, gettext("Copied to clipboard"));
+                });
+            }
+            // Request-style, game, pay, password, switch-inline and user
+            // buttons need flows this client does not implement yet: keep them
+            // visible (bots compose them into one UI) but say so on press.
+            _ => {
+                widget.connect_clicked(move |button| {
+                    utils::show_toast(
+                        button,
+                        gettext("This button is not supported by your version of Paper Plane."),
+                    );
+                });
+            }
+        }
+        widget.upcast()
     }
 
     fn clear_blocks(&self) {

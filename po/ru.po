@@ -1807,6 +1807,14 @@ msgstr "Ответы"
 msgid "View in Chat"
 msgstr "Просмотреть в чате"
 
+#: src/ui/session/content/message_row/bubble.rs
+msgid "The button is no longer available"
+msgstr "Кнопка больше недоступна"
+
+#: src/ui/session/content/message_row/bubble.rs
+msgid "This button is not supported by your version of Paper Plane."
+msgstr "Эта кнопка не поддерживается вашей версией Paper Plane."
+
 #: src/ui/session/content/message_row/comments.rs
 msgid "Comment"
 msgstr "Прокомментировать"

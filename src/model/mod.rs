@@ -46,6 +46,7 @@ use tdlib::enums::ChatMemberStatus;
 use tdlib::enums::MessageContent;
 use tdlib::enums::MessageReplyTo;
 use tdlib::enums::MessageSendingState;
+use tdlib::enums::ReplyMarkup;
 use tdlib::enums::UserStatus;
 use tdlib::enums::UserType;
 use tdlib::types::AuthorizationStateWaitCode;
@@ -207,6 +208,10 @@ impl Default for BoxedMessageContent {
 #[derive(Clone, Debug, PartialEq, glib::Boxed)]
 #[boxed_type(name = "BoxedMessageReplyTo", nullable)]
 pub(crate) struct BoxedMessageReplyTo(pub(crate) MessageReplyTo);
+
+#[derive(Clone, Debug, PartialEq, glib::Boxed)]
+#[boxed_type(name = "BoxedReplyMarkup", nullable)]
+pub(crate) struct BoxedReplyMarkup(pub(crate) ReplyMarkup);
 
 #[derive(Clone, Debug, Default, PartialEq, glib::Boxed)]
 #[boxed_type(name = "BoxedScopeNotificationSettings", nullable)]

@@ -76,6 +76,8 @@ mod imp {
         pub(super) forward_info: RefCell<Option<model::MessageForwardInfo>>,
         #[property(get, set, construct_only)]
         pub(super) reply_to: RefCell<Option<model::BoxedMessageReplyTo>>,
+        #[property(get, set, construct_only, nullable)]
+        pub(super) reply_markup: RefCell<Option<model::BoxedReplyMarkup>>,
         /// Album grouping key; 0 when the message is not part of a media album.
         #[property(get, set, construct_only)]
         pub(super) media_album_id: Cell<i64>,
@@ -156,6 +158,10 @@ impl Message {
                 td_message.reply_to.map(model::BoxedMessageReplyTo),
             )
             .property("media-album-id", td_message.media_album_id)
+            .property(
+                "reply-markup",
+                td_message.reply_markup.map(model::BoxedReplyMarkup),
+            )
             .build();
 
         let imp = obj.imp();
@@ -223,6 +229,12 @@ impl Message {
             imp.reply_to.replace(reply_to);
             self.notify_reply_to();
         }
+
+        // A bot editing only its inline keyboard keeps the content identical, so
+        // the markup notify must fire unconditionally for the bubble to rebuild.
+        imp.reply_markup
+            .replace(td_message.reply_markup.map(model::BoxedReplyMarkup));
+        self.notify_reply_markup();
 
         self.set_content(model::BoxedMessageContent(td_message.content));
         self.set_is_edited(td_message.edit_date > 0);
