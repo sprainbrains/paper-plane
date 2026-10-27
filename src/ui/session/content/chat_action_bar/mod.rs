@@ -59,6 +59,11 @@ mod imp {
         #[template_child]
         pub(super) select_file_button: TemplateChild<gtk::Button>,
         #[template_child]
+        pub(super) menu_button: TemplateChild<gtk::Button>,
+        /// The command list shown by the menu button; rebuilt on every open,
+        /// parented to the button once.
+        pub(super) menu_popover: OnceCell<gtk::Popover>,
+        #[template_child]
         pub(super) restriction_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) mute_button: TemplateChild<gtk::Button>,
@@ -82,6 +87,9 @@ mod imp {
                     widget.cancel_action();
                 },
             );
+            klass.install_action("chat-action-bar.bot-menu", None, move |widget, _, _| {
+                widget.show_bot_menu();
+            });
             klass.install_action_async(
                 "chat-action-bar.select-file",
                 None,
@@ -325,6 +333,26 @@ impl ChatActionBar {
                 self,
                 move |_, _| {
                     obj.update_stack_page();
+                }
+            ),
+        );
+        chat_signal_group.connect_notify_local(
+            Some("bot-commands"),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_menu_button_visibility();
+                }
+            ),
+        );
+        chat_signal_group.connect_notify_local(
+            Some("bot-menu-button"),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move |_, _| {
+                    obj.update_menu_button_visibility();
                 }
             ),
         );
@@ -596,6 +624,94 @@ impl ChatActionBar {
         self.imp().chat.upgrade()
     }
 
+    /// The menu button appears exactly when there is something to put in it:
+    /// cached commands, or a bot menu button with a URL to open.
+    fn update_menu_button_visibility(&self) {
+        let imp = self.imp();
+        let visible = self.chat().is_some_and(|chat| {
+            !chat.bot_commands().0.is_empty()
+                || chat
+                    .bot_menu_button()
+                    .is_some_and(|button| !button.0.url.is_empty())
+        });
+        imp.menu_button.set_visible(visible);
+    }
+
+    /// Opens the bot menu: the configured Web App URL when the bot sets one,
+    /// otherwise a popover of the chat's commands. Picking a command inserts
+    /// it into the composer (the same path as '/'-completion).
+    fn show_bot_menu(&self) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+
+        if let Some(button) = chat.bot_menu_button()
+            && !button.0.url.is_empty()
+        {
+            gtk::UriLauncher::new(&button.0.url).launch(
+                gtk::Window::NONE,
+                gio::Cancellable::NONE,
+                |_| {},
+            );
+            return;
+        }
+
+        let commands = chat.bot_commands().0;
+        if commands.is_empty() {
+            return;
+        }
+
+        let imp = self.imp();
+        let popover = imp.menu_popover.get_or_init(|| {
+            let popover = gtk::Popover::builder().has_arrow(false).build();
+            popover.set_parent(&*imp.menu_button);
+            popover
+        });
+
+        let list = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(2)
+            .margin_top(4)
+            .margin_bottom(4)
+            .build();
+        for command in commands {
+            let row = gtk::Button::builder()
+                .css_classes(["flat", "menu-cmd-row"])
+                .halign(gtk::Align::Fill)
+                .build();
+            let content = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(8)
+                .build();
+            let name = gtk::Label::builder()
+                .label(format!("/{}", command.command))
+                .css_classes(["caption-heading"])
+                .xalign(0.0)
+                .build();
+            content.append(&name);
+            if !command.description.is_empty() {
+                let description = gtk::Label::builder()
+                    .label(&command.description)
+                    .css_classes(["dim-label"])
+                    .xalign(0.0)
+                    .ellipsize(gtk::pango::EllipsizeMode::End)
+                    .hexpand(true)
+                    .build();
+                content.append(&description);
+            }
+            row.set_child(Some(&content));
+            let entry = imp.message_entry.get().clone();
+            let popover_row = popover.clone();
+            row.connect_clicked(move |_| {
+                entry.insert_command(&command.command);
+                popover_row.popdown();
+            });
+            list.append(&row);
+        }
+        popover.set_child(Some(&list));
+        popover.popup();
+    }
+
     pub(crate) fn set_chat(&self, chat: Option<&model::Chat>) {
         if self.chat().as_ref() == chat {
             return;
@@ -654,6 +770,11 @@ impl ChatActionBar {
         if let Some(chat) = chat {
             chat.fetch_bot_commands();
         }
+        self.update_menu_button_visibility();
+        self.imp()
+            .menu_popover
+            .get()
+            .inspect(|popover| popover.popdown());
 
         self.notify("chat");
     }

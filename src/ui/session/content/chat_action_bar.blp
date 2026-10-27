@@ -67,6 +67,16 @@ template $PaplChatActionBar  {
             icon-name: "mail-attachment-symbolic";
           }
 
+          Button menu_button {
+            styles ["circular"]
+
+            valign: end;
+            action-name: "chat-action-bar.bot-menu";
+            icon-name: "open-menu-symbolic";
+            tooltip-text: _("Bot Menu");
+            visible: false;
+          }
+
           $PaplMessageEntry message_entry {
             placeholder-text: _("Message");
             hexpand: true;
