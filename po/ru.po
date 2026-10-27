@@ -1502,6 +1502,10 @@ msgstr "Удалить чат"
 msgid "Join"
 msgstr "Присоединиться"
 
+#: src/ui/session/content/chat_action_bar.blp
+msgid "Bot Menu"
+msgstr "Меню бота"
+
 #: src/ui/session/content/chat_action_bar/mod.rs:116
 msgid "Failed to join chat: {error}"
 msgstr "Не удалось присоединиться к чату: {error}"
