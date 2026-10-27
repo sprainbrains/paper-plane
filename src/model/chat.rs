@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use gettextrs::gettext;
 use glib::Properties;
+use glib::clone;
 use glib::subclass::Signal;
 use gtk::glib;
 use gtk::prelude::*;
@@ -14,6 +15,7 @@ use gtk::subclass::prelude::*;
 use crate::model;
 use crate::types::ChatId;
 use crate::types::MessageId;
+use crate::utils;
 
 /// Telegram's system "Replies" bot user id (global, not per account). TDLib
 /// delivers the chat title untranslated, so the client localizes it.
@@ -124,6 +126,15 @@ mod imp {
         /// Which reactions the chat allows (`All` vs a restricted `Some(list)`); used to
         /// constrain the reaction picker so it never offers a disallowed reaction.
         pub(super) available_reactions: RefCell<Option<tdlib::enums::ChatAvailableReactions>>,
+        /// Bot commands available in this chat (private bot chat, or the bots of
+        /// a group), fetched on chat switch; drives the composer's menu button
+        /// and '/'-completion.
+        #[property(get = Self::bot_commands)]
+        pub(super) bot_commands: RefCell<model::BoxedBotCommands>,
+        /// The bot's `botMenuButton`; when it carries a URL the menu button
+        /// opens that Web App instead of the command list.
+        #[property(get = Self::bot_menu_button, nullable)]
+        pub(super) bot_menu_button: RefCell<Option<model::BoxedBotMenuButton>>,
     }
 
     #[glib::object_subclass]
@@ -165,6 +176,14 @@ mod imp {
             self.actions
                 .get_or_init(|| model::ChatActionList::from(&*self.obj()))
                 .to_owned()
+        }
+
+        pub(crate) fn bot_commands(&self) -> model::BoxedBotCommands {
+            self.bot_commands.borrow().clone()
+        }
+
+        pub(crate) fn bot_menu_button(&self) -> Option<model::BoxedBotMenuButton> {
+            self.bot_menu_button.borrow().clone()
         }
     }
 }
@@ -536,6 +555,101 @@ impl Chat {
         self.imp().available_reactions.borrow().clone()
     }
 
+    fn set_bot_commands(&self, commands: Vec<tdlib::types::BotCommand>) {
+        let next = model::BoxedBotCommands(commands);
+        if *self.imp().bot_commands.borrow() == next {
+            return;
+        }
+        self.imp().bot_commands.replace(next);
+        self.notify("bot-commands");
+    }
+
+    fn set_bot_menu_button(&self, button: Option<tdlib::types::BotMenuButton>) {
+        let next = button.map(model::BoxedBotMenuButton);
+        if *self.imp().bot_menu_button.borrow() == next {
+            return;
+        }
+        self.imp().bot_menu_button.replace(next);
+        self.notify("bot-menu-button");
+    }
+
+    fn clear_bot_commands(&self) {
+        self.set_bot_commands(Vec::new());
+        self.set_bot_menu_button(None);
+    }
+
+    /// Fetches this chat's commands (and bot menu button): `botInfo` for a
+    /// private chat with a bot, `bot_commands` from the group full info
+    /// otherwise. TDLib caches full-info responses, so calling this on every
+    /// chat switch is cheap; results notify only when they changed.
+    pub(crate) fn fetch_bot_commands(&self) {
+        let client_id = self.session_().client_().id();
+        match self.chat_type() {
+            model::ChatType::Private(user) => {
+                let user_id = user.id();
+                utils::spawn(clone!(
+                    #[weak(rename_to = chat)]
+                    self,
+                    async move {
+                        match tdlib::functions::get_user_full_info(user_id, client_id).await {
+                            Ok(tdlib::enums::UserFullInfo::UserFullInfo(info)) => {
+                                match info.bot_info {
+                                    Some(bot) => {
+                                        chat.set_bot_commands(bot.commands);
+                                        chat.set_bot_menu_button(bot.menu_button);
+                                    }
+                                    None => chat.clear_bot_commands(),
+                                }
+                            }
+                            Err(e) => {
+                                log::debug!("Failed to fetch bot info for {user_id}: {e:?}")
+                            }
+                        }
+                    }
+                ));
+            }
+            model::ChatType::Supergroup(data) => {
+                let supergroup_id = data.id();
+                utils::spawn(clone!(
+                    #[weak(rename_to = chat)]
+                    self,
+                    async move {
+                        let result =
+                            tdlib::functions::get_supergroup_full_info(supergroup_id, client_id)
+                                .await;
+                        match result {
+                            Ok(tdlib::enums::SupergroupFullInfo::SupergroupFullInfo(info)) => {
+                                chat.set_bot_commands(merge_bot_commands(&info.bot_commands));
+                                chat.set_bot_menu_button(None);
+                            }
+                            Err(e) => log::debug!("Failed to fetch group commands: {e:?}"),
+                        }
+                    }
+                ));
+            }
+            model::ChatType::BasicGroup(data) => {
+                let basic_group_id = data.id();
+                utils::spawn(clone!(
+                    #[weak(rename_to = chat)]
+                    self,
+                    async move {
+                        let result =
+                            tdlib::functions::get_basic_group_full_info(basic_group_id, client_id)
+                                .await;
+                        match result {
+                            Ok(tdlib::enums::BasicGroupFullInfo::BasicGroupFullInfo(info)) => {
+                                chat.set_bot_commands(merge_bot_commands(&info.bot_commands));
+                                chat.set_bot_menu_button(None);
+                            }
+                            Err(e) => log::debug!("Failed to fetch group commands: {e:?}"),
+                        }
+                    }
+                ));
+            }
+            model::ChatType::Secret(_) => {}
+        }
+    }
+
     fn set_permissions(&self, permissions: model::BoxedChatPermissions) {
         if self.permissions() == permissions {
             return;
@@ -706,6 +820,20 @@ impl Chat {
 /// Whether a chat is muted, given its own notification settings and the session's
 /// scope default for its chat type. When the chat defers to the default the scope
 /// decides; otherwise the chat's own `mute_for` does.
+/// Flattens the per-bot command groups of a group chat into one list, keeping
+/// the first command with each name (the menu shows one entry per command).
+fn merge_bot_commands(entries: &[tdlib::types::BotCommands]) -> Vec<tdlib::types::BotCommand> {
+    let mut merged: Vec<tdlib::types::BotCommand> = Vec::new();
+    for entry in entries {
+        for command in &entry.commands {
+            if !merged.iter().any(|seen| seen.command == command.command) {
+                merged.push(command.clone());
+            }
+        }
+    }
+    merged
+}
+
 fn resolve_muted(
     settings: &tdlib::types::ChatNotificationSettings,
     scope: &tdlib::types::ScopeNotificationSettings,
@@ -719,10 +847,48 @@ fn resolve_muted(
 
 #[cfg(test)]
 mod tests {
+    use tdlib::types::BotCommand;
+    use tdlib::types::BotCommands;
     use tdlib::types::ChatNotificationSettings;
     use tdlib::types::ScopeNotificationSettings;
 
+    use super::merge_bot_commands;
     use super::resolve_muted;
+
+    fn bot_cmd(command: &str) -> BotCommand {
+        BotCommand {
+            command: command.to_string(),
+            description: "description".to_string(),
+            is_ephemeral: false,
+        }
+    }
+
+    #[test]
+    fn merge_bot_commands_keeps_first_per_command() {
+        let one = BotCommands {
+            bot_user_id: 1,
+            commands: vec![bot_cmd("start"), bot_cmd("help")],
+        };
+        let two = BotCommands {
+            bot_user_id: 2,
+            commands: vec![bot_cmd("help"), bot_cmd("id")],
+        };
+
+        let merged = merge_bot_commands(&[one, two]);
+
+        assert_eq!(
+            merged
+                .iter()
+                .map(|c| c.command.as_str())
+                .collect::<Vec<_>>(),
+            ["start", "help", "id"]
+        );
+    }
+
+    #[test]
+    fn merge_bot_commands_of_nothing_is_empty() {
+        assert!(merge_bot_commands(&[]).is_empty());
+    }
 
     fn chat_settings(use_default: bool, mute_for: i32) -> ChatNotificationSettings {
         ChatNotificationSettings {

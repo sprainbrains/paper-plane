@@ -649,6 +649,12 @@ impl ChatActionBar {
         self.update_stack_page();
         self.update_signal_groups();
 
+        // Refresh the bot commands behind the menu button and '/'-completion;
+        // TDLib caches the full-info responses, so this is cheap per switch.
+        if let Some(chat) = chat {
+            chat.fetch_bot_commands();
+        }
+
         self.notify("chat");
     }
 

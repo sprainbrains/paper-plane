@@ -213,6 +213,18 @@ pub(crate) struct BoxedMessageReplyTo(pub(crate) MessageReplyTo);
 #[boxed_type(name = "BoxedReplyMarkup", nullable)]
 pub(crate) struct BoxedReplyMarkup(pub(crate) ReplyMarkup);
 
+/// Bot commands available in a chat (private bot chat, or the bots of a
+/// group), cached on [`model::Chat`](self::Chat) after a fetch.
+#[derive(Clone, Debug, Default, PartialEq, glib::Boxed)]
+#[boxed_type(name = "BoxedBotCommands")]
+pub(crate) struct BoxedBotCommands(pub(crate) Vec<tdlib::types::BotCommand>);
+
+/// The `botMenuButton` of a bot: when its URL is set the menu button opens a
+/// Web App instead of the command list.
+#[derive(Clone, Debug, PartialEq, glib::Boxed)]
+#[boxed_type(name = "BoxedBotMenuButton", nullable)]
+pub(crate) struct BoxedBotMenuButton(pub(crate) tdlib::types::BotMenuButton);
+
 #[derive(Clone, Debug, Default, PartialEq, glib::Boxed)]
 #[boxed_type(name = "BoxedScopeNotificationSettings", nullable)]
 pub(crate) struct BoxedScopeNotificationSettings(pub(crate) ScopeNotificationSettings);
