@@ -1084,10 +1084,11 @@ contentpicker.content-picker.reaction-mode separator {
   background: none;
 }
 
-/* The composer's mention popup floats over the chat: like the content picker it
+/* The composer's mention and command popups float over the chat: like the content picker they
    wears the chat's own surface, with soft rounded rows instead of the default
    dark popover and a heavy accent selection block. */
-.mention-popup > contents {
+.mention-popup > contents,
+.command-popup > contents {
   background-color: @window_bg_color;
   border: 1px solid alpha(@window_fg_color, 0.1);
   border-radius: 12px;
@@ -1099,19 +1100,25 @@ contentpicker.content-picker.reaction-mode separator {
    inside the card; flatten it so the popup is one uniform surface. */
 .mention-popup scrolledwindow,
 .mention-popup scrolledwindow > viewport,
-.mention-popup list {
+.mention-popup list,
+.command-popup scrolledwindow,
+.command-popup scrolledwindow > viewport,
+.command-popup list {
   background: none;
 }
 
-.mention-popup list > row {
+.mention-popup list > row,
+.command-popup list > row {
   border-radius: 8px;
 }
 
-.mention-popup list > row:hover {
+.mention-popup list > row:hover,
+.command-popup list > row:hover {
   background-color: alpha(@window_fg_color, 0.05);
 }
 
-.mention-popup list > row:selected {
+.mention-popup list > row:selected,
+.command-popup list > row:selected {
   background-color: alpha(@window_fg_color, 0.08);
   color: @window_fg_color;
 }

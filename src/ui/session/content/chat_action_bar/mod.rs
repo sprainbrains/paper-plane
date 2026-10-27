@@ -674,6 +674,13 @@ impl ChatActionBar {
             .margin_top(4)
             .margin_bottom(4)
             .build();
+        let scroller = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .propagate_natural_width(true)
+            .propagate_natural_height(true)
+            .max_content_height(320)
+            .child(&list)
+            .build();
         for command in commands {
             let row = gtk::Button::builder()
                 .css_classes(["flat", "menu-cmd-row"])
@@ -700,15 +707,23 @@ impl ChatActionBar {
                 content.append(&description);
             }
             row.set_child(Some(&content));
+            // Weak captures: the popover owns the row, so strong entry or
+            // popover references in this closure would retain the composer
+            // after the bar is disposed (AGENTS.md).
             let entry = imp.message_entry.get().clone();
-            let popover_row = popover.clone();
-            row.connect_clicked(move |_| {
-                entry.insert_command(&command.command);
-                popover_row.popdown();
-            });
+            row.connect_clicked(clone!(
+                #[weak]
+                entry,
+                #[weak]
+                popover,
+                move |_| {
+                    entry.insert_command(&command.command);
+                    popover.popdown();
+                }
+            ));
             list.append(&row);
         }
-        popover.set_child(Some(&list));
+        popover.set_child(Some(&scroller));
         popover.popup();
     }
 

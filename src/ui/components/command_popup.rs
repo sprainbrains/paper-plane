@@ -173,7 +173,6 @@ impl CommandPopup {
             .map(PopupBotCommand)
     }
 
-    #[allow(dead_code)]
     pub(crate) fn candidate_count(&self) -> i32 {
         self.imp().candidates.borrow().len() as i32
     }

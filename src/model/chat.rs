@@ -619,7 +619,10 @@ impl Chat {
                                 .await;
                         match result {
                             Ok(tdlib::enums::SupergroupFullInfo::SupergroupFullInfo(info)) => {
-                                chat.set_bot_commands(merge_bot_commands(&info.bot_commands));
+                                chat.set_bot_commands(group_bot_commands(
+                                    &chat.session_(),
+                                    &info.bot_commands,
+                                ));
                                 chat.set_bot_menu_button(None);
                             }
                             Err(e) => log::debug!("Failed to fetch group commands: {e:?}"),
@@ -638,7 +641,10 @@ impl Chat {
                                 .await;
                         match result {
                             Ok(tdlib::enums::BasicGroupFullInfo::BasicGroupFullInfo(info)) => {
-                                chat.set_bot_commands(merge_bot_commands(&info.bot_commands));
+                                chat.set_bot_commands(group_bot_commands(
+                                    &chat.session_(),
+                                    &info.bot_commands,
+                                ));
                                 chat.set_bot_menu_button(None);
                             }
                             Err(e) => log::debug!("Failed to fetch group commands: {e:?}"),
@@ -820,6 +826,49 @@ impl Chat {
 /// Whether a chat is muted, given its own notification settings and the session's
 /// scope default for its chat type. When the chat defers to the default the scope
 /// decides; otherwise the chat's own `mute_for` does.
+fn resolve_muted(
+    settings: &tdlib::types::ChatNotificationSettings,
+    scope: &tdlib::types::ScopeNotificationSettings,
+) -> bool {
+    if settings.use_default_mute_for {
+        scope.mute_for > 0 || settings.mute_for > 0
+    } else {
+        settings.mute_for > 0
+    }
+}
+
+/// Group commands must name their bot: a bare `/start` in a multi-bot group
+/// goes to whichever bot Telegram picks, so each command is qualified with
+/// `@botusername` (what Telegram Desktop shows and inserts) before merging.
+fn group_bot_commands(
+    session: &model::ClientStateSession,
+    entries: &[tdlib::types::BotCommands],
+) -> Vec<tdlib::types::BotCommand> {
+    let suffixed: Vec<tdlib::types::BotCommands> = entries
+        .iter()
+        .map(|entry| {
+            let suffix = session
+                .try_user(entry.bot_user_id)
+                .map(|user| user.username().to_string())
+                .filter(|name| !name.is_empty())
+                .map(|name| format!("@{name}"))
+                .unwrap_or_default();
+            tdlib::types::BotCommands {
+                bot_user_id: entry.bot_user_id,
+                commands: entry
+                    .commands
+                    .iter()
+                    .map(|command| tdlib::types::BotCommand {
+                        command: format!("{}{suffix}", command.command.trim_start_matches('/')),
+                        ..command.clone()
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+    merge_bot_commands(&suffixed)
+}
+
 /// Flattens the per-bot command groups of a group chat into one list, keeping
 /// the first command with each name (the menu shows one entry per command).
 fn merge_bot_commands(entries: &[tdlib::types::BotCommands]) -> Vec<tdlib::types::BotCommand> {
@@ -832,17 +881,6 @@ fn merge_bot_commands(entries: &[tdlib::types::BotCommands]) -> Vec<tdlib::types
         }
     }
     merged
-}
-
-fn resolve_muted(
-    settings: &tdlib::types::ChatNotificationSettings,
-    scope: &tdlib::types::ScopeNotificationSettings,
-) -> bool {
-    if settings.use_default_mute_for {
-        scope.mute_for > 0 || settings.mute_for > 0
-    } else {
-        settings.mute_for > 0
-    }
 }
 
 #[cfg(test)]

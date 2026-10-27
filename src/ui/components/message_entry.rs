@@ -56,6 +56,15 @@ fn command_prefix(before_cursor: &str) -> Option<(usize, String)> {
     Some((0, query.to_lowercase()))
 }
 
+/// How many characters of the text before the cursor form a '/'-command
+/// token that a chosen completion replaces; 0 when the text is not a token
+/// (the menu-button path) and the command is only inserted, never replacing.
+fn command_token_len(before_cursor: &str) -> usize {
+    command_prefix(before_cursor)
+        .map(|_| before_cursor.chars().count())
+        .unwrap_or(0)
+}
+
 /// Case-insensitive prefix filter over bot commands, capped at 20, keeping
 /// the input order.
 fn filter_commands(
@@ -676,23 +685,36 @@ impl MessageEntry {
         }
     }
 
-    /// Replaces the typed '/query' (always the whole text before the cursor —
-    /// a command starts the message) with the chosen command and a trailing
-    /// space for arguments.
+    /// Inserts the chosen command at the cursor with a trailing space for
+    /// arguments. On the completion path the typed '/query' token is replaced;
+    /// on the menu path nothing is replaced (an empty composer is the normal
+    /// case) and a separating space is added when appending behind text.
     pub(crate) fn insert_command(&self, command: &str) {
         let imp = self.imp();
         self.close_command_popup();
 
         let buffer = imp.text_view.buffer();
-        let token_end = buffer.cursor_position();
-        if token_end <= 0 {
-            return;
-        }
+        let cursor = buffer.cursor_position();
+        let before: String = buffer
+            .text(&buffer.start_iter(), &buffer.iter_at_offset(cursor), false)
+            .into();
+        let token_len = command_token_len(&before) as i32;
+        let needs_space = token_len == 0 && cursor > 0 && !before.ends_with(char::is_whitespace);
+
         buffer.begin_user_action();
-        let mut start_iter = buffer.iter_at_offset(0);
-        let mut end_iter = buffer.iter_at_offset(token_end);
-        buffer.delete(&mut start_iter, &mut end_iter);
-        buffer.insert(&mut start_iter, &format!("/{command} "));
+        let mut start_iter = buffer.iter_at_offset(cursor - token_len);
+        let mut end_iter = buffer.iter_at_offset(cursor);
+        if token_len > 0 {
+            buffer.delete(&mut start_iter, &mut end_iter);
+        }
+        buffer.insert(
+            &mut start_iter,
+            &format!(
+                "{}{} ",
+                if needs_space { " " } else { "" },
+                &format!("/{}", command.trim_start_matches('/'))
+            ),
+        );
         buffer.end_user_action();
 
         self.text_buffer_changed();
@@ -1032,6 +1054,7 @@ impl Default for MessageEntry {
 mod tests {
     use super::char_index_of_utf16;
     use super::command_prefix;
+    use super::command_token_len;
     use super::filter_commands;
     use super::mention_prefix;
 
@@ -1139,6 +1162,18 @@ mod tests {
         assert_eq!(filter_commands(&commands, "ST")[1].command, "stop");
         assert_eq!(filter_commands(&commands, "nope").len(), 0);
         assert_eq!(filter_commands(&commands, "").len(), 3);
+    }
+
+    #[test]
+    fn command_token_len_counts_only_a_leading_slash_token() {
+        // Completion path: the whole '/query' before the cursor is replaced.
+        assert_eq!(command_token_len("/st"), 3);
+        assert_eq!(command_token_len("/"), 1);
+        // Menu path over other text (or an empty composer): nothing is
+        // replaced, the command is inserted at the cursor.
+        assert_eq!(command_token_len(""), 0);
+        assert_eq!(command_token_len("hello"), 0);
+        assert_eq!(command_token_len("Fix this bug"), 0);
     }
 
     #[test]
