@@ -662,53 +662,54 @@ impl Session {
     }
 }
 
-/// Follow a mirrored message's reply chain inside its chat looking for the
-/// thread anchor: the anchor of a channel comment thread is the post's mirror
-/// in the discussion group — sent by the channel itself and carrying the post
-/// as its last-forward source. Returns `(channel, post, comment)` — `comment`
-/// set only when the anchor was reached through the chain (the jump started
-/// from an actual comment).
+/// Resolve the "View in Chat" target of a message mirrored in the Replies
+/// chat. A post mirror is sent on behalf of the channel and carries the post
+/// as its forward source. A comment mirror is sent by its author and carries
+/// the comment (inside the discussion group) as its source; the thread's post
+/// is found by walking the comment's reply chain *inside that discussion* up
+/// to the anchor, which mirrors the channel post. Returns
+/// `(channel, post, comment)` — `comment` set only when the jump started from
+/// a comment, so the thread reveals it.
 async fn resolve_thread_origin(
     session: &model::ClientStateSession,
     chat_id: ChatId,
     message_id: MessageId,
 ) -> Option<(ChatId, MessageId, Option<MessageId>)> {
-    // The discussion chat is often not in any chat list (reached only through
-    // the Replies bot), so it may be missing from the model: materialize it
-    // rather than bailing out into a plain group reveal.
     let chat = session.chat_or_fetch(chat_id).await?;
-    let mut current = message_id;
-    // Reply chains are shallow in practice; the bound only guards against a
-    // TDLib quirk turning the walk into a loop.
+    let first = chat.fetch_message(message_id).await.ok()?;
+    let (src_chat, src_msg) = first.forward_info().and_then(|info| info.source_ids())?;
+    if src_chat == chat_id {
+        return None;
+    }
+    if matches!(first.sender(), model::MessageSender::Chat(sender) if sender.id() == src_chat) {
+        return Some((src_chat, src_msg, None));
+    }
+    // A comment: its chain — and the anchor it replies to — live in the
+    // discussion group, not in Replies. Reply targets in practice point
+    // straight at the anchor; the loop also covers nested discussions.
+    let discussion = session.chat_or_fetch(src_chat).await?;
+    let mut current = src_msg;
     for _ in 0..10 {
-        let Ok(message) = chat.fetch_message(current).await else {
+        let Ok(message) = discussion.fetch_message(current).await else {
             return None;
         };
-        if let Some((source_chat, source_message)) =
-            message.forward_info().and_then(|info| info.source_ids())
-            && source_chat != chat_id
-            && matches!(message.sender(), model::MessageSender::Chat(sender) if sender.id() == source_chat)
-        {
-            return Some((
-                source_chat,
-                source_message,
-                (current != message_id).then_some(message_id),
-            ));
-        }
-        // Comments reply to the anchor (or, nested, to another comment): follow
-        // the chain inside the same chat.
         let next = match message.reply_to().map(|reply| reply.0) {
             Some(tdlib::enums::MessageReplyTo::Message(data))
-                if data.chat_id == chat_id || data.chat_id == 0 =>
+                if data.chat_id == src_chat || data.chat_id == 0 =>
             {
                 data.message_id
             }
-            _ => return None,
+            _ => break,
         };
         if next == 0 || next == current {
-            return None;
+            break;
         }
         current = next;
     }
-    None
+    let anchor = discussion.fetch_message(current).await.ok()?;
+    let (channel, post) = anchor.forward_info().and_then(|info| info.source_ids())?;
+    if channel == src_chat {
+        return None;
+    }
+    Some((channel, post, Some(src_msg)))
 }

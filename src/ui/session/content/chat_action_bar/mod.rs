@@ -848,8 +848,13 @@ impl ChatActionBar {
                     | tdlib::enums::ChatMemberStatus::Administrator(_) => {
                         imp.action_bar_stack.set_visible_child_name("entry");
                     }
-                    tdlib::enums::ChatMemberStatus::Left => {
+                    // Commenting through a thread does not require membership
+                    // even when the discussion itself is channel-shaped.
+                    tdlib::enums::ChatMemberStatus::Left if !imp.comments_mode.get() => {
                         imp.action_bar_stack.set_visible_child_name("join");
+                    }
+                    tdlib::enums::ChatMemberStatus::Left => {
+                        imp.action_bar_stack.set_visible_child_name("entry");
                     }
                     _ => {
                         imp.action_bar_stack.set_visible_child_name("mute");
@@ -878,7 +883,9 @@ impl ChatActionBar {
                     tdlib::enums::ChatMemberStatus::Restricted(_) => {
                         imp.action_bar_stack.set_visible_child_name("restricted");
                     }
-                    tdlib::enums::ChatMemberStatus::Left => {
+                    // A discussion can be an old basic group too; the thread
+                    // composer must survive `Left` there as well.
+                    tdlib::enums::ChatMemberStatus::Left if !imp.comments_mode.get() => {
                         imp.action_bar_stack.set_visible_child_name("join");
                     }
                     _ => {
