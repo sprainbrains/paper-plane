@@ -45,6 +45,34 @@ fn mention_prefix(text_before_cursor: &str) -> Option<(usize, &str)> {
     Some((token_start, query))
 }
 
+/// The '/'-command token at the very start of the message: byte offset of the
+/// '/' and the query typed after it, `None` unless '/' is the first character
+/// and no whitespace follows before the cursor.
+#[allow(dead_code)]
+fn command_prefix(before_cursor: &str) -> Option<(usize, String)> {
+    let query = before_cursor.strip_prefix('/')?;
+    if query.contains(char::is_whitespace) {
+        return None;
+    }
+    Some((0, query.to_lowercase()))
+}
+
+/// Case-insensitive prefix filter over bot commands, capped at 20, keeping
+/// the input order.
+#[allow(dead_code)]
+fn filter_commands(
+    commands: &[tdlib::types::BotCommand],
+    query: &str,
+) -> Vec<tdlib::types::BotCommand> {
+    let query = query.strip_prefix('/').unwrap_or(query).to_lowercase();
+    commands
+        .iter()
+        .filter(|c| c.command.to_lowercase().starts_with(&query))
+        .take(20)
+        .cloned()
+        .collect()
+}
+
 /// Converts a UTF-16 code-unit offset (TDLib entity offsets) to a character
 /// index (GtkTextBuffer offsets), saturating at the end of `text`.
 fn char_index_of_utf16(text: &str, units: i32) -> i32 {
@@ -888,6 +916,8 @@ impl Default for MessageEntry {
 #[cfg(test)]
 mod tests {
     use super::char_index_of_utf16;
+    use super::command_prefix;
+    use super::filter_commands;
     use super::mention_prefix;
 
     #[test]
@@ -953,5 +983,61 @@ mod tests {
         // The thumbs-up spans two UTF-16 units, so unit 8 is the char after.
         assert_eq!(char_index_of_utf16("emoji 👍 test", 8), 7);
         assert_eq!(char_index_of_utf16("abc", 100), 3);
+    }
+
+    #[test]
+    fn command_prefix_slash_only_starts_query() {
+        assert_eq!(command_prefix("/"), Some((0, String::from(""))));
+        assert_eq!(command_prefix("/sta"), Some((0, String::from("sta"))));
+        assert_eq!(command_prefix("/START"), Some((0, String::from("start"))));
+        assert_eq!(command_prefix(""), None);
+    }
+
+    #[test]
+    fn command_prefix_rejects_mid_word_and_spaces() {
+        assert_eq!(command_prefix("a/b"), None);
+        assert_eq!(command_prefix("/two words"), None);
+        assert_eq!(command_prefix(" /start"), None);
+    }
+
+    #[test]
+    fn filter_commands_matches_prefix_case_insensitively() {
+        let commands = vec![
+            tdlib::types::BotCommand {
+                command: String::from("start"),
+                description: String::from("Start"),
+                is_ephemeral: false,
+            },
+            tdlib::types::BotCommand {
+                command: String::from("stop"),
+                description: String::from("Stop"),
+                is_ephemeral: false,
+            },
+            tdlib::types::BotCommand {
+                command: String::from("help"),
+                description: String::from("Help"),
+                is_ephemeral: false,
+            },
+        ];
+        assert_eq!(filter_commands(&commands, "st").len(), 2);
+        assert_eq!(filter_commands(&commands, "ST")[0].command, "start");
+        assert_eq!(filter_commands(&commands, "ST")[1].command, "stop");
+        assert_eq!(filter_commands(&commands, "nope").len(), 0);
+        assert_eq!(filter_commands(&commands, "").len(), 3);
+    }
+
+    #[test]
+    fn filter_commands_caps_at_twenty() {
+        let commands: Vec<tdlib::types::BotCommand> = (0..25)
+            .map(|i| tdlib::types::BotCommand {
+                command: format!("cmd{i}"),
+                description: String::new(),
+                is_ephemeral: false,
+            })
+            .collect();
+        let filtered = filter_commands(&commands, "cmd");
+        assert_eq!(filtered.len(), 20);
+        assert_eq!(filtered[0].command, "cmd0");
+        assert_eq!(filtered[19].command, "cmd19");
     }
 }

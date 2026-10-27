@@ -4,6 +4,7 @@ mod avatar_map_marker;
 mod avatar_with_selection;
 mod chat_title;
 mod circular_progress_bar;
+mod command_popup;
 mod gif_cell;
 mod icon_map_marker;
 mod map;
@@ -23,6 +24,8 @@ pub(crate) use self::avatar_map_marker::AvatarMapMarker;
 pub(crate) use self::avatar_with_selection::AvatarWithSelection;
 pub(crate) use self::chat_title::ChatTitle;
 pub(crate) use self::circular_progress_bar::CircularProgressBar;
+#[allow(unused_imports)]
+pub(crate) use self::command_popup::CommandPopup;
 pub(crate) use self::gif_cell::GifCell;
 pub(crate) use self::icon_map_marker::IconMapMarker;
 pub(crate) use self::map::Map;
