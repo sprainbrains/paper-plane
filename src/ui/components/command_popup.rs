@@ -95,7 +95,6 @@ glib::wrapper! {
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::ShortcutManager;
 }
 
-#[allow(dead_code)]
 impl CommandPopup {
     pub(crate) fn new() -> Self {
         glib::Object::builder()
@@ -174,10 +173,12 @@ impl CommandPopup {
             .map(PopupBotCommand)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn candidate_count(&self) -> i32 {
         self.imp().candidates.borrow().len() as i32
     }
 
+    #[allow(dead_code)]
     pub(crate) fn selected_index(&self) -> Option<i32> {
         self.imp()
             .list_box

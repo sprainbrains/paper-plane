@@ -24,7 +24,6 @@ pub(crate) use self::avatar_map_marker::AvatarMapMarker;
 pub(crate) use self::avatar_with_selection::AvatarWithSelection;
 pub(crate) use self::chat_title::ChatTitle;
 pub(crate) use self::circular_progress_bar::CircularProgressBar;
-#[allow(unused_imports)]
 pub(crate) use self::command_popup::CommandPopup;
 pub(crate) use self::gif_cell::GifCell;
 pub(crate) use self::icon_map_marker::IconMapMarker;

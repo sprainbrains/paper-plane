@@ -48,7 +48,6 @@ fn mention_prefix(text_before_cursor: &str) -> Option<(usize, &str)> {
 /// The '/'-command token at the very start of the message: byte offset of the
 /// '/' and the query typed after it, `None` unless '/' is the first character
 /// and no whitespace follows before the cursor.
-#[allow(dead_code)]
 fn command_prefix(before_cursor: &str) -> Option<(usize, String)> {
     let query = before_cursor.strip_prefix('/')?;
     if query.contains(char::is_whitespace) {
@@ -59,7 +58,6 @@ fn command_prefix(before_cursor: &str) -> Option<(usize, String)> {
 
 /// Case-insensitive prefix filter over bot commands, capped at 20, keeping
 /// the input order.
-#[allow(dead_code)]
 fn filter_commands(
     commands: &[tdlib::types::BotCommand],
     query: &str,
@@ -130,6 +128,11 @@ mod imp {
         /// Character offset of the `@` the open popup was searching for, used
         /// to replace exactly that token when a candidate is chosen.
         pub(super) mention_token_start: Cell<i32>,
+        /// Popover listing the bot commands matching a leading '/' query.
+        pub(super) command_popup: OnceCell<ui::CommandPopup>,
+        /// Debounce source for command completion; the command cache is local
+        /// (no in-flight request), so no generation guard is needed.
+        pub(super) command_debounce: RefCell<Option<glib::SourceId>>,
         #[template_child]
         pub(super) overlay: TemplateChild<gtk::Overlay>,
         #[template_child]
@@ -233,9 +236,9 @@ mod imp {
                 #[upgrade_or]
                 glib::Propagation::Proceed,
                 move |_, key, _, modifier| {
-                    // While the mention popup is open its navigation wins:
-                    // Enter picks a candidate instead of sending.
-                    if obj.mention_popup_key(key) {
+                    // While a popup is open its navigation wins: Enter picks a
+                    // candidate instead of sending.
+                    if obj.mention_popup_key(key) || obj.command_popup_key(key) {
                         return glib::Propagation::Stop;
                     }
                     if !modifier.contains(gdk::ModifierType::CONTROL_MASK)
@@ -266,6 +269,16 @@ mod imp {
                 move |_, user| obj.insert_mention(user)
             ));
             self.mention_popup.set(popup).ok();
+
+            let command_popup = ui::CommandPopup::new();
+            command_popup.set_parent(&*self.overlay);
+            command_popup.set_position(gtk::PositionType::Top);
+            command_popup.connect_candidate_activated(clone!(
+                #[weak]
+                obj,
+                move |_, command| obj.insert_command(&command.0.command)
+            ));
+            self.command_popup.set(command_popup).ok();
 
             let press = gtk::GestureClick::new();
             press.connect_pressed(clone!(
@@ -361,6 +374,7 @@ impl MessageEntry {
 
         self.notify("formatted-text");
         self.schedule_mention_update();
+        self.schedule_command_update();
     }
 
     /// Re-derives every mark-anchored entity (custom emojis and @mentions)
@@ -584,6 +598,105 @@ impl MessageEntry {
         if let Some(popup) = self.imp().mention_popup.get() {
             popup.popdown();
         }
+    }
+
+    /// Debounced entry into [`command_search_now`]; the debounce keeps a fast
+    /// typist from re-populating the popup on every keystroke.
+    fn schedule_command_update(&self) {
+        let imp = self.imp();
+        if let Some(source) = imp.command_debounce.borrow_mut().take() {
+            source.remove();
+        }
+        let source = glib::timeout_add_local_once(
+            std::time::Duration::from_millis(150),
+            clone!(
+                #[weak(rename_to = obj)]
+                self,
+                move || {
+                    obj.imp().command_debounce.replace(None);
+                    obj.command_search_now();
+                }
+            ),
+        );
+        imp.command_debounce.replace(Some(source));
+    }
+
+    /// Shows the chat's bot commands matching a leading '/' query, reading the
+    /// cache the model keeps warm on every chat switch. Any other text (or a
+    /// chat without commands) closes the popup.
+    fn command_search_now(&self) {
+        let imp = self.imp();
+        let Some(chat) = self.chat() else {
+            self.close_command_popup();
+            return;
+        };
+        let commands = chat.bot_commands();
+        if commands.0.is_empty() {
+            self.close_command_popup();
+            return;
+        }
+
+        let buffer = imp.text_view.buffer();
+        let insert = buffer.iter_at_offset(buffer.cursor_position());
+        let before_cursor: String = buffer.text(&buffer.start_iter(), &insert, false).into();
+        let Some((_, query)) = command_prefix(&before_cursor) else {
+            self.close_command_popup();
+            return;
+        };
+        let candidates = filter_commands(&commands.0, &query);
+        if candidates.is_empty() {
+            self.close_command_popup();
+        } else if let Some(popup) = imp.command_popup.get() {
+            popup.set_candidates(&candidates);
+        }
+    }
+
+    fn command_popup_key(&self, key: gdk::Key) -> bool {
+        let Some(popup) = self
+            .imp()
+            .command_popup
+            .get()
+            .filter(|popup| popup.is_visible())
+        else {
+            return false;
+        };
+        match key {
+            gdk::Key::Up => popup.move_selected(-1),
+            gdk::Key::Down => popup.move_selected(1),
+            gdk::Key::Tab | gdk::Key::Return | gdk::Key::KP_Enter => popup.activate_selected(),
+            gdk::Key::Escape => self.close_command_popup(),
+            _ => return false,
+        }
+        true
+    }
+
+    fn close_command_popup(&self) {
+        if let Some(popup) = self.imp().command_popup.get() {
+            popup.popdown();
+        }
+    }
+
+    /// Replaces the typed '/query' (always the whole text before the cursor —
+    /// a command starts the message) with the chosen command and a trailing
+    /// space for arguments.
+    pub(crate) fn insert_command(&self, command: &str) {
+        let imp = self.imp();
+        self.close_command_popup();
+
+        let buffer = imp.text_view.buffer();
+        let token_end = buffer.cursor_position();
+        if token_end <= 0 {
+            return;
+        }
+        buffer.begin_user_action();
+        let mut start_iter = buffer.iter_at_offset(0);
+        let mut end_iter = buffer.iter_at_offset(token_end);
+        buffer.delete(&mut start_iter, &mut end_iter);
+        buffer.insert(&mut start_iter, &format!("/{command} "));
+        buffer.end_user_action();
+
+        self.text_buffer_changed();
+        self.grab_focus();
     }
 
     /// Restarts the debounce and bumps the generation on every buffer change:
@@ -831,6 +944,8 @@ impl MessageEntry {
         }
 
         self.imp().chat.set(chat.as_ref());
+        // The old chat's candidates are meaningless in the new one.
+        self.close_command_popup();
         self.notify("chat");
     }
 

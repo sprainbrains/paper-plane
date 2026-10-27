@@ -20,6 +20,7 @@ pub(crate) use self::components::AvatarMapMarker;
 pub(crate) use self::components::AvatarWithSelection;
 pub(crate) use self::components::ChatTitle;
 pub(crate) use self::components::CircularProgressBar;
+pub(crate) use self::components::CommandPopup;
 pub(crate) use self::components::GifCell;
 pub(crate) use self::components::IconMapMarker;
 pub(crate) use self::components::Map;
