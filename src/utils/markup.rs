@@ -492,7 +492,13 @@ fn rich_text_into(
         ),
         Rt::Anchor(_) => {}
         Rt::AnchorLink(data) => rich_text_into(&data.text, text, entities),
-        _ => {}
+        // Concatenation container: bots wrap whole paragraphs in it, so its
+        // children must be walked — dropping it silently blanks the message.
+        Rt::RichTexts(data) => {
+            for inner in &data.texts {
+                rich_text_into(inner, text, entities);
+            }
+        }
     }
 }
 
@@ -906,5 +912,53 @@ mod tests {
         for (seconds, expected) in cases {
             assert_eq!(human_friendly_duration(seconds), expected, "{seconds}");
         }
+    }
+
+    #[test]
+    fn rich_texts_container_flattens_into_the_paragraph() {
+        use tdlib::enums::PageBlock;
+        use tdlib::enums::RichText;
+        use tdlib::types::PageBlockParagraph;
+        use tdlib::types::RichMessage;
+        use tdlib::types::RichTextBold;
+        use tdlib::types::RichTextPlain;
+        use tdlib::types::RichTextUrl;
+        use tdlib::types::RichTexts;
+
+        let plain = |text: &str| RichText::Plain(RichTextPlain { text: text.into() });
+        // The shape ChatLogixBot sends: one paragraph whose text is a
+        // `richTexts` container of styled runs.
+        let blocks = rich_message_to_blocks(&RichMessage {
+            blocks: vec![PageBlock::Paragraph(PageBlockParagraph {
+                text: RichText::RichTexts(RichTexts {
+                    texts: vec![
+                        RichText::Bold(Box::new(RichTextBold {
+                            text: plain("📆 Что обсуждалось "),
+                        })),
+                        plain("\nВсего было написано "),
+                        RichText::Url(Box::new(RichTextUrl {
+                            text: plain("6 сообщений"),
+                            url: "https://t.me/c/1639516024/67602/98282".into(),
+                            is_cached: false,
+                        })),
+                    ],
+                }),
+            })],
+            is_rtl: false,
+            is_full: true,
+        });
+        let [RichBlock::Paragraph(inline)] = blocks.as_slice() else {
+            panic!("expected a single paragraph, got {blocks:?}");
+        };
+        assert_eq!(
+            inline.plain,
+            "📆 Что обсуждалось \nВсего было написано 6 сообщений"
+        );
+        assert!(inline.markup.contains("<b>📆 Что обсуждалось </b>"));
+        assert!(
+            inline
+                .markup
+                .contains("<a href='https://t.me/c/1639516024/67602/98282'>6 сообщений</a>")
+        );
     }
 }
