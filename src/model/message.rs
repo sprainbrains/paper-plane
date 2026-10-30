@@ -280,6 +280,29 @@ impl Message {
         self.notify_is_pinned();
     }
 
+    /// The forwarder this message is visually attributed to (avatar and bubble
+    /// grouping): in Saved Messages any forward; in private and secret chats
+    /// only forwards from someone other than the chat's peer — the peer's own
+    /// messages need no avatar anchor (tdesktop). `None` means attribute to
+    /// the sender. Kept in sync with `ChatHistoryModel::group_identity`.
+    pub(crate) fn attributed_forward_origin(&self) -> Option<model::MessageForwardOrigin> {
+        let origin = self.forward_info()?.origin();
+        let chat = self.chat_();
+        if chat.is_own_chat() {
+            return Some(origin);
+        }
+        let peer = match chat.chat_type() {
+            model::ChatType::Private(user) => user.id(),
+            model::ChatType::Secret(secret) => secret.user()?.id(),
+            _ => return None,
+        };
+        (!matches!(
+            &origin,
+            model::MessageForwardOrigin::User(user) if user.id() == peer
+        ))
+        .then_some(origin)
+    }
+
     pub(crate) fn sender_name_expression(&self) -> gtk::Expression {
         match self.sender() {
             MessageSender::User(user) => {

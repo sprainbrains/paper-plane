@@ -549,15 +549,7 @@ impl ChatHistoryModel {
     /// shows a new avatar per forwarder. Everywhere else it is the sender.
     /// Kept in sync with the avatar rule in `MessageRow::set_message`.
     fn group_identity(message: &model::Message) -> GroupIdentity {
-        let chat = message.chat_();
-        let attributed_to_forwarder = chat.is_own_chat()
-            || matches!(
-                chat.chat_type(),
-                model::ChatType::Private(_) | model::ChatType::Secret(_)
-            );
-        if attributed_to_forwarder
-            && let Some(origin) = message.forward_info().map(|info| info.origin())
-        {
+        if let Some(origin) = message.attributed_forward_origin() {
             match origin {
                 model::MessageForwardOrigin::User(user) => {
                     return GroupIdentity::ForwardUser(user.id());

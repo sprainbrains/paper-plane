@@ -803,15 +803,13 @@ impl Row {
                 false
             } else if message.chat_().is_own_chat() {
                 message.forward_info().is_some()
-            } else if matches!(
-                message.chat_().chat_type(),
-                model::ChatType::Private(_) | model::ChatType::Secret(_)
-            ) {
+            } else if message.attributed_forward_origin().is_some() {
                 // The Replies chat (and any private chat) collects forwards
                 // from other people: tdesktop anchors each one with the
                 // original sender's avatar, which is the only identity cue
-                // when every message technically comes from the peer.
-                message.forward_info().is_some()
+                // when every message technically comes from the peer. Forwards
+                // of the peer's own message stay avatar-less.
+                true
             } else {
                 match message.chat_().chat_type() {
                     model::ChatType::BasicGroup(_) => true,
@@ -859,14 +857,9 @@ impl Row {
                 // In Saved Messages and private chats (the Replies chat above
                 // all) the bubble is attributed to whoever the message was
                 // forwarded from, not to the technical sender; `show_avatar`
-                // above guarantees a forward exists on this path.
-                if message.chat_().is_own_chat()
-                    || matches!(
-                        message.chat_().chat_type(),
-                        model::ChatType::Private(_) | model::ChatType::Secret(_)
-                    )
-                {
-                    match message.forward_info().unwrap().origin() {
+                // above guarantees attribution data exists on this path.
+                if let Some(origin) = message.attributed_forward_origin() {
+                    match origin {
                         model::MessageForwardOrigin::User(user) => {
                             avatar.set_custom_text(None);
                             avatar.set_item(Some(user.upcast()));
