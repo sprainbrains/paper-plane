@@ -475,7 +475,7 @@ impl ChatActionBar {
                 return;
             };
 
-            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.thread_topic());
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.send_topic());
             ui::SendMediaWindow::new(
                 &parent,
                 &chat,
@@ -551,15 +551,19 @@ impl ChatActionBar {
             };
 
             // In a comment thread, send into the discussion chat under the thread
-            // topic so the comment lands in the right place.
-            let topic = utils::ancestor::<_, ui::ChatHistory>(self)
-                .and_then(|history| history.thread_send_context())
-                .map(|(discussion_chat_id, message_thread_id)| {
-                    chat_id = discussion_chat_id;
-                    tdlib::enums::MessageTopic::Thread(tdlib::types::MessageTopicThread {
-                        message_thread_id,
+            // topic so the comment lands in the right place; in a topic window,
+            // the chat stays and the forum topic routes the send.
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|history| {
+                history
+                    .thread_send_context()
+                    .map(|(discussion_chat_id, message_thread_id)| {
+                        chat_id = discussion_chat_id;
+                        tdlib::enums::MessageTopic::Thread(tdlib::types::MessageTopicThread {
+                            message_thread_id,
+                        })
                     })
-                });
+                    .or_else(|| history.forum_topic())
+            });
 
             // Send the message
             let result =
@@ -745,9 +749,14 @@ impl ChatActionBar {
             } else {
                 0
             };
+            // When the switch leaves a topic window, the chat history hands the
+            // topic over before clearing it; plain switches save at chat level.
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self)
+                .and_then(|history| history.take_outgoing_topic());
             let formatted_text = imp.message_entry.formatted_text();
             utils::spawn(async move {
-                Self::save_draft_for(outgoing_chat, reply_to_message_id, formatted_text).await;
+                Self::save_draft_for(outgoing_chat, reply_to_message_id, formatted_text, topic)
+                    .await;
             });
         }
 

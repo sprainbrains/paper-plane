@@ -283,18 +283,20 @@ impl ContentPicker {
     /// thread's topic. The picker hangs off `Session`, so the thread context is
     /// resolved through the active chat view rather than the widget tree.
     fn thread_send_target(&self, chat: &model::Chat) -> (i64, Option<tdlib::enums::MessageTopic>) {
-        let thread = utils::ancestor::<_, ui::Session>(self)
-            .and_then(|session| utils::descendant::<_, ui::ChatHistory>(&session))
-            .and_then(|history| history.thread_send_context());
-        match thread {
-            Some((discussion_chat_id, message_thread_id)) => (
+        let history = utils::ancestor::<_, ui::Session>(self)
+            .and_then(|session| utils::descendant::<_, ui::ChatHistory>(&session));
+        if let Some((discussion_chat_id, message_thread_id)) =
+            history.as_ref().and_then(|h| h.thread_send_context())
+        {
+            return (
                 discussion_chat_id,
                 Some(tdlib::enums::MessageTopic::Thread(
                     tdlib::types::MessageTopicThread { message_thread_id },
                 )),
-            ),
-            None => (chat.id(), None),
+            );
         }
+        let topic = history.and_then(|h| h.forum_topic());
+        (chat.id(), topic)
     }
 
     fn emoji_model(&self) -> &gio::ListStore {

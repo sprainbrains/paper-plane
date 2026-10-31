@@ -21,18 +21,22 @@ impl super::ChatActionBar {
                 } else {
                     0
                 };
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.send_topic());
             let formatted_text = self.imp().message_entry.formatted_text();
-            Self::save_draft_for(chat, reply_to_message_id, formatted_text).await;
+            Self::save_draft_for(chat, reply_to_message_id, formatted_text, topic).await;
         }
     }
 
-    /// Persists `formatted_text` as `chat`'s draft. Takes its inputs by value so `set_chat`
-    /// can capture the OUTGOING chat's state and text before the composer is swapped to the
-    /// new chat, then save them once this deferred future runs.
+    /// Persists `formatted_text` as `chat`'s draft (under `topic` when the
+    /// composer was writing into a thread or forum topic). Takes its inputs by
+    /// value so `set_chat` can capture the OUTGOING chat's state and text
+    /// before the composer is swapped to the new chat, then save them once this
+    /// deferred future runs.
     pub(super) async fn save_draft_for(
         chat: model::Chat,
         reply_to_message_id: MessageId,
         formatted_text: Option<model::BoxedFormattedText>,
+        topic: Option<tdlib::enums::MessageTopic>,
     ) {
         let client_id = chat.session_().client_().id();
         let chat_id = chat.id();
@@ -67,9 +71,35 @@ impl super::ChatActionBar {
         };
 
         if let Err(e) =
-            tdlib::functions::set_chat_draft_message(chat_id, None, draft_message, client_id).await
+            tdlib::functions::set_chat_draft_message(chat_id, topic, draft_message, client_id).await
         {
             log::warn!("Error setting a draft message: {e:?}");
+        }
+    }
+
+    /// Retargets the composer within the same chat (topic window open/close):
+    /// persists the text being written as the draft of `outgoing` (the chat
+    /// itself when `None`), then shows the draft of the new target.
+    pub(crate) fn retarget_draft(
+        &self,
+        outgoing: Option<tdlib::enums::MessageTopic>,
+        incoming: Option<model::BoxedDraftMessage>,
+    ) {
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let imp = self.imp();
+        let reply_to_message_id = match imp.state.get() {
+            ChatActionBarState::Replying(id) => id,
+            _ => 0,
+        };
+        let formatted_text = imp.message_entry.formatted_text();
+        utils::spawn(async move {
+            Self::save_draft_for(chat, reply_to_message_id, formatted_text, outgoing).await;
+        });
+        match incoming {
+            Some(draft) => self.load_draft_message(draft),
+            None => self.reset(),
         }
     }
 
@@ -107,13 +137,15 @@ impl super::ChatActionBar {
         if let Some(chat) = self.chat() {
             let client_id = chat.session_().client_().id();
             let chat_id = chat.id();
+            // Typing belongs to the topic the composer is pointed at.
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.send_topic());
 
             // Enable chat action cooldown right away
             imp.chat_action_in_cooldown.set(true);
 
             // Send typing action
             let result =
-                tdlib::functions::send_chat_action(chat_id, None, Some(action), client_id).await;
+                tdlib::functions::send_chat_action(chat_id, topic, Some(action), client_id).await;
             if result.is_ok() {
                 glib::timeout_add_seconds_local_once(
                     5,
@@ -165,7 +197,7 @@ impl super::ChatActionBar {
 
             let parent = self.root().and_downcast().unwrap();
             let path = path.to_str().unwrap().to_string();
-            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.thread_topic());
+            let topic = utils::ancestor::<_, ui::ChatHistory>(self).and_then(|h| h.send_topic());
             ui::SendMediaWindow::new(
                 &parent,
                 &chat,

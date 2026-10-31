@@ -184,6 +184,17 @@ impl Application {
                 app.auto_open_topic(chat_id, forum_topic_id);
             },
         );
+        self.add_auto_action(
+            "auto-dump-topics",
+            Some(glib::VariantTy::INT64),
+            |app, p| {
+                let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
+                    log::warn!("auto-dump-topics: missing or invalid parameters");
+                    return;
+                };
+                app.auto_dump_topics(chat_id);
+            },
+        );
         self.add_auto_action("auto-user-info", Some(glib::VariantTy::INT64), |app, p| {
             let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
                 log::warn!("auto-user-info: missing or invalid parameters");
@@ -601,6 +612,41 @@ impl Application {
             Some(chat) => history.open_topic(&chat, forum_topic_id, None),
             None => log::warn!("auto-open-topic: chat {chat_id} did not open"),
         }
+    }
+
+    /// Logs the forum topics of `chat_id` (ids, names, colors) — the Devel-side
+    /// way to pick a topic id for `auto-open-topic`.
+    fn auto_dump_topics(&self, chat_id: ChatId) {
+        let client_id = self
+            .active_session()
+            .map(|s| s.client_().id())
+            .expect("no session");
+        utils::spawn(async move {
+            match tdlib::functions::get_forum_topics(
+                chat_id,
+                String::new(),
+                0,
+                0,
+                0,
+                100,
+                client_id,
+            )
+            .await
+            {
+                Ok(tdlib::enums::ForumTopics::ForumTopics(data)) => {
+                    for topic in &data.topics {
+                        log::warn!(
+                            "TOPIC id={} name={} color={:06X} order={}",
+                            topic.info.forum_topic_id,
+                            topic.info.name,
+                            topic.info.icon.color,
+                            topic.order
+                        );
+                    }
+                }
+                Err(e) => log::warn!("auto-dump-topics failed: {e:?}"),
+            }
+        });
     }
 
     /// Opens the send-media window with the given files but does not send, so

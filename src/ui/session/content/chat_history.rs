@@ -138,6 +138,10 @@ mod imp {
         /// Non-empty while the view shows a single forum topic of the current
         /// chat. Records the topic and any message to reveal once loaded.
         pub(super) topic: RefCell<Option<super::TopicUi>>,
+        /// The topic the composer was writing into when the last real chat
+        /// switch began: `set_chat` clears the topic window before the action
+        /// bar's deferred save runs, so it hands the outgoing topic over.
+        pub(super) outgoing_topic: RefCell<Option<tdlib::enums::MessageTopic>>,
         pub(super) send_animation: RefCell<Option<adw::Animation>>,
         pub(super) send_poll: RefCell<Option<gtk::TickCallbackId>>,
         pub(super) send_ghost: RefCell<Option<gtk::Overlay>>,
@@ -782,7 +786,10 @@ impl ChatHistory {
         let imp = self.imp();
         // Thread and topic modes are scoped to the chat they were opened from:
         // any real chat change (and the forced rebuild when backing out) leaves
-        // both.
+        // both. Hand the composer's outgoing topic to the action bar first: its
+        // draft save runs after this clears the window and must still land in
+        // the topic the user was writing in.
+        *imp.outgoing_topic.borrow_mut() = self.send_topic();
         imp.thread.borrow_mut().take();
         imp.topic.borrow_mut().take();
         imp.header_topic_label.set_visible(false);
@@ -3295,13 +3302,22 @@ impl ChatHistory {
         })
     }
 
-    /// The `MessageTopic` to route sends through while viewing a comment thread
-    /// (media windows and pickers that cannot reach the composer's own path).
-    pub(crate) fn thread_topic(&self) -> Option<tdlib::enums::MessageTopic> {
-        self.thread_send_context().map(|(_, message_thread_id)| {
-            tdlib::enums::MessageTopic::Thread(tdlib::types::MessageTopicThread {
-                message_thread_id,
+    /// The `MessageTopic` to route the composer's send through: the open forum
+    /// topic, the comment thread, or none for a plain chat.
+    pub(crate) fn send_topic(&self) -> Option<tdlib::enums::MessageTopic> {
+        self.forum_topic().or_else(|| {
+            self.thread_send_context().map(|(_, message_thread_id)| {
+                tdlib::enums::MessageTopic::Thread(tdlib::types::MessageTopicThread {
+                    message_thread_id,
+                })
             })
+        })
+    }
+
+    /// The open forum topic as a `MessageTopic`, if a topic window is showing.
+    pub(crate) fn forum_topic(&self) -> Option<tdlib::enums::MessageTopic> {
+        self.current_topic_id().map(|forum_topic_id| {
+            tdlib::enums::MessageTopic::Forum(tdlib::types::MessageTopicForum { forum_topic_id })
         })
     }
 
@@ -3483,6 +3499,11 @@ impl ChatHistory {
             return;
         }
         // A comment thread and a topic window never coexist.
+        // The text being written follows the topic left behind; the opened
+        // topic's own draft moves in (once the list knows it).
+        // shortcut: a topic whose list has not loaded opens with an empty
+        // composer; its draft appears on the next open after the fetch.
+        let outgoing_topic = self.send_topic();
         imp.thread.borrow_mut().take();
         *imp.topic.borrow_mut() = Some(TopicUi {
             forum_topic_id,
@@ -3505,6 +3526,13 @@ impl ChatHistory {
         *imp.model.borrow_mut() = Some(model.clone());
         imp.back_button.set_visible(true);
         self.update_topic_header(chat, forum_topic_id);
+        let incoming_draft = chat
+            .forum_topic_list()
+            .topic(forum_topic_id)
+            .and_then(|topic| topic.draft())
+            .map(model::BoxedDraftMessage);
+        imp.chat_action_bar
+            .retarget_draft(outgoing_topic, incoming_draft);
 
         // Load the topic window, then stick to the newest end unless the jump
         // asked for a specific message to reveal.
@@ -3572,15 +3600,19 @@ impl ChatHistory {
         }
     }
 
-    /// The forum topic shown by this window, if any. Consumed by the composer
-    /// send-routing task; kept here so topic state has one owner.
-    #[allow(dead_code)] // read by send routing in the next change
+    /// The forum topic shown by this window, if any.
     pub(crate) fn current_topic_id(&self) -> Option<i32> {
         self.imp()
             .topic
             .borrow()
             .as_ref()
             .map(|topic| topic.forum_topic_id)
+    }
+
+    /// Claims the topic the composer was writing into when the last chat
+    /// switch began (see `set_chat`); `None` outside that window.
+    pub(crate) fn take_outgoing_topic(&self) -> Option<tdlib::enums::MessageTopic> {
+        self.imp().outgoing_topic.borrow_mut().take()
     }
 
     pub(crate) fn view_messages(&self) {
