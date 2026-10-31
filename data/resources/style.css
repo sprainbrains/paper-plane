@@ -169,6 +169,23 @@ chatlist row > widget {
   padding: 6px 0;
 }
 
+/* Forum topic icons: TDLib restricts topic colors to this fixed pastel six. */
+.topic-icon {
+  border-radius: 12px;
+}
+
+.topic-icon .topic-icon-glyph {
+  color: rgba(0, 0, 0, 0.75);
+  font-weight: bold;
+}
+
+.topic-icon-color-6FB9F0 { background-color: #6FB9F0; }
+.topic-icon-color-FFD67E { background-color: #FFD67E; }
+.topic-icon-color-CB86DB { background-color: #CB86DB; }
+.topic-icon-color-8EEE98 { background-color: #8EEE98; }
+.topic-icon-color-FF93B2 { background-color: #FF93B2; }
+.topic-icon-color-FB6F5F { background-color: #FB6F5F; }
+
 /* Highlight a chat while a dragged message selection hovers it (drop = forward). */
 chatlist row > widget:drop(active) {
   background-color: alpha(@accent_bg_color, 0.12);

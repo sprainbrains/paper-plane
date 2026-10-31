@@ -305,7 +305,7 @@ fn draft_message_text(message: tdlib::types::DraftMessage) -> String {
     }
 }
 
-fn timestamp_text(date: i64) -> glib::GString {
+pub(crate) fn timestamp_text(date: i64) -> glib::GString {
     let datetime_now = glib::DateTime::now_local().unwrap();
     let datetime = glib::DateTime::from_unix_utc(date)
         .and_then(|t| t.to_local())

@@ -6,6 +6,7 @@ mod row;
 mod search;
 mod selection;
 mod topic_list;
+mod topic_row;
 
 use std::cell::Cell;
 use std::cell::OnceCell;
@@ -35,6 +36,7 @@ pub(crate) use self::search::SectionRow as SearchSectionRow;
 pub(crate) use self::search::SectionType as SearchSectionType;
 pub(crate) use self::selection::Selection;
 pub(crate) use self::topic_list::TopicList as SidebarTopicList;
+pub(crate) use self::topic_row::TopicRow as SidebarTopicRow;
 use crate::model;
 use crate::ui;
 use crate::utils;

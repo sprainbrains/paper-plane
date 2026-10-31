@@ -1,0 +1,113 @@
+using Gtk 4.0;
+using Adw 1;
+
+/// One row of the sidebar forum topic list: colored emoji icon, name, time,
+/// `Author: message` preview and the mute/pin/lock/unread markers. Clicking is
+/// handled by the list view's activate signal.
+template $PaplSidebarTopicRow: Widget {
+  hexpand: true;
+
+  layout-manager: BoxLayout {
+    spacing: 12;
+  };
+
+  Box icon_box {
+    width-request: 38;
+    height-request: 38;
+    halign: start;
+    valign: center;
+
+    styles ["topic-icon"]
+
+    Label icon_fallback {
+      halign: center;
+      valign: center;
+      hexpand: true;
+      vexpand: true;
+      label: "#";
+
+      styles ["topic-icon-glyph"]
+    }
+
+    Picture icon_emoji {
+      visible: false;
+      halign: center;
+      valign: center;
+      can-shrink: true;
+      width-request: 26;
+      height-request: 26;
+    }
+  }
+
+  Box {
+    orientation: vertical;
+    spacing: 3;
+    valign: center;
+    hexpand: true;
+
+    Box {
+      spacing: 6;
+      hexpand: true;
+
+      Label name_label {
+        hexpand: true;
+        ellipsize: end;
+        xalign: 0;
+      }
+
+      Box {
+        spacing: 3;
+
+        Image closed_icon {
+          visible: false;
+          icon-name: "system-lock-screen-symbolic";
+
+          styles ["dim-label"]
+        }
+
+        Image muted_icon {
+          visible: false;
+          icon-name: "notifications-disabled-symbolic";
+
+          styles ["dim-label"]
+        }
+
+        Image pin_icon {
+          visible: false;
+          icon-name: "view-pin-symbolic";
+
+          styles ["dim-label"]
+        }
+
+        Label timestamp_label {
+          single-line-mode: true;
+
+          styles ["dim-label", "numeric", "caption"]
+        }
+      }
+    }
+
+    Box {
+      spacing: 6;
+      hexpand: true;
+
+      Inscription preview_label {
+        hexpand: true;
+        text-overflow: ellipsize_end;
+        valign: center;
+
+        styles ["small-body"]
+      }
+
+      Label unread_label {
+        visible: false;
+        halign: end;
+        valign: center;
+        justify: center;
+        width-chars: 1;
+
+        styles ["unread-count", "unread-count-unmuted"]
+      }
+    }
+  }
+}

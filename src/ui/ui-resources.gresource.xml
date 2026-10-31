@@ -80,6 +80,7 @@
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/search/mod.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/search/section_row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/topic_list.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">session/sidebar/topic_row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/switcher.ui</file>
 
   </gresource>

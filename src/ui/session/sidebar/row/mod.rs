@@ -15,6 +15,8 @@ use crate::utils;
 
 mod updates;
 
+pub(crate) use self::updates::timestamp_text;
+
 mod imp {
     use super::*;
 

@@ -1,0 +1,284 @@
+use std::cell::Cell;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use glib::Properties;
+use glib::clone;
+use gtk::CompositeTemplate;
+use gtk::glib;
+use gtk::prelude::*;
+use gtk::subclass::prelude::*;
+
+use super::row::timestamp_text;
+use crate::model;
+use crate::strings;
+use crate::ui;
+use crate::utils;
+
+/// Texture target for the topic icon emoji (26 CSS px at up to 2x scale).
+const TOPIC_EMOJI_SIZE: i32 = 52;
+
+mod imp {
+    use super::*;
+
+    #[derive(Debug, Default, Properties, CompositeTemplate)]
+    #[properties(wrapper_type = super::TopicRow)]
+    #[template(resource = "/app/drey/paper-plane/ui/session/sidebar/topic_row.ui")]
+    pub(crate) struct TopicRow {
+        /// The topic this row currently renders.
+        pub(super) topic: RefCell<Option<model::Topic>>,
+        pub(super) session: RefCell<Option<model::ClientStateSession>>,
+        /// `changed` handler on the bound topic, disconnected on rebind.
+        pub(super) changed_handler: RefCell<Option<(model::Topic, glib::SignalHandlerId)>>,
+        /// Cleared on unmap: cancels in-flight emoji loads (AGENTS.md rule —
+        /// per-row work is gated on map/unmap, never on bind alone).
+        pub(super) demand: Rc<Cell<bool>>,
+        /// Emoji id the visible texture (or failed load) belongs to.
+        pub(super) emoji_loaded_for: Cell<i64>,
+        /// The `topic-icon-color-…` class currently applied to the icon box.
+        pub(super) color_class: RefCell<Option<String>>,
+        #[template_child]
+        pub(super) icon_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) icon_fallback: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) icon_emoji: TemplateChild<gtk::Picture>,
+        #[template_child]
+        pub(super) name_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) closed_icon: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub(super) muted_icon: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub(super) pin_icon: TemplateChild<gtk::Image>,
+        #[template_child]
+        pub(super) timestamp_label: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) preview_label: TemplateChild<gtk::Inscription>,
+        #[template_child]
+        pub(super) unread_label: TemplateChild<gtk::Label>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for TopicRow {
+        const NAME: &'static str = "PaplSidebarTopicRow";
+        type Type = super::TopicRow;
+        type ParentType = gtk::Widget;
+
+        fn class_init(klass: &mut Self::Class) {
+            klass.bind_template();
+        }
+
+        fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
+            obj.init_template();
+        }
+    }
+
+    impl ObjectImpl for TopicRow {
+        fn properties() -> &'static [glib::ParamSpec] {
+            Self::derived_properties()
+        }
+
+        fn set_property(&self, id: usize, value: &glib::Value, pspec: &glib::ParamSpec) {
+            self.derived_set_property(id, value, pspec)
+        }
+
+        fn property(&self, id: usize, pspec: &glib::ParamSpec) -> glib::Value {
+            self.derived_property(id, pspec)
+        }
+
+        fn constructed(&self) {
+            self.parent_constructed();
+            let obj = self.obj();
+            obj.connect_map(clone!(
+                #[weak(rename_to = row)]
+                obj,
+                move |_| row.start_row_work()
+            ));
+            obj.connect_unmap(clone!(
+                #[weak(rename_to = row)]
+                obj,
+                move |_| row.stop_row_work()
+            ));
+        }
+
+        fn dispose(&self) {
+            self.dispose_template();
+            if let Some((topic, id)) = self.changed_handler.take() {
+                topic.disconnect(id);
+            }
+        }
+    }
+
+    impl WidgetImpl for TopicRow {}
+}
+
+glib::wrapper! {
+    pub(crate) struct TopicRow(ObjectSubclass<imp::TopicRow>)
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+impl TopicRow {
+    pub(crate) fn new() -> Self {
+        glib::Object::new()
+    }
+
+    /// Binds (or rebinds) the row to a topic; re-rendering then follows the
+    /// topic's `changed` signal.
+    pub(crate) fn set_topic(
+        &self,
+        topic: Option<&model::Topic>,
+        session: Option<&model::ClientStateSession>,
+    ) {
+        let imp = self.imp();
+        if let Some((watched, id)) = imp.changed_handler.take() {
+            watched.disconnect(id);
+        }
+        imp.emoji_loaded_for.set(0);
+        imp.topic.replace(topic.cloned());
+        imp.session.replace(session.cloned());
+        if let Some(topic) = topic {
+            let weak = self.downgrade();
+            let id = topic.connect_local("changed", false, move |_| {
+                if let Some(row) = weak.upgrade() {
+                    row.update_all();
+                }
+                None
+            });
+            imp.changed_handler.replace(Some((topic.clone(), id)));
+        }
+        self.update_all();
+        // Only mapped rows decode; a bound-but-unmapped row starts on `map`.
+        if self.is_mapped() {
+            self.start_row_work();
+        }
+    }
+
+    fn start_row_work(&self) {
+        self.imp().demand.set(true);
+        self.load_emoji();
+    }
+
+    fn stop_row_work(&self) {
+        self.imp().demand.set(false);
+    }
+
+    fn update_all(&self) {
+        let imp = self.imp();
+        let Some(topic) = imp.topic.borrow().clone() else {
+            return;
+        };
+
+        imp.name_label.set_text(&topic.name());
+        imp.apply_icon_color(topic.icon_color());
+
+        let emoji_id = topic.icon_custom_emoji_id();
+        if emoji_id == 0 {
+            imp.icon_fallback.set_visible(true);
+            imp.icon_emoji.set_visible(false);
+        } else if imp.emoji_loaded_for.get() == emoji_id {
+            imp.icon_fallback.set_visible(false);
+            imp.icon_emoji.set_visible(true);
+        }
+
+        let last_message = topic.last_message();
+        if let Some(message) = last_message.as_ref() {
+            imp.timestamp_label
+                .set_label(&timestamp_text(message.date() as i64));
+            imp.timestamp_label.set_visible(true);
+            let sender = strings::message_sender(&message.sender(), true);
+            imp.preview_label.set_text(Some(&format!(
+                "{sender}: {}",
+                strings::message_content(message)
+            )));
+            imp.preview_label.set_visible(true);
+        } else {
+            imp.timestamp_label.set_visible(false);
+            imp.preview_label.set_visible(false);
+        }
+
+        imp.closed_icon.set_visible(topic.is_closed());
+        imp.muted_icon.set_visible(topic.is_muted());
+        imp.pin_icon.set_visible(topic.is_pinned());
+
+        let unread = topic.unread_count();
+        imp.unread_label.set_visible(unread > 0);
+        if unread > 0 {
+            imp.unread_label.set_label(&unread.to_string());
+        }
+    }
+}
+
+impl imp::TopicRow {
+    /// Pastel squircle background in the topic's TDLib color. TDLib restricts
+    /// topic colors to a fixed six-value palette, so the styles ship as
+    /// static classes and the row just swaps one.
+    fn apply_icon_color(&self, color: i32) {
+        let class = format!("topic-icon-color-{color:06X}");
+        let current = self.color_class.replace(Some(class.clone()));
+        if current.as_deref() != Some(class.as_str()) {
+            if let Some(old) = current {
+                self.icon_box.remove_css_class(&old);
+            }
+            self.icon_box.add_css_class(&class);
+        }
+    }
+}
+
+impl TopicRow {
+    /// Decodes the topic's custom-emoji icon while the row is demanded
+    /// (mapped); a recycled row re-uses the texture when the id is unchanged.
+    fn load_emoji(&self) {
+        let imp = self.imp();
+        let Some(topic) = imp.topic.borrow().clone() else {
+            return;
+        };
+        let emoji_id = topic.icon_custom_emoji_id();
+        if emoji_id == 0 || imp.emoji_loaded_for.get() == emoji_id {
+            return;
+        }
+        let Some(session) = imp.session.borrow().clone() else {
+            return;
+        };
+        let demand = imp.demand.clone();
+        demand.set(self.is_mapped());
+        if !demand.get() {
+            return;
+        }
+        imp.emoji_loaded_for.set(emoji_id);
+
+        utils::spawn(clone!(
+            #[weak(rename_to = row)]
+            self,
+            async move {
+                let client_id = session.client_().id();
+                let Ok(tdlib::enums::Stickers::Stickers(data)) =
+                    tdlib::functions::get_custom_emoji_stickers(vec![emoji_id], client_id).await
+                else {
+                    return;
+                };
+                let Some(sticker) = data.stickers.into_iter().next() else {
+                    return;
+                };
+                let Ok(texture) =
+                    ui::load_picker_preview(&sticker, TOPIC_EMOJI_SIZE, &session, demand.clone())
+                        .await
+                else {
+                    return;
+                };
+                // The row may have been recycled to another topic meanwhile.
+                let imp = row.imp();
+                if !demand.get()
+                    || imp.emoji_loaded_for.get() != emoji_id
+                    || imp.topic.borrow().as_ref() != Some(&topic)
+                {
+                    return;
+                }
+                imp.icon_emoji.set_paintable(Some(&texture));
+                imp.icon_emoji.set_visible(true);
+                imp.icon_fallback.set_visible(false);
+            }
+        ));
+    }
+}
