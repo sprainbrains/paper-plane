@@ -397,7 +397,29 @@ impl Application {
                         body.insert_str(0, &(sender_name + ": "));
                     }
 
-                    let notification = gio::Notification::new(&chat.title());
+                    // In a forum, the topic joins the title. The name comes
+                    // from the cached topic list (loaded while the forum's row
+                    // is on screen); an unknown topic must not delay the
+                    // notification for a server fetch.
+                    // shortcut: first-ever forum notification may lack the
+                    // topic name; every later one has it once the list lands.
+                    let title = if chat.is_forum() {
+                        let topic_name = message.topic_forum_id().and_then(|id| {
+                            chat.try_forum_topic_list()
+                                .and_then(|list| list.topic(id))
+                                .map(|topic| topic.name())
+                        });
+                        strings::forum_notification_parts(
+                            &chat.title(),
+                            topic_name.as_deref(),
+                            body.clone(),
+                        )
+                        .0
+                    } else {
+                        chat.title()
+                    };
+
+                    let notification = gio::Notification::new(&title);
                     notification.set_body(Some(&body));
 
                     Some(notification)

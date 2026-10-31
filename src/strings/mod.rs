@@ -3,6 +3,7 @@ mod message;
 mod user;
 
 pub(crate) use self::chat_action::chat_action;
+pub(crate) use self::message::forum_notification_parts;
 pub(crate) use self::message::message_content;
 pub(crate) use self::message::message_sender;
 pub(crate) use self::user::user_display_name;

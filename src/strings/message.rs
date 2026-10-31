@@ -447,9 +447,39 @@ fn message_contact_registered(sender: &model::MessageSender) -> String {
     gettext_f("{sender} joined Telegram", &[("sender", &sender)])
 }
 
+/// Notification headline for a forum chat: the topic joins the chat title so
+/// the user sees *where* in the forum the message landed.
+pub(crate) fn forum_notification_parts(
+    chat_title: &str,
+    topic_name: Option<&str>,
+    body: String,
+) -> (String, String) {
+    let title = match topic_name {
+        Some(topic) => format!("{chat_title} · {topic}"),
+        None => chat_title.to_string(),
+    };
+    (title, body)
+}
+
 #[cfg(test)]
 mod tests {
+    use super::forum_notification_parts;
     use super::truncate_with_ellipsis;
+
+    #[test]
+    fn forum_notification_title_joins_chat_and_topic() {
+        assert_eq!(
+            forum_notification_parts("Aurora Developers", Some("Games"), " Denis: hi".into()),
+            (
+                "Aurora Developers · Games".to_string(),
+                " Denis: hi".to_string()
+            )
+        );
+        assert_eq!(
+            forum_notification_parts("Aurora Developers", None, "x".into()).0,
+            "Aurora Developers"
+        );
+    }
 
     #[test]
     fn truncates_at_grapheme_boundaries() {
