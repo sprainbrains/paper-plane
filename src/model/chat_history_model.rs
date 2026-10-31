@@ -42,6 +42,32 @@ pub(crate) struct ThreadContext {
     pub anchor: model::Message,
 }
 
+/// Identifies the message window a [`ChatHistoryModel`] is showing: a whole
+/// chat, one comment thread, or one forum topic.
+#[derive(Clone, Debug, Default)]
+pub(crate) enum HistorySource {
+    #[default]
+    Chat,
+    Thread(ThreadContext),
+    #[allow(dead_code)] // constructed by the forum topic window (next change)
+    ForumTopic {
+        forum_topic_id: i32,
+    },
+}
+
+/// Forum topic that owns messages TDLib leaves without an explicit topic id
+/// (Telegram Desktop parity: General always has id 1).
+pub(crate) const GENERAL_TOPIC_ID: i32 = 1;
+
+/// Whether a message with `message_topic` belongs in a forum-topic window
+/// opened for `window_topic`.
+fn forum_topic_accepts(window_topic: i32, message_topic: Option<i32>) -> bool {
+    match message_topic {
+        Some(id) => id == window_topic,
+        None => window_topic == GENERAL_TOPIC_ID,
+    }
+}
+
 /// Number of synthetic tail items every window keeps at its oldest end: the
 /// bottom-filling spacer, plus (in thread mode) the intro pill and the anchor.
 const SPACER_TAIL_ITEMS: usize = 1;
@@ -68,10 +94,10 @@ mod imp {
         /// Whether the loaded window includes the chat's newest message. `false` after
         /// jumping to an old message, until the gap is closed by loading newer ones.
         pub(super) newest_loaded: Cell<bool>,
-        /// When set, the model shows a single comment thread of the (discussion)
-        /// `chat`: loads via the thread API and only accepts messages belonging to
-        /// the thread.
-        pub(super) thread: RefCell<Option<super::ThreadContext>>,
+        /// Which window this model shows: whole chat, one comment thread (loads
+        /// via the thread API and only accepts messages belonging to the
+        /// thread), or one forum topic.
+        pub(super) source: RefCell<super::HistorySource>,
         /// The one spacer item this window pins at its oldest end. Shared
         /// across window resets so the view's row keeps its binding and the
         /// chat history view keeps one notification target.
@@ -149,21 +175,28 @@ glib::wrapper! {
 
 impl ChatHistoryModel {
     pub(crate) fn new(chat: &model::Chat) -> Self {
-        Self::build(chat, None)
+        Self::build(chat, HistorySource::Chat)
     }
 
     /// A model showing a single comment thread. `discussion_chat` is the chat the
     /// comments live in; the context keys the thread API and filters updates.
     pub(crate) fn new_thread(discussion_chat: &model::Chat, thread: ThreadContext) -> Self {
-        Self::build(discussion_chat, Some(thread))
+        Self::build(discussion_chat, HistorySource::Thread(thread))
     }
 
-    fn build(chat: &model::Chat, thread: Option<ThreadContext>) -> Self {
+    /// A model showing a single forum topic of `chat`, keyed by TDLib's
+    /// `forum_topic_id` (General is [`GENERAL_TOPIC_ID`]).
+    #[allow(dead_code)] // called by the forum topic window (next change)
+    pub(crate) fn new_forum_topic(chat: &model::Chat, forum_topic_id: i32) -> Self {
+        Self::build(chat, HistorySource::ForumTopic { forum_topic_id })
+    }
+
+    fn build(chat: &model::Chat, source: HistorySource) -> Self {
         let obj: ChatHistoryModel = glib::Object::new();
 
         obj.imp().chat.set(Some(chat));
         obj.imp().newest_loaded.set(true);
-        *obj.imp().thread.borrow_mut() = thread;
+        *obj.imp().source.borrow_mut() = source;
         obj.imp().list.borrow_mut().push_back(obj.spacer().clone());
         obj.seed_thread_tail();
 
@@ -227,8 +260,16 @@ impl ChatHistoryModel {
         self.emit::<()>(signal, &[] as &[&dyn glib::prelude::ToValue]);
     }
 
+    /// Which window this model shows.
+    pub(crate) fn source(&self) -> HistorySource {
+        self.imp().source.borrow().clone()
+    }
+
     pub(crate) fn thread(&self) -> Option<ThreadContext> {
-        self.imp().thread.borrow().clone()
+        match self.source() {
+            HistorySource::Thread(thread) => Some(thread),
+            _ => None,
+        }
     }
 
     /// Empties the window and re-pins its synthetic tail (spacer, plus the
@@ -271,7 +312,7 @@ impl ChatHistoryModel {
     /// Synthetic items pinned at the storage back (screen top).
     fn tail_len(&self) -> usize {
         SPACER_TAIL_ITEMS
-            + if self.imp().thread.borrow().is_some() {
+            + if matches!(*self.imp().source.borrow(), HistorySource::Thread(_)) {
                 THREAD_TAIL_ITEMS
             } else {
                 0
@@ -285,27 +326,32 @@ impl ChatHistoryModel {
     /// comments scrolled away from this window are missed until reload — an
     /// acceptable, vanishingly rare gap for a desktop view.
     fn accepts_message(&self, message: &model::Message) -> bool {
-        let Some(thread) = self.thread() else {
-            return true;
-        };
-        let discussion_id = self.chat().map(|chat| chat.id()).unwrap_or_default();
-        match message.reply_to().map(|reply| reply.0) {
-            Some(tdlib::enums::MessageReplyTo::Message(data)) => {
-                if data.chat_id != discussion_id {
-                    return false;
-                }
-                data.message_id == thread.message_thread_id
-                    || self
-                        .imp()
-                        .list
-                        .borrow()
-                        .iter()
-                        .filter_map(|item| item.message())
-                        .any(|loaded| loaded.id() == data.message_id)
+        match self.source() {
+            HistorySource::Chat => true,
+            HistorySource::ForumTopic { forum_topic_id } => {
+                forum_topic_accepts(forum_topic_id, message.topic_forum_id())
             }
-            // Own comments sent through the thread topic can arrive without a
-            // reply target; the composer only sends into the thread in this mode.
-            _ => message.is_outgoing(),
+            HistorySource::Thread(thread) => {
+                let discussion_id = self.chat().map(|chat| chat.id()).unwrap_or_default();
+                match message.reply_to().map(|reply| reply.0) {
+                    Some(tdlib::enums::MessageReplyTo::Message(data)) => {
+                        if data.chat_id != discussion_id {
+                            return false;
+                        }
+                        data.message_id == thread.message_thread_id
+                            || self
+                                .imp()
+                                .list
+                                .borrow()
+                                .iter()
+                                .filter_map(|item| item.message())
+                                .any(|loaded| loaded.id() == data.message_id)
+                    }
+                    // Own comments sent through the thread topic can arrive without a
+                    // reply target; the composer only sends into the thread in this mode.
+                    _ => message.is_outgoing(),
+                }
+            }
         }
     }
 
@@ -318,12 +364,16 @@ impl ChatHistoryModel {
         offset: i32,
         limit: i32,
     ) -> Result<Vec<model::Message>, tdlib::types::Error> {
-        match self.thread() {
-            Some(thread) => {
+        match self.source() {
+            HistorySource::Thread(thread) => {
                 chat.get_thread_history(thread.message_thread_id, from_id, offset, limit)
                     .await
             }
-            None => chat.get_chat_history_around(from_id, offset, limit).await,
+            HistorySource::ForumTopic { forum_topic_id } => {
+                chat.get_forum_topic_history(forum_topic_id, from_id, offset, limit)
+                    .await
+            }
+            HistorySource::Chat => chat.get_chat_history_around(from_id, offset, limit).await,
         }
     }
 
@@ -357,8 +407,8 @@ impl ChatHistoryModel {
         if messages.is_empty() {
             // Thread windows are authoritative per fetch: no server-sync race
             // to wait out, an empty page is simply the end.
-            let window_is_stub =
-                imp.thread.borrow().is_none() && imp.list.borrow().len() <= limit as usize;
+            let window_is_stub = imp.list.borrow().len() <= limit as usize
+                && matches!(*imp.source.borrow(), HistorySource::Chat);
             if window_is_stub && imp.empty_page_retries.get() < 10 {
                 imp.empty_page_retries.set(imp.empty_page_retries.get() + 1);
                 glib::timeout_future(std::time::Duration::from_millis(150)).await;
@@ -735,7 +785,7 @@ impl ChatHistoryModel {
         let (position, removed, added) = {
             let mut list = imp.list.borrow_mut();
             let old_len = list.len();
-            let tail = if imp.thread.borrow().is_some() {
+            let tail = if matches!(*imp.source.borrow(), HistorySource::Thread(_)) {
                 SPACER_TAIL_ITEMS + THREAD_TAIL_ITEMS
             } else {
                 SPACER_TAIL_ITEMS
@@ -1150,9 +1200,11 @@ mod tests {
 
     use gtk::glib;
 
+    use super::GENERAL_TOPIC_ID;
     use super::album_group_ranges;
     use super::day_divider_offsets;
     use super::emit_range;
+    use super::forum_topic_accepts;
     use super::remove_trailing_day_divider;
     use super::view_emit_position;
     use crate::model;
@@ -1243,5 +1295,15 @@ mod tests {
         assert_eq!(emit_range(40, 0, 43, 1, false), (3, 39));
         // A prepend merging one boundary item with a two-item batch.
         assert_eq!(emit_range(40, 1, 41, 1, true), (2, 0));
+    }
+
+    #[test]
+    fn forum_topic_window_accepts_own_and_general_null_topics() {
+        assert!(forum_topic_accepts(5, Some(5)));
+        assert!(!forum_topic_accepts(5, Some(6)));
+        assert!(!forum_topic_accepts(5, None));
+        // General (id 1) also owns messages with no topic_id at all.
+        assert!(forum_topic_accepts(GENERAL_TOPIC_ID, None));
+        assert!(forum_topic_accepts(GENERAL_TOPIC_ID, Some(1)));
     }
 }

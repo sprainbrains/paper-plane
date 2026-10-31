@@ -793,6 +793,39 @@ impl Chat {
             .collect())
     }
 
+    /// Loads a forum topic's messages of `self`, newest-first, like the other
+    /// history loaders. `forum_topic_id` is TDLib's topic key (General is 1).
+    pub(crate) async fn get_forum_topic_history(
+        &self,
+        forum_topic_id: i32,
+        from_id: MessageId,
+        offset: i32,
+        limit: i32,
+    ) -> Result<Vec<model::Message>, tdlib::types::Error> {
+        let client_id = self.session_().client_().id();
+        let result = tdlib::functions::get_forum_topic_history(
+            self.id(),
+            forum_topic_id,
+            from_id,
+            offset,
+            limit,
+            client_id,
+        )
+        .await;
+
+        let tdlib::enums::Messages::Messages(data) = result?;
+
+        self.session_()
+            .ensure_sender_chats(data.messages.iter().flatten())
+            .await;
+        Ok(data
+            .messages
+            .into_iter()
+            .flatten()
+            .map(|m| self.upsert_message(m))
+            .collect())
+    }
+
     pub(crate) async fn mark_as_read(&self) -> Result<(), tdlib::types::Error> {
         if let Some(message) = self.last_message() {
             tdlib::functions::view_messages(

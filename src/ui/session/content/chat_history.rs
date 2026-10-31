@@ -3474,9 +3474,16 @@ impl ChatHistory {
 
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
+        // Reads inside a topic window must credit the topic, not the chat.
+        let source = match imp.model.borrow().as_ref().map(|m| m.source()) {
+            Some(model::HistorySource::ForumTopic { .. }) => {
+                Some(tdlib::enums::MessageSource::ForumTopicHistory)
+            }
+            _ => None,
+        };
         utils::spawn(async move {
             if let Err(e) =
-                tdlib::functions::view_messages(chat_id, visible, None, true, client_id).await
+                tdlib::functions::view_messages(chat_id, visible, source, true, client_id).await
             {
                 log::warn!("Failed to mark messages as viewed: {e:?}");
             }

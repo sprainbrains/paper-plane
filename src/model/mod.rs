@@ -71,6 +71,7 @@ pub(crate) use self::chat_history_item::ChatHistoryItem;
 pub(crate) use self::chat_history_item::ChatHistoryItemType;
 pub(crate) use self::chat_history_model::ChatHistoryError;
 pub(crate) use self::chat_history_model::ChatHistoryModel;
+pub(crate) use self::chat_history_model::HistorySource;
 pub(crate) use self::chat_history_model::ThreadContext;
 pub(crate) use self::chat_list::ChatList;
 pub(crate) use self::chat_list_item::ChatListItem;

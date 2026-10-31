@@ -87,6 +87,8 @@ mod imp {
         pub(super) is_edited: Cell<bool>,
         #[property(get)]
         pub(super) is_pinned: Cell<bool>,
+        /// Forum/thread topic the message belongs to, when TDLib tagged it.
+        pub(super) topic_id: RefCell<Option<tdlib::enums::MessageTopic>>,
     }
 
     #[glib::object_subclass]
@@ -170,8 +172,18 @@ impl Message {
             .replace(model::BoxedMessageContent(td_message.content));
         imp.is_edited.set(td_message.edit_date > 0);
         imp.is_pinned.set(td_message.is_pinned);
+        *imp.topic_id.borrow_mut() = td_message.topic_id;
 
         obj
+    }
+
+    /// Forum topic id this message belongs to, if TDLib tagged it with one.
+    /// Thread/direct-messages/saved-messages topics are not forum topics.
+    pub(crate) fn topic_forum_id(&self) -> Option<i32> {
+        match self.imp().topic_id.borrow().as_ref() {
+            Some(tdlib::enums::MessageTopic::Forum(data)) => Some(data.forum_topic_id),
+            _ => None,
+        }
     }
 
     weak_getter!(chat_, chat, model::Chat);
@@ -239,6 +251,8 @@ impl Message {
         self.set_content(model::BoxedMessageContent(td_message.content));
         self.set_is_edited(td_message.edit_date > 0);
         self.set_is_pinned(td_message.is_pinned);
+        // A chat converted to a forum moves messages between topics.
+        *imp.topic_id.borrow_mut() = td_message.topic_id;
     }
 
     pub(crate) fn handle_update(&self, update: tdlib::enums::Update) {
