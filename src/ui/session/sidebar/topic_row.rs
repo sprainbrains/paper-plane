@@ -2,12 +2,13 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use adw::prelude::*;
+use gettextrs::gettext;
 use glib::Properties;
 use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
-use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
 use super::row::timestamp_text;
@@ -79,6 +80,24 @@ mod imp {
             });
             klass.install_action("topic-row.edit", None, move |row, _, _| {
                 row.open_edit_dialog();
+            });
+            klass.install_action("topic-row.close", None, move |row, _, _| {
+                row.set_closed(true);
+            });
+            klass.install_action("topic-row.reopen", None, move |row, _, _| {
+                row.set_closed(false);
+            });
+            klass.install_action("topic-row.pin", None, move |row, _, _| {
+                row.set_pinned(true);
+            });
+            klass.install_action("topic-row.unpin", None, move |row, _, _| {
+                row.set_pinned(false);
+            });
+            klass.install_action("topic-row.delete", None, move |row, _, _| {
+                row.confirm_delete();
+            });
+            klass.install_action("topic-row.hide-general", None, move |row, _, _| {
+                row.hide_general();
             });
         }
 
@@ -231,13 +250,110 @@ impl TopicRow {
 
         self.action_set_enabled("topic-row.mute", !topic.is_muted());
         self.action_set_enabled("topic-row.unmute", topic.is_muted());
-        self.action_set_enabled(
-            "topic-row.edit",
-            imp.chat
-                .borrow()
-                .as_ref()
-                .is_some_and(|chat| crate::ui::session::forum::can_manage_topic(chat, &topic)),
-        );
+        let can_manage = imp
+            .chat
+            .borrow()
+            .as_ref()
+            .is_some_and(|chat| crate::ui::session::forum::can_manage_topic(chat, &topic));
+        self.action_set_enabled("topic-row.edit", can_manage);
+        self.action_set_enabled("topic-row.close", can_manage && !topic.is_closed());
+        self.action_set_enabled("topic-row.reopen", can_manage && topic.is_closed());
+        self.action_set_enabled("topic-row.pin", can_manage && !topic.is_pinned());
+        self.action_set_enabled("topic-row.unpin", can_manage && topic.is_pinned());
+        self.action_set_enabled("topic-row.delete", can_manage);
+        // Hiding General is a per-user view option, open to any member.
+        self.action_set_enabled("topic-row.hide-general", topic.is_general());
+    }
+
+    /// Shared runner for the topic management calls: log failures as toasts.
+    fn run_manage(
+        &self,
+        call: impl std::future::Future<Output = Result<(), tdlib::types::Error>> + 'static,
+    ) {
+        let widget = self.clone();
+        utils::spawn(async move {
+            if let Err(e) = call.await {
+                utils::show_toast(&widget, e.message);
+            }
+        });
+    }
+
+    fn bound(&self) -> Option<(model::Topic, model::Chat)> {
+        let imp = self.imp();
+        Some((imp.topic.borrow().clone()?, imp.chat.borrow().clone()?))
+    }
+
+    fn set_closed(&self, is_closed: bool) {
+        let Some((topic, chat)) = self.bound() else {
+            return;
+        };
+        let client_id = chat.session_().client_().id();
+        self.run_manage(tdlib::functions::toggle_forum_topic_is_closed(
+            chat.id(),
+            topic.forum_topic_id(),
+            is_closed,
+            client_id,
+        ));
+    }
+
+    fn set_pinned(&self, is_pinned: bool) {
+        let Some((topic, chat)) = self.bound() else {
+            return;
+        };
+        let client_id = chat.session_().client_().id();
+        self.run_manage(tdlib::functions::toggle_forum_topic_is_pinned(
+            chat.id(),
+            topic.forum_topic_id(),
+            is_pinned,
+            client_id,
+        ));
+    }
+
+    fn hide_general(&self) {
+        let Some((_, chat)) = self.bound() else {
+            return;
+        };
+        let client_id = chat.session_().client_().id();
+        self.run_manage(tdlib::functions::toggle_general_forum_topic_is_hidden(
+            chat.id(),
+            true,
+            client_id,
+        ));
+    }
+
+    /// Deletion is destructive and irreversible for everyone: confirm first.
+    fn confirm_delete(&self) {
+        let Some((topic, chat)) = self.bound() else {
+            return;
+        };
+        let dialog = adw::AlertDialog::builder()
+            .heading(gettext("Delete Topic"))
+            .body(gettext(
+                "Are you sure you want to delete this topic for everyone?",
+            ))
+            .build();
+        dialog.add_response("cancel", &gettext("_Cancel"));
+        dialog.add_response("delete", &gettext("_Delete"));
+        dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        dialog.choose(Some(self), gtk::gio::Cancellable::NONE, move |response| {
+            if response != "delete" {
+                return;
+            }
+            let client_id = chat.session_().client_().id();
+            utils::spawn(async move {
+                if let Err(e) = tdlib::functions::delete_forum_topic(
+                    chat.id(),
+                    topic.forum_topic_id(),
+                    client_id,
+                )
+                .await
+                {
+                    log::warn!("Failed to delete a forum topic: {e:?}");
+                }
+            });
+        });
     }
 
     /// Opens the rename/re-icon dialog for this topic.

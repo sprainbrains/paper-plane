@@ -17,8 +17,46 @@ menu model {
 
   section {
     item {
+      label: _("_Close Topic");
+      action: "topic-row.close";
+      hidden-when: "action-disabled";
+    }
+
+    item {
+      label: _("Re_open Topic");
+      action: "topic-row.reopen";
+      hidden-when: "action-disabled";
+    }
+
+    item {
+      label: _("_Pin in List");
+      action: "topic-row.pin";
+      hidden-when: "action-disabled";
+    }
+
+    item {
+      label: _("_Unpin from List");
+      action: "topic-row.unpin";
+      hidden-when: "action-disabled";
+    }
+
+    item {
       label: _("_Edit Topic");
       action: "topic-row.edit";
+      hidden-when: "action-disabled";
+    }
+
+    item {
+      label: _("Hide _General Topic");
+      action: "topic-row.hide-general";
+      hidden-when: "action-disabled";
+    }
+  }
+
+  section {
+    item {
+      label: _("_Delete Topic");
+      action: "topic-row.delete";
       hidden-when: "action-disabled";
     }
   }

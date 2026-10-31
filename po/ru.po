@@ -1827,6 +1827,30 @@ msgstr "_Включить звук"
 
 msgid "_Edit Topic"
 msgstr "_Изменить тему"
+msgid "_Close Topic"
+msgstr "_Закрыть тему"
+
+msgid "Re_open Topic"
+msgstr "_Открыть тему снова"
+
+msgid "_Pin in List"
+msgstr "_Закрепить в списке"
+
+msgid "_Unpin from List"
+msgstr "От_крепить от списка"
+
+msgid "Hide _General Topic"
+msgstr "Скрыть об_щую тему"
+
+msgid "_Delete Topic"
+msgstr "_Удалить тему"
+
+msgid "Delete Topic"
+msgstr "Удалить тему"
+
+msgid "Are you sure you want to delete this topic for everyone?"
+msgstr "Вы уверены, что хотите удалить эту тему для всех?"
+
 
 
 msgid "Edit Topic"
