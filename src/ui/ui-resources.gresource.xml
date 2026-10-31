@@ -76,6 +76,7 @@
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/mod.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/row_menu.ui</file>
+    <file compressed="true" preprocess="xml-stripblanks">session/sidebar/topic_row_menu.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/search/item_row.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/search/mod.ui</file>
     <file compressed="true" preprocess="xml-stripblanks">session/sidebar/search/section_row.ui</file>

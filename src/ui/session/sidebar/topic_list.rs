@@ -134,7 +134,7 @@ impl TopicList {
     /// identity (colored emoji icon, preview, badges).
     fn bind_list(&self, chat: &model::Chat) {
         let imp = self.imp();
-        let factory = topic_row_factory(&chat.session_());
+        let factory = topic_row_factory(chat);
 
         let model = chat.forum_topic_list();
         *self.imp().topics.borrow_mut() = Some(model.clone());
@@ -146,8 +146,8 @@ impl TopicList {
 
 /// A factory binding `model::Topic` items to full `TopicRow`s. Shared with the
 /// forward dialog's topic step.
-pub(crate) fn topic_row_factory(session: &model::ClientStateSession) -> gtk::SignalListItemFactory {
-    let session = session.clone();
+pub(crate) fn topic_row_factory(chat: &model::Chat) -> gtk::SignalListItemFactory {
+    let chat = chat.clone();
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();
@@ -159,7 +159,7 @@ pub(crate) fn topic_row_factory(session: &model::ClientStateSession) -> gtk::Sig
             return;
         };
         let topic = item.item().and_downcast::<model::Topic>();
-        row.set_topic(topic.as_ref(), Some(&session));
+        row.set_topic(topic.as_ref(), Some(&chat));
     });
     factory.connect_unbind(|_, item| {
         let item = item.downcast_ref::<gtk::ListItem>().unwrap();

@@ -179,18 +179,12 @@ impl ForwardWindow {
     /// the (lazily fetched) topic list; chat search is meaningless there.
     fn enter_topic_step(&self, chat: &model::Chat) {
         let imp = self.imp();
-        let Some(session) = imp.session.borrow().clone() else {
-            return;
-        };
-        let Some(model) = session.model() else {
-            return;
-        };
         imp.forum_chat.replace(Some(chat.clone()));
         let list = chat.forum_topic_list();
         imp.topic_list_view
             .set_model(Some(&gtk::NoSelection::new(Some(list))));
         imp.topic_list_view
-            .set_factory(Some(&super::super::sidebar::topic_row_factory(&model)));
+            .set_factory(Some(&super::super::sidebar::topic_row_factory(chat)));
         imp.forward_stack.set_visible_child_name("topics");
         imp.topics_back_button.set_visible(true);
         imp.search_entry.set_sensitive(false);

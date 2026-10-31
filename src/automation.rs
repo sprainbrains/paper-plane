@@ -635,7 +635,7 @@ impl Application {
                 Ok(tdlib::enums::ForumTopics::ForumTopics(data)) => {
                     for topic in &data.topics {
                         log::warn!(
-                            "TOPIC id={} name={} color={:06X} order={} closed={} general={} msg={}",
+                            "TOPIC id={} name={} color={:06X} order={} closed={} general={} msg={} muted={}",
                             topic.info.forum_topic_id,
                             topic.info.name,
                             topic.info.icon.color,
@@ -643,6 +643,8 @@ impl Application {
                             topic.info.is_closed,
                             topic.info.is_general,
                             topic.last_message.as_ref().map(|m| m.id).unwrap_or(0),
+                            !topic.notification_settings.use_default_mute_for
+                                && topic.notification_settings.mute_for > 0,
                         );
                     }
                 }

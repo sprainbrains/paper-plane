@@ -1,0 +1,22 @@
+using Gtk 4.0;
+
+menu model {
+  section {
+    item {
+      label: _("_Mute");
+      action: "topic-row.mute";
+      hidden-when: "action-disabled";
+    }
+
+    item {
+      label: _("_Unmute");
+      action: "topic-row.unmute";
+      hidden-when: "action-disabled";
+    }
+  }
+}
+
+PopoverMenu menu {
+  menu-model: model;
+  has-arrow: false;
+}

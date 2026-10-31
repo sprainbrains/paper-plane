@@ -5,6 +5,7 @@ use std::rc::Rc;
 use glib::Properties;
 use glib::clone;
 use gtk::CompositeTemplate;
+use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -27,7 +28,10 @@ mod imp {
     pub(crate) struct TopicRow {
         /// The topic this row currently renders.
         pub(super) topic: RefCell<Option<model::Topic>>,
-        pub(super) session: RefCell<Option<model::ClientStateSession>>,
+        /// The forum the bound topic belongs to (mute calls need its id).
+        pub(super) chat: RefCell<Option<model::Chat>>,
+        /// This row's context menu (mute/unmute).
+        pub(super) menu: std::cell::OnceCell<gtk::PopoverMenu>,
         /// `changed` handler on the bound topic, disconnected on rebind.
         pub(super) changed_handler: RefCell<Option<(model::Topic, glib::SignalHandlerId)>>,
         /// Cleared on unmap: cancels in-flight emoji loads (AGENTS.md rule —
@@ -67,6 +71,12 @@ mod imp {
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
+            klass.install_action("topic-row.mute", None, move |row, _, _| {
+                row.toggle_mute(true);
+            });
+            klass.install_action("topic-row.unmute", None, move |row, _, _| {
+                row.toggle_mute(false);
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -100,10 +110,22 @@ mod imp {
                 obj,
                 move |_| row.stop_row_work()
             ));
+
+            let right_click = gtk::GestureClick::new();
+            right_click.set_button(gdk::BUTTON_SECONDARY);
+            right_click.connect_released(clone!(
+                #[weak(rename_to = row)]
+                obj,
+                move |_, _, x, y| row.show_menu(x, y)
+            ));
+            obj.add_controller(right_click);
         }
 
         fn dispose(&self) {
             self.dispose_template();
+            if let Some(menu) = self.menu.get() {
+                menu.unparent();
+            }
             if let Some((topic, id)) = self.changed_handler.take() {
                 topic.disconnect(id);
             }
@@ -124,20 +146,16 @@ impl TopicRow {
         glib::Object::new()
     }
 
-    /// Binds (or rebinds) the row to a topic; re-rendering then follows the
-    /// topic's `changed` signal.
-    pub(crate) fn set_topic(
-        &self,
-        topic: Option<&model::Topic>,
-        session: Option<&model::ClientStateSession>,
-    ) {
+    /// Binds (or rebinds) the row to a topic of `chat`; re-rendering then
+    /// follows the topic's `changed` signal.
+    pub(crate) fn set_topic(&self, topic: Option<&model::Topic>, chat: Option<&model::Chat>) {
         let imp = self.imp();
         if let Some((watched, id)) = imp.changed_handler.take() {
             watched.disconnect(id);
         }
         imp.emoji_loaded_for.set(0);
         imp.topic.replace(topic.cloned());
-        imp.session.replace(session.cloned());
+        imp.chat.replace(chat.cloned());
         if let Some(topic) = topic {
             let weak = self.downgrade();
             let id = topic.connect_local("changed", false, move |_| {
@@ -207,6 +225,58 @@ impl TopicRow {
         if unread > 0 {
             imp.unread_label.set_label(&unread.to_string());
         }
+
+        self.action_set_enabled("topic-row.mute", !topic.is_muted());
+        self.action_set_enabled("topic-row.unmute", topic.is_muted());
+    }
+
+    fn show_menu(&self, x: f64, y: f64) {
+        let imp = self.imp();
+        let menu = imp.menu.get_or_init(|| {
+            gtk::Builder::from_resource(
+                "/app/drey/paper-plane/ui/session/sidebar/topic_row_menu.ui",
+            )
+            .object::<gtk::PopoverMenu>("menu")
+            .unwrap()
+        });
+        menu.set_parent(self);
+        menu.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 0, 0)));
+        menu.popup();
+    }
+
+    /// Mutes or unmutes this topic (tdesktop's per-topic bell). The other
+    /// notification fields are kept.
+    fn toggle_mute(&self, mute: bool) {
+        let imp = self.imp();
+        let (Some(topic), Some(chat)) = (imp.topic.borrow().clone(), imp.chat.borrow().clone())
+        else {
+            return;
+        };
+        let Some(mut settings) = topic.notification_settings() else {
+            return;
+        };
+        // Explicit value, never the chat default: TDLib does not propagate a
+        // `use_default_mute_for` change to the server for topics.
+        settings.use_default_mute_for = false;
+        settings.mute_for = if mute {
+            let now = glib::DateTime::now_utc().unwrap().to_unix() as i32;
+            i32::MAX - now
+        } else {
+            0
+        };
+        let client_id = chat.session_().client_().id();
+        utils::spawn(async move {
+            if let Err(e) = tdlib::functions::set_forum_topic_notification_settings(
+                chat.id(),
+                topic.forum_topic_id(),
+                settings,
+                client_id,
+            )
+            .await
+            {
+                log::warn!("Failed to toggle a topic mute: {e:?}");
+            }
+        });
     }
 }
 
@@ -238,9 +308,10 @@ impl TopicRow {
         if emoji_id == 0 || imp.emoji_loaded_for.get() == emoji_id {
             return;
         }
-        let Some(session) = imp.session.borrow().clone() else {
+        let Some(chat) = imp.chat.borrow().clone() else {
             return;
         };
+        let session = chat.session_();
         let demand = imp.demand.clone();
         demand.set(self.is_mapped());
         if !demand.get() {

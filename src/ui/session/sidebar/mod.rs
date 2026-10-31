@@ -374,7 +374,13 @@ impl Sidebar {
             return;
         };
         imp.topic_list.set_chat(Some(&chat));
-        imp.forum_topics_page.set_title(&chat.title());
+        // Chat-level mute shows as a bell in the topic page header (tdesktop).
+        // shortcut: refreshed on selection, not live on a mute toggle.
+        let mut title = chat.title();
+        if chat.is_muted() {
+            title.push_str(" \u{1f515}");
+        }
+        imp.forum_topics_page.set_title(&title);
         if !on_page {
             imp.navigation_view.push_by_tag("forum-topics");
         }
