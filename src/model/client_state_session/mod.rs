@@ -573,6 +573,25 @@ impl ClientStateSession {
             ChatUnreadMentionCount(ref data) => self.chat(data.chat_id).handle_update(update),
             ChatBlockList(ref data) => self.chat(data.chat_id).handle_update(update),
             ChatIsMarkedAsUnread(ref data) => self.chat(data.chat_id).handle_update(update),
+            ChatViewAsTopics(ref data) => self.chat(data.chat_id).handle_update(update),
+            ForumTopic(ref data) => {
+                // Only forums whose list is already open track topic updates;
+                // the router must not fetch lists for chats never visited.
+                if let Some(list) = self
+                    .try_chat(data.chat_id)
+                    .and_then(|chat| chat.try_forum_topic_list())
+                {
+                    list.apply_update(data);
+                }
+            }
+            ForumTopicInfo(ref data) => {
+                if let Some(list) = self
+                    .try_chat(data.info.chat_id)
+                    .and_then(|chat| chat.try_forum_topic_list())
+                {
+                    list.apply_info_update(&data.info);
+                }
+            }
             DeleteMessages(ref data) => self.chat(data.chat_id).handle_update(update),
             ChatAction(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageContent(ref data) => self.chat(data.chat_id).handle_update(update),

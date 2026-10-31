@@ -109,6 +109,12 @@ mod imp {
         pub(super) last_read_inbox_message_id: Cell<MessageId>,
         #[property(get)]
         pub(super) is_marked_as_unread: Cell<bool>,
+        /// Forum chats: whether the user sees the chat as a topic list. Owned by
+        /// TDLib (`view_as_topics`), toggled via `toggleChatViewAsTopics`.
+        #[property(get)]
+        pub(super) view_as_topics: Cell<bool>,
+        /// The forum topic list, created on first use (forums only).
+        pub(super) forum_topic_list: RefCell<Option<model::ForumTopicList>>,
         #[property(get)]
         pub(super) last_message: RefCell<Option<model::Message>>,
         #[property(get)]
@@ -214,6 +220,7 @@ impl Chat {
         imp.last_read_inbox_message_id
             .set(td_chat.last_read_inbox_message_id);
         imp.is_marked_as_unread.set(td_chat.is_marked_as_unread);
+        imp.view_as_topics.set(td_chat.view_as_topics);
         imp.last_message.replace(
             td_chat
                 .last_message
@@ -267,6 +274,7 @@ impl Chat {
         self.set_last_read_outbox_message_id(td_chat.last_read_outbox_message_id);
         self.set_last_read_inbox_message_id(td_chat.last_read_inbox_message_id);
         self.set_marked_as_unread(td_chat.is_marked_as_unread);
+        self.set_view_as_topics(td_chat.view_as_topics);
         self.set_last_message(
             td_chat
                 .last_message
@@ -303,6 +311,7 @@ impl Chat {
                 self.set_block_list(update.block_list.map(model::BoxedBlockList))
             }
             ChatIsMarkedAsUnread(update) => self.set_marked_as_unread(update.is_marked_as_unread),
+            ChatViewAsTopics(update) => self.set_view_as_topics(update.view_as_topics),
             ChatLastMessage(update) => {
                 self.set_last_message(update.last_message.map(|m| self.upsert_message(m)));
             }
@@ -496,6 +505,43 @@ impl Chat {
         }
         self.imp().unread_count.set(unread_count);
         self.notify_unread_count()
+    }
+
+    fn set_view_as_topics(&self, view_as_topics: bool) {
+        if self.view_as_topics() == view_as_topics {
+            return;
+        }
+        self.imp().view_as_topics.set(view_as_topics);
+        self.notify_view_as_topics();
+    }
+
+    /// The chat's forum topic list, created (and first fetched) on demand.
+    /// Only meaningful for forum chats; see [`Chat::is_forum`].
+    #[allow(dead_code)] // called by the forum UI in the next change
+    pub(crate) fn forum_topic_list(&self) -> model::ForumTopicList {
+        let imp = self.imp();
+        if imp.forum_topic_list.borrow().is_none() {
+            let list = model::ForumTopicList::new(self);
+            list.refresh();
+            *imp.forum_topic_list.borrow_mut() = Some(list.clone());
+            return list;
+        }
+        imp.forum_topic_list.borrow().clone().unwrap()
+    }
+
+    /// The forum topic list only if it has already been created — used by the
+    /// update router, which must not fetch topic lists for forums the user has
+    /// never opened.
+    pub(crate) fn try_forum_topic_list(&self) -> Option<model::ForumTopicList> {
+        self.imp().forum_topic_list.borrow().clone()
+    }
+
+    /// Whether this chat is a forum supergroup (a supergroup with topics).
+    #[allow(dead_code)] // called by the forum UI in the next change
+    pub(crate) fn is_forum(&self) -> bool {
+        self.chat_type()
+            .supergroup()
+            .is_some_and(|supergroup| supergroup.is_forum())
     }
 
     fn set_draft_message(&self, draft_message: Option<model::BoxedDraftMessage>) {

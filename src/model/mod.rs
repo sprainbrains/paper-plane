@@ -17,6 +17,8 @@ mod chat_history_item;
 mod chat_history_model;
 mod chat_list;
 mod chat_list_item;
+// allow(dead_code): the forum UI (topic window, sidebar list) consumes these
+// in the next changes; drop the allows when it lands.
 mod client;
 mod client_manager;
 mod client_state_auth;
@@ -29,6 +31,8 @@ mod client_state_logging_out;
 mod client_state_session;
 mod country_info;
 mod country_list;
+#[allow(dead_code)]
+mod forum_topic_list;
 mod message;
 mod message_forward_info;
 mod message_interaction_info;
@@ -38,6 +42,8 @@ mod proxy_manager;
 mod secret_chat;
 mod sponsored_message;
 mod supergroup;
+#[allow(dead_code)] // consumed by the forum UI in the next changes
+mod topic;
 mod user;
 
 use gtk::glib;
@@ -90,6 +96,7 @@ pub(crate) use self::client_state_logging_out::ClientStateLoggingOut;
 pub(crate) use self::client_state_session::ClientStateSession;
 pub(crate) use self::country_info::CountryInfo;
 pub(crate) use self::country_list::CountryList;
+pub(crate) use self::forum_topic_list::ForumTopicList;
 pub(crate) use self::message::Message;
 pub(crate) use self::message::MessageSender;
 pub(crate) use self::message_forward_info::MessageForwardInfo;
@@ -105,6 +112,7 @@ pub(crate) use self::secret_chat::SecretChat;
 pub(crate) use self::secret_chat::SecretChatState;
 pub(crate) use self::sponsored_message::SponsoredMessage;
 pub(crate) use self::supergroup::Supergroup;
+pub(crate) use self::topic::Topic;
 pub(crate) use self::user::User;
 
 #[derive(Clone, Debug, PartialEq, glib::Boxed)]

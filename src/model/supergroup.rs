@@ -27,6 +27,9 @@ mod imp {
         pub(super) status: RefCell<model::BoxedChatMemberStatus>,
         #[property(get)]
         pub(super) verification_status: RefCell<Option<model::BoxedVerificationStatus>>,
+        /// True for forum supergroups (topic-based chats).
+        #[property(get)]
+        pub(super) is_forum: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -77,6 +80,7 @@ impl From<tdlib::types::Supergroup> for Supergroup {
                 .verification_status
                 .map(model::BoxedVerificationStatus),
         );
+        imp.is_forum.set(td_supergroup.is_forum);
 
         obj
     }
@@ -124,6 +128,14 @@ impl Supergroup {
         self.notify_verification_status();
     }
 
+    fn set_is_forum(&self, is_forum: bool) {
+        if self.is_forum() == is_forum {
+            return;
+        }
+        self.imp().is_forum.set(is_forum);
+        self.notify_is_forum();
+    }
+
     pub(crate) fn update(&self, td_supergroup: tdlib::types::Supergroup) {
         self.set_username(
             td_supergroup
@@ -138,5 +150,6 @@ impl Supergroup {
                 .verification_status
                 .map(model::BoxedVerificationStatus),
         );
+        self.set_is_forum(td_supergroup.is_forum);
     }
 }
