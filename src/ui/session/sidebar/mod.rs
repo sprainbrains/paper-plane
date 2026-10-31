@@ -28,6 +28,7 @@ pub(crate) use self::chat_folder::Selection as ChatFolderSelection;
 pub(crate) use self::chat_list::ChatList;
 pub(crate) use self::mini_thumbnail::MiniThumbnail;
 pub(crate) use self::row::Row;
+pub(crate) use self::row::timestamp_text;
 pub(crate) use self::search::ItemRow as SearchItemRow;
 pub(crate) use self::search::Row as SearchRow;
 pub(crate) use self::search::Search;

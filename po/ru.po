@@ -1806,6 +1806,9 @@ msgstr "Начало обсуждения"
 msgid "This topic is closed."
 msgstr "Эта тема закрыта."
 
+msgid "Search in this chat"
+msgstr "Поиск в этом чате"
+
 msgid "Topics"
 msgstr "Темы"
 

@@ -19,6 +19,7 @@ use gtk::graphene;
 use crate::model;
 use crate::strings;
 use crate::ui;
+use crate::ui::session::sidebar::timestamp_text;
 use crate::utils;
 
 /// Whether the gesture's current event came from a touchscreen. Selection dragging is
@@ -159,6 +160,21 @@ mod imp {
         #[template_child]
         pub(super) pinned_message_bar: TemplateChild<gtk::Box>,
         #[template_child]
+        pub(super) search_bar: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) search_entry: TemplateChild<gtk::SearchEntry>,
+        #[template_child]
+        pub(super) search_close_button: TemplateChild<gtk::Button>,
+        #[template_child]
+        pub(super) search_results_view: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub(super) search_factory: TemplateChild<gtk::SignalListItemFactory>,
+        /// Hits of the open in-chat search (model::Message, newest first).
+        pub(super) search_store: OnceCell<gio::ListStore>,
+        pub(super) search_debounce: RefCell<Option<glib::SourceId>>,
+        /// Invalidates search responses superseded by a newer query.
+        pub(super) search_generation: Cell<u64>,
+        #[template_child]
         pub(super) pinned_content: TemplateChild<gtk::Box>,
         #[template_child]
         pub(super) pinned_message_label: TemplateChild<gtk::Label>,
@@ -220,6 +236,9 @@ mod imp {
 
             klass.install_action("chat-history.view-info", None, move |widget, _, _| {
                 widget.open_info_dialog();
+            });
+            klass.install_action("chat-history.search", None, |widget, _, _| {
+                widget.open_search();
             });
             klass.install_action("chat-history.scroll-down", None, move |widget, _, _| {
                 widget.scroll_down();
@@ -346,6 +365,8 @@ mod imp {
                     obj.unpin_message();
                 }
             ));
+
+            obj.setup_search();
 
             // Clicking the pinned-message bar reveals the message in the history.
             let pinned_gesture = gtk::GestureClick::new();
@@ -797,6 +818,7 @@ impl ChatHistory {
         imp.thread.borrow_mut().take();
         imp.topic.borrow_mut().take();
         imp.header_topic_label.set_visible(false);
+        self.close_search();
         imp.chat_action_bar.set_topic_closed(false);
         self.chat_action_bar_settling_comments_mode_off();
         // The back arrow only exists for chats opened from within another chat:
@@ -2942,13 +2964,196 @@ impl ChatHistory {
         }
     }
 
-    /// Fetches all of the chat's pinned messages (newest first) and shows the newest in
-    /// the bar below the header; the bar stays hidden when nothing is pinned.
+    /// Wires the in-chat search panel: result rows, debounced query, reveal on
+    /// activation, and the close affordances.
+    fn setup_search(&self) {
+        let imp = self.imp();
+        let store = gio::ListStore::new::<model::Message>();
+        imp.search_results_view
+            .set_model(Some(&gtk::NoSelection::new(Some(store.clone()))));
+        imp.search_store.set(store).unwrap();
+
+        imp.search_factory.connect_setup(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            let snippet = gtk::Label::builder()
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .xalign(0.0)
+                .build();
+            snippet.add_css_class("small-body");
+            let sender = gtk::Label::builder()
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build();
+            sender.add_css_class("caption");
+            sender.add_css_class("accent");
+            let date = gtk::Label::builder().build();
+            date.add_css_class("caption");
+            date.add_css_class("dim-label");
+            let head = gtk::Box::builder().spacing(6).build();
+            head.append(&sender);
+            head.append(&gtk::Separator::new(gtk::Orientation::Vertical));
+            head.append(&date);
+            let row = gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .spacing(2)
+                .margin_top(6)
+                .margin_bottom(6)
+                .margin_start(8)
+                .margin_end(8)
+                .build();
+            row.append(&head);
+            row.append(&snippet);
+            item.set_child(Some(&row));
+        });
+        imp.search_factory.connect_bind(|_, item| {
+            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+            let Some(row) = item.child().and_downcast::<gtk::Box>() else {
+                return;
+            };
+            let Some(message) = item.item().and_downcast::<model::Message>() else {
+                return;
+            };
+            // Row layout: [head=[sender, separator, date], snippet].
+            let Some(head) = row.first_child().and_downcast::<gtk::Box>() else {
+                return;
+            };
+            let Some(sender) = head.first_child().and_downcast::<gtk::Label>() else {
+                return;
+            };
+            let Some(date) = head.last_child().and_downcast::<gtk::Label>() else {
+                return;
+            };
+            let Some(snippet) = row.last_child().and_downcast::<gtk::Label>() else {
+                return;
+            };
+            sender.set_label(&strings::message_sender(&message.sender(), true));
+            date.set_label(&timestamp_text(message.date() as i64));
+            snippet.set_text(&strings::message_content(&message));
+        });
+
+        let weak = self.downgrade();
+        imp.search_entry.connect_search_changed(move |entry| {
+            let Some(hist) = weak.upgrade() else {
+                return;
+            };
+            let imp = hist.imp();
+            let query = entry.text().to_string();
+            let timer_weak = weak.clone();
+            let source =
+                glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
+                    if let Some(hist) = timer_weak.upgrade() {
+                        hist.imp().search_debounce.replace(None);
+                        hist.run_search(&query);
+                    }
+                    glib::ControlFlow::Break
+                });
+            if let Some(old) = imp.search_debounce.replace(Some(source)) {
+                old.remove();
+            }
+        });
+        imp.search_close_button.connect_clicked({
+            let weak = self.downgrade();
+            move |_| {
+                if let Some(hist) = weak.upgrade() {
+                    hist.close_search();
+                }
+            }
+        });
+        imp.search_results_view.connect_activate({
+            let weak = self.downgrade();
+            move |_, position| {
+                let Some(hist) = weak.upgrade() else {
+                    return;
+                };
+                let store = hist.imp().search_store.get().unwrap().clone();
+                if let Some(message) = store.item(position).and_downcast::<model::Message>() {
+                    hist.close_search();
+                    hist.reveal_message(message.id());
+                }
+            }
+        });
+    }
+
+    fn open_search(&self) {
+        let imp = self.imp();
+        imp.search_bar.set_visible(true);
+        imp.search_entry.grab_focus();
+    }
+
+    /// Hides the panel and clears its state. Returns whether it was open
+    /// (the Escape ladder rung).
+    pub(crate) fn close_search(&self) -> bool {
+        let imp = self.imp();
+        if !imp.search_bar.is_visible() {
+            return false;
+        }
+        imp.search_bar.set_visible(false);
+        imp.search_entry.set_text("");
+        if let Some(old) = imp.search_debounce.take() {
+            old.remove();
+        }
+        if let Some(store) = imp.search_store.get() {
+            store.remove_all();
+        }
+        true
+    }
+
+    fn run_search(&self, query: &str) {
+        let imp = self.imp();
+        let Some(store) = imp.search_store.get().cloned() else {
+            return;
+        };
+        store.remove_all();
+        if query.trim().is_empty() {
+            return;
+        }
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        let query = query.to_string();
+        let topic = self.current_topic_id().map(|forum_topic_id| {
+            tdlib::enums::MessageTopic::Forum(tdlib::types::MessageTopicForum { forum_topic_id })
+        });
+        let generation = imp.search_generation.get() + 1;
+        imp.search_generation.set(generation);
+        utils::spawn(clone!(
+            #[weak(rename_to = hist)]
+            self,
+            async move {
+                let Ok(tdlib::enums::FoundChatMessages::FoundChatMessages(found)) =
+                    tdlib::functions::search_chat_messages(
+                        chat_id, topic, query, None, 0, 0, 50, None, client_id,
+                    )
+                    .await
+                else {
+                    return;
+                };
+                // A newer query (or another chat) superseded this response.
+                if hist.imp().search_generation.get() != generation
+                    || hist.chat().is_none_or(|c| c.id() != chat_id)
+                {
+                    return;
+                }
+                for td_message in found.messages {
+                    let message = chat.upsert_message(td_message);
+                    store.append(&message);
+                }
+            }
+        ));
+    }
+
+    /// Fetches all pinned messages of the current window (the whole chat, or
+    /// the open forum topic when one is showing) and shows the newest in the
+    /// bar below the header; the bar stays hidden when nothing is pinned.
     fn fetch_pinned_message(&self, chat: &model::Chat) {
         let chat = chat.clone();
         let client_id = chat.session_().client_().id();
         let chat_id = chat.id();
         let generation = self.imp().generation.get();
+        let topic = self.current_topic_id().map(|forum_topic_id| {
+            tdlib::enums::MessageTopic::Forum(tdlib::types::MessageTopicForum { forum_topic_id })
+        });
 
         utils::spawn(clone!(
             #[weak(rename_to = obj)]
@@ -2957,7 +3162,7 @@ impl ChatHistory {
                 if let Ok(tdlib::enums::FoundChatMessages::FoundChatMessages(found)) =
                     tdlib::functions::search_chat_messages(
                         chat_id,
-                        None,
+                        topic,
                         String::new(),
                         None,
                         0,
@@ -3562,6 +3767,8 @@ impl ChatHistory {
             .retarget_draft(outgoing_topic, incoming_draft);
         imp.chat_action_bar
             .set_topic_closed(topic_blocks_composer(chat, forum_topic_id));
+        // The pinned bar must reflect the topic's pins, not the chat's.
+        self.fetch_pinned_message(chat);
 
         // Load the topic window, then stick to the newest end unless the jump
         // asked for a specific message to reveal.

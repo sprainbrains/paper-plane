@@ -292,6 +292,9 @@ impl Content {
     /// whether the key press was consumed.
     pub(crate) fn handle_escape(&self) -> bool {
         let imp = self.imp();
+        if imp.chat_history.close_search() {
+            return true;
+        }
         if imp.chat_history.is_selection_mode() {
             imp.chat_history.clear_selection();
             return true;
