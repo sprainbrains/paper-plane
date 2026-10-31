@@ -15,46 +15,83 @@ template $PaplForwardWindow: Adw.Window {
 
         search-changed => $search_changed() swapped;
       };
+
+      [start]
+      Button topics_back_button {
+        visible: false;
+        icon-name: "go-previous-symbolic";
+
+        clicked => $back_to_chats() swapped;
+
+        styles ["flat"]
+      }
     }
 
-    content: ScrolledWindow {
+    content: Stack forward_stack {
       vexpand: true;
-      hscrollbar-policy: never;
 
-      Adw.ClampScrollable {
-        child: ListView list_view {
-          single-click-activate: true;
+      StackPage {
+        name: "chats";
 
-          activate => $list_activate() swapped;
+        child: ScrolledWindow {
+          vexpand: true;
+          hscrollbar-policy: never;
 
-          model: NoSelection {
-            model: FilterListModel filter_model {
-              filter: CustomFilter custom_filter {};
-            };
-          };
+          Adw.ClampScrollable {
+            child: ListView list_view {
+              single-click-activate: true;
 
-          factory: BuilderListItemFactory {
-            template ListItem {
-              child: Box {
-                spacing: 6;
+              activate => $list_activate() swapped;
 
-                $PaplAvatar {
-                  size: 32;
-                  item: bind template.item as <$ChatListItem>.chat;
-                }
+              model: NoSelection {
+                model: FilterListModel filter_model {
+                  filter: CustomFilter custom_filter {};
+                };
+              };
 
-                Inscription {
-                  hexpand: true;
-                  text-overflow: ellipsize_end;
-                  text: bind template.item as <$ChatListItem>.chat as <$Chat>.title;
+              factory: BuilderListItemFactory {
+                template ListItem {
+                  child: Box {
+                    spacing: 6;
+
+                    $PaplAvatar {
+                      size: 32;
+                      item: bind template.item as <$ChatListItem>.chat;
+                    }
+
+                    Inscription {
+                      hexpand: true;
+                      text-overflow: ellipsize_end;
+                      text: bind template.item as <$ChatListItem>.chat as <$Chat>.title;
+                    }
+                  };
                 }
               };
-            }
-          };
 
-          styles [
-            "navigation-sidebar",
-          ]
+              styles [
+                "navigation-sidebar",
+              ]
+            };
+          }
+        };
+      }
+
+      StackPage {
+        name: "topics";
+
+        child: ScrolledWindow {
+          vexpand: true;
+          hscrollbar-policy: never;
+
+          ListView topic_list_view {
+            single-click-activate: true;
+
+            activate => $topic_activate() swapped;
+
+            styles [
+              "navigation-sidebar",
+            ]
+          }
         };
       }
     };

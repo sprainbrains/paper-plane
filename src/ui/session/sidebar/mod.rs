@@ -36,6 +36,7 @@ pub(crate) use self::search::SectionRow as SearchSectionRow;
 pub(crate) use self::search::SectionType as SearchSectionType;
 pub(crate) use self::selection::Selection;
 pub(crate) use self::topic_list::TopicList as SidebarTopicList;
+pub(crate) use self::topic_list::topic_row_factory;
 pub(crate) use self::topic_row::TopicRow as SidebarTopicRow;
 use crate::model;
 use crate::ui;

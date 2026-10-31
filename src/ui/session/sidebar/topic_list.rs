@@ -134,26 +134,7 @@ impl TopicList {
     /// identity (colored emoji icon, preview, badges).
     fn bind_list(&self, chat: &model::Chat) {
         let imp = self.imp();
-        let session = chat.session_();
-        let factory = gtk::SignalListItemFactory::new();
-        factory.connect_setup(|_, item| {
-            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-            item.set_child(Some(&super::SidebarTopicRow::new()));
-        });
-        factory.connect_bind(move |_, item| {
-            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-            let Some(row) = item.child().and_downcast::<super::SidebarTopicRow>() else {
-                return;
-            };
-            let topic = item.item().and_downcast::<model::Topic>();
-            row.set_topic(topic.as_ref(), Some(&session));
-        });
-        factory.connect_unbind(|_, item| {
-            let item = item.downcast_ref::<gtk::ListItem>().unwrap();
-            if let Some(row) = item.child().and_downcast::<super::SidebarTopicRow>() {
-                row.set_topic(None, None);
-            }
-        });
+        let factory = topic_row_factory(&chat.session_());
 
         let model = chat.forum_topic_list();
         *self.imp().topics.borrow_mut() = Some(model.clone());
@@ -161,4 +142,30 @@ impl TopicList {
         imp.list_view.set_model(Some(&selection));
         imp.list_view.set_factory(Some(&factory));
     }
+}
+
+/// A factory binding `model::Topic` items to full `TopicRow`s. Shared with the
+/// forward dialog's topic step.
+pub(crate) fn topic_row_factory(session: &model::ClientStateSession) -> gtk::SignalListItemFactory {
+    let session = session.clone();
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, item| {
+        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+        item.set_child(Some(&super::SidebarTopicRow::new()));
+    });
+    factory.connect_bind(move |_, item| {
+        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+        let Some(row) = item.child().and_downcast::<super::SidebarTopicRow>() else {
+            return;
+        };
+        let topic = item.item().and_downcast::<model::Topic>();
+        row.set_topic(topic.as_ref(), Some(&session));
+    });
+    factory.connect_unbind(|_, item| {
+        let item = item.downcast_ref::<gtk::ListItem>().unwrap();
+        if let Some(row) = item.child().and_downcast::<super::SidebarTopicRow>() {
+            row.set_topic(None, None);
+        }
+    });
+    factory
 }

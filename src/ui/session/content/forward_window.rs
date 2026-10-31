@@ -23,10 +23,18 @@ mod imp {
         pub(super) from_chat_id: Cell<ChatId>,
         pub(super) message_ids: RefCell<Vec<MessageId>>,
         pub(super) search_text: RefCell<String>,
+        /// The forum whose topic step is currently shown (forward target).
+        pub(super) forum_chat: RefCell<Option<model::Chat>>,
         #[template_child]
         pub(super) search_entry: TemplateChild<gtk::SearchEntry>,
         #[template_child]
         pub(super) list_view: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub(super) forward_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub(super) topic_list_view: TemplateChild<gtk::ListView>,
+        #[template_child]
+        pub(super) topics_back_button: TemplateChild<gtk::Button>,
         #[template_child]
         pub(super) filter_model: TemplateChild<gtk::FilterListModel>,
         #[template_child]
@@ -97,8 +105,43 @@ mod imp {
                 return;
             };
 
-            obj.forward_to(item.chat_().id());
+            let chat = item.chat_();
+            // A topics-mode forum asks *which* topic to forward into first
+            // (tdesktop); unified-mode forums forward at chat level.
+            if chat.is_forum() && chat.view_as_topics() {
+                obj.enter_topic_step(&chat);
+                return;
+            }
+            obj.forward_to(chat.id(), None);
             obj.close();
+        }
+
+        #[template_callback]
+        fn topic_activate(&self, pos: u32) {
+            let obj = self.obj();
+            let Some(chat) = self.forum_chat.borrow().clone() else {
+                return;
+            };
+            let Some(topic) = self
+                .topic_list_view
+                .model()
+                .and_then(|model| model.item(pos))
+                .and_downcast::<model::Topic>()
+            else {
+                return;
+            };
+            let topic = tdlib::enums::MessageTopic::Forum(tdlib::types::MessageTopicForum {
+                forum_topic_id: topic.forum_topic_id(),
+            });
+            obj.forward_to(chat.id(), Some(topic));
+            obj.close();
+        }
+
+        #[template_callback]
+        fn back_to_chats(&self) {
+            self.forward_stack.set_visible_child_name("chats");
+            self.topics_back_button.set_visible(false);
+            self.search_entry.set_sensitive(true);
         }
     }
 }
@@ -132,7 +175,28 @@ impl ForwardWindow {
         obj
     }
 
-    fn forward_to(&self, to_chat_id: ChatId) {
+    /// Swaps the picker to the chosen forum's topic step: full topic rows over
+    /// the (lazily fetched) topic list; chat search is meaningless there.
+    fn enter_topic_step(&self, chat: &model::Chat) {
+        let imp = self.imp();
+        let Some(session) = imp.session.borrow().clone() else {
+            return;
+        };
+        let Some(model) = session.model() else {
+            return;
+        };
+        imp.forum_chat.replace(Some(chat.clone()));
+        let list = chat.forum_topic_list();
+        imp.topic_list_view
+            .set_model(Some(&gtk::NoSelection::new(Some(list))));
+        imp.topic_list_view
+            .set_factory(Some(&super::super::sidebar::topic_row_factory(&model)));
+        imp.forward_stack.set_visible_child_name("topics");
+        imp.topics_back_button.set_visible(true);
+        imp.search_entry.set_sensitive(false);
+    }
+
+    fn forward_to(&self, to_chat_id: ChatId, topic: Option<tdlib::enums::MessageTopic>) {
         let imp = self.imp();
         let Some(session) = imp.session.borrow().clone() else {
             return;
@@ -147,7 +211,7 @@ impl ForwardWindow {
         utils::spawn(async move {
             if let Err(e) = tdlib::functions::forward_messages(
                 to_chat_id,
-                None,
+                topic,
                 from_chat_id,
                 message_ids,
                 None,
