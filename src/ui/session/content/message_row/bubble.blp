@@ -18,6 +18,24 @@ template $PaplMessageBubble {
           visible: false;
         }
 
+        Box topic_chip {
+          visible: false;
+          halign: start;
+          spacing: 4;
+          margin-top: 2;
+          margin-bottom: 2;
+
+          Label topic_chip_icon {
+            use-markup: true;
+          }
+
+          Label topic_chip_name {
+            ellipsize: end;
+          }
+
+          styles ["topic-chip"]
+        }
+
         Label forward_label {
           styles ["caption-heading", "forward-header"]
 

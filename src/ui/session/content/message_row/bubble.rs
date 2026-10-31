@@ -82,6 +82,15 @@ mod imp {
         #[template_child]
         pub(super) sender_label: TemplateChild<gtk::Label>,
         #[template_child]
+        pub(super) topic_chip: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) topic_chip_icon: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) topic_chip_name: TemplateChild<gtk::Label>,
+        /// Color class and topic id of the visible badge (0 = none).
+        pub(super) topic_chip_color: RefCell<Option<String>>,
+        pub(super) topic_chip_id: Cell<i32>,
+        #[template_child]
         pub(super) forward_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) message_reply_bin: TemplateChild<adw::Bin>,
@@ -172,6 +181,20 @@ mod imp {
                 obj,
                 move |_| obj.open_thread()
             ));
+
+            // Tapping the topic badge jumps from the unified view into that
+            // topic's window.
+            self.topic_chip.set_cursor_from_name(Some("pointer"));
+            let chip_gesture = gtk::GestureClick::new();
+            chip_gesture.connect_released(clone!(
+                #[weak]
+                obj,
+                move |gesture, _, _, _| {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    obj.open_chip_topic();
+                }
+            ));
+            self.topic_chip.add_controller(chip_gesture);
         }
 
         fn dispose(&self) {
@@ -385,6 +408,65 @@ impl MessageBubble {
         };
         if let Some(chat_history) = utils::ancestor::<_, ui::ChatHistory>(self) {
             chat_history.open_thread(&message);
+        }
+    }
+
+    /// Renders the forum topic badge under the sender name: shown on grouped
+    /// heads in a forum's unified view only (a topic window is single-topic,
+    /// and the sidebar there shows the list anyway). Called both from the bind
+    /// and from grouping updates, so it reads the bound message itself.
+    /// shortcut: colored dot instead of the topic emoji image; upgrade when
+    /// the sidebar and bubbles share a custom-emoji decode.
+    pub(crate) fn update_topic_chip(&self, grouped_head: bool) {
+        let imp = self.imp();
+        let topic = match (grouped_head, imp.message.upgrade()) {
+            (true, Some(message)) => {
+                let chat = message.chat_();
+                if chat.is_forum() {
+                    chat.try_forum_topic_list().and_then(|list| {
+                        list.topic(message.topic_forum_id().unwrap_or(model::GENERAL_TOPIC_ID))
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
+        match topic {
+            Some(topic) => {
+                imp.topic_chip_name.set_text(&topic.name());
+                let color = topic.icon_color();
+                imp.topic_chip_icon
+                    .set_markup(&format!("<span foreground='#{color:06X}'>●</span>"));
+                let class = format!("topic-chip-color-{color:06X}");
+                let old = imp.topic_chip_color.replace(Some(class.clone()));
+                if old.as_deref() != Some(class.as_str()) {
+                    if let Some(old) = old {
+                        imp.topic_chip.remove_css_class(&old);
+                    }
+                    imp.topic_chip.add_css_class(&class);
+                }
+                imp.topic_chip_id.set(topic.forum_topic_id());
+                imp.topic_chip.set_visible(true);
+            }
+            None => {
+                imp.topic_chip.set_visible(false);
+                imp.topic_chip_id.set(0);
+            }
+        }
+    }
+
+    /// Jumps from the unified view into the badge's topic window.
+    fn open_chip_topic(&self) {
+        let imp = self.imp();
+        let topic_id = imp.topic_chip_id.get();
+        let Some(message) = imp.message.upgrade().filter(|_| topic_id != 0) else {
+            return;
+        };
+        if let Some(session) = utils::ancestor::<_, ui::Session>(self) {
+            session.open_topic(&message.chat_(), topic_id);
+            session.show_chat_content();
         }
     }
 
@@ -613,6 +695,9 @@ impl MessageBubble {
             imp.sender_label.set_visible(false);
         }
 
+        // Forum topic badge (unified view): chip under the sender name.
+        self.update_topic_chip(show_sender.is_some());
+
         // Reactions were (re)bound above; place the indicators accordingly. Message types
         // that don't drive the bubble's `label` (polls, location, audio…) rely on this
         // call, while caption types re-run it from `set_label`.
@@ -642,6 +727,7 @@ impl MessageBubble {
         self.remove_css_class("with-reply");
         imp.forward_label.set_visible(false);
         self.remove_css_class("with-forward");
+        imp.topic_chip.set_visible(false);
 
         self.remove_css_class("outgoing");
 

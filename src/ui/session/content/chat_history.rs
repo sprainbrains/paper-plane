@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -223,6 +224,9 @@ mod imp {
         pub(super) toast_overlay: TemplateChild<adw::ToastOverlay>,
         /// Chats whose pinned-message panel the user hid (session-local, per chat).
         pub(super) hidden_pinned_chats: RefCell<HashSet<i64>>,
+        /// Repaint triggers for unified-view topic badges, one per forum chat
+        /// whose topic list has been watched (chat-lifetime handlers).
+        pub(super) forum_badge_handlers: RefCell<HashMap<i64, glib::SignalHandlerId>>,
     }
 
     #[glib::object_subclass]
@@ -863,6 +867,21 @@ impl ChatHistory {
         );
 
         if let Some(chat) = chat {
+            // The unified forum view resolves per-message topic badges from
+            // the topic list; make sure it is on its way, and repaint the
+            // visible rows once it lands.
+            if chat.is_forum() {
+                let list = chat.forum_topic_list();
+                let had = imp.forum_badge_handlers.borrow().contains_key(&chat.id());
+                if !had {
+                    let id = list.connect_items_changed(clone!(
+                        #[weak(rename_to = obj)]
+                        self,
+                        move |_, _, _, _| obj.refresh_grouping_visuals()
+                    ));
+                    imp.forum_badge_handlers.borrow_mut().insert(chat.id(), id);
+                }
+            }
             self.fetch_pinned_message(chat);
 
             self.action_set_enabled(

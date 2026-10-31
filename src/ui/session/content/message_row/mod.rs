@@ -785,6 +785,14 @@ impl Row {
             if !is_group_start {
                 bubble.hide_sender();
             }
+            // The topic badge follows the sender line: heads only, and only
+            // outside a single-topic window (where every row shares the topic).
+            let in_topic_window = utils::ancestor::<_, ui::ChatHistory>(self)
+                .and_then(|chat_history| chat_history.history_model())
+                .is_some_and(|model| {
+                    matches!(model.source(), model::HistorySource::ForumTopic { .. })
+                });
+            bubble.update_topic_chip(is_group_start && !in_topic_window);
             // Feed the run position to the bubble so it can draw its outline: the last
             // message of a run (and standalone messages) gets the tail shape.
             bubble.set_shape(is_group_start, is_group_end);
