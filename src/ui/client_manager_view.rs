@@ -14,6 +14,7 @@ use crate::Application;
 use crate::model;
 use crate::types::ChatId;
 use crate::types::ClientId;
+use crate::types::MessageId;
 use crate::ui;
 use crate::utils;
 
@@ -309,6 +310,26 @@ impl ClientManagerView {
             && let Some(session) = utils::descendant::<_, ui::Session>(self)
         {
             session.select_chat(chat_id);
+        }
+    }
+
+    /// Routes a notification activation into a forum topic (see
+    /// `ClientWindow::select_chat_open_topic`).
+    pub(crate) fn select_chat_open_topic(
+        &self,
+        client_id: ClientId,
+        chat_id: ChatId,
+        forum_topic_id: i32,
+        message_id: MessageId,
+    ) {
+        if self
+            .active_client()
+            .filter(|client| client.id() == client_id)
+            .is_some()
+            && let Some(session) = utils::descendant::<_, ui::Session>(self)
+        {
+            let message = (message_id != 0).then_some(message_id);
+            session.select_chat_open_topic(chat_id, forum_topic_id, message);
         }
     }
 }

@@ -11,6 +11,7 @@ use crate::config;
 use crate::model;
 use crate::types::ChatId;
 use crate::types::ClientId;
+use crate::types::MessageId;
 use crate::ui;
 use crate::utils;
 
@@ -161,6 +162,24 @@ impl Window {
 
     pub(crate) fn select_chat(&self, client_id: ClientId, chat_id: ChatId) {
         self.client_manager_view().select_chat(client_id, chat_id);
+    }
+
+    /// As [`select_chat`], but lands inside a forum topic (and optionally a
+    /// message within it): the route taken when a forum notification is
+    /// activated. `message_id` 0 means "open the topic at its newest end".
+    pub(crate) fn select_chat_open_topic(
+        &self,
+        client_id: ClientId,
+        chat_id: ChatId,
+        forum_topic_id: i32,
+        message_id: MessageId,
+    ) {
+        self.client_manager_view().select_chat_open_topic(
+            client_id,
+            chat_id,
+            forum_topic_id,
+            message_id,
+        );
     }
 
     pub(crate) fn client_manager_view(&self) -> &ui::ClientManagerView {

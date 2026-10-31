@@ -250,20 +250,26 @@ impl Application {
         ));
         self.add_action(&action_about);
 
-        // Select chat
+        // Select chat: (client, chat, message, forum topic) — 0s mean "none";
+        // a forum notification carries its message and topic so activation
+        // lands inside the topic window on that message.
         let action_select_chat =
-            gio::SimpleAction::new("select-chat", Some(glib::VariantTy::new("(ix)").unwrap()));
+            gio::SimpleAction::new("select-chat", Some(glib::VariantTy::new("(ixxi)").unwrap()));
         action_select_chat.connect_activate(clone!(
             #[weak(rename_to = app)]
             self,
             move |_, data| {
-                let (client_id, chat_id) = data.unwrap().get().unwrap();
+                let (client_id, chat_id, message_id, forum_topic_id) = data.unwrap().get().unwrap();
                 // Prefer a window already showing this chat; otherwise the primary one.
                 let window = app
                     .window_showing_chat(client_id, chat_id)
                     .unwrap_or_else(|| app.main_window());
                 window.present();
-                window.select_chat(client_id, chat_id);
+                if forum_topic_id != 0 {
+                    window.select_chat_open_topic(client_id, chat_id, forum_topic_id, message_id);
+                } else {
+                    window.select_chat(client_id, chat_id);
+                }
             }
         ));
         self.add_action(&action_select_chat);
@@ -383,10 +389,13 @@ impl Application {
 
         for notification in notification_group.0.added_notifications {
             let notification_id = notification.id;
+            // Where activation should land: (message, forum topic), 0 = none.
+            let mut jump = (0i64, 0i32);
 
             let notification = match notification.r#type {
                 tdlib::enums::NotificationType::NewMessage(data) => {
                     let message = chat.upsert_message(data.message);
+                    jump = (message.id(), message.topic_forum_id().unwrap_or(0));
                     let mut body = strings::message_content(&message);
 
                     // Add the sender's name to the body if the chat is a group
@@ -437,7 +446,7 @@ impl Application {
             if let Some(notification) = notification {
                 notification.set_default_action_and_target_value(
                     "app.select-chat",
-                    Some(&(session.client_().id(), chat.id()).to_variant()),
+                    Some(&(session.client_().id(), chat.id(), jump.0, jump.1).to_variant()),
                 );
 
                 if let Some(avatar) = chat.avatar() {

@@ -635,13 +635,14 @@ impl Application {
                 Ok(tdlib::enums::ForumTopics::ForumTopics(data)) => {
                     for topic in &data.topics {
                         log::warn!(
-                            "TOPIC id={} name={} color={:06X} order={} closed={} general={}",
+                            "TOPIC id={} name={} color={:06X} order={} closed={} general={} msg={}",
                             topic.info.forum_topic_id,
                             topic.info.name,
                             topic.info.icon.color,
                             topic.order,
                             topic.info.is_closed,
-                            topic.info.is_general
+                            topic.info.is_general,
+                            topic.last_message.as_ref().map(|m| m.id).unwrap_or(0),
                         );
                     }
                 }

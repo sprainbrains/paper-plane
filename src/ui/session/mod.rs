@@ -437,6 +437,27 @@ impl Session {
         self.select_chat_with_return(channel);
     }
 
+    /// Switches to the forum `chat_id` and opens topic `forum_topic_id`,
+    /// revealing `message_id` inside it when given. An already-open forum
+    /// switches topics in place.
+    pub(crate) fn select_chat_open_topic(
+        &self,
+        chat_id: ChatId,
+        forum_topic_id: i32,
+        message_id: Option<MessageId>,
+    ) {
+        let imp = self.imp();
+        if imp.content.chat().is_some_and(|chat| chat.id() == chat_id) {
+            if let Some(chat) = imp.content.chat() {
+                imp.content.open_topic(&chat, forum_topic_id, message_id);
+            }
+            return;
+        }
+        imp.content
+            .arm_open_topic(chat_id, forum_topic_id, message_id);
+        self.select_chat_with_return(chat_id);
+    }
+
     /// Opens the chat holding the original of a mirrored message (the "View in
     /// Chat" bar and cross-chat reply quotes). When the original turns out to
     /// be a channel comment — its reply chain leads to the post's anchor mirror
@@ -510,7 +531,7 @@ impl Session {
 
     /// Opens a forum topic window in the content (sidebar topic row activation).
     pub(crate) fn open_topic(&self, chat: &model::Chat, forum_topic_id: i32) {
-        self.imp().content.open_topic(chat, forum_topic_id);
+        self.imp().content.open_topic(chat, forum_topic_id, None);
     }
 
     /// Reveals the content (chat) page. On a collapsed (mobile) layout this navigates

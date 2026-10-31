@@ -211,11 +211,30 @@ impl Content {
         glib::Object::new()
     }
 
-    /// Opens a forum topic window in the chat history (sidebar topic row).
-    pub(crate) fn open_topic(&self, chat: &model::Chat, forum_topic_id: i32) {
+    /// Opens a forum topic window in the chat history (sidebar topic row or
+    /// notification jump; `message_id` reveals a specific message).
+    pub(crate) fn open_topic(
+        &self,
+        chat: &model::Chat,
+        forum_topic_id: i32,
+        message_id: Option<i64>,
+    ) {
         self.imp()
             .chat_history
-            .open_topic(chat, forum_topic_id, None);
+            .open_topic(chat, forum_topic_id, message_id);
+    }
+
+    /// Arms a topic-window open for the next switch to `chat_id` (the
+    /// notification-click route).
+    pub(crate) fn arm_open_topic(
+        &self,
+        chat_id: i64,
+        forum_topic_id: i32,
+        message_id: Option<i64>,
+    ) {
+        self.imp()
+            .chat_history
+            .arm_open_topic(chat_id, forum_topic_id, message_id);
     }
 
     pub(crate) fn handle_paste_action(&self) {

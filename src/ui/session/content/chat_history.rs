@@ -72,6 +72,10 @@ mod imp {
         /// the next `set_chat` landing on the channel opens the post's comment
         /// thread (revealing the comment when set).
         pub(super) pending_open_thread: Cell<Option<(i64, i64, Option<i64>)>>,
+        /// Forum topic to open once the next switch to the recorded chat
+        /// lands, revealing the recorded message when non-null (the
+        /// notification-click route).
+        pub(super) pending_open_topic: Cell<Option<(i64, i32, Option<i64>)>>,
         pub(super) message_menu: OnceCell<ui::MessageMenu>,
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
@@ -1068,6 +1072,10 @@ impl ChatHistory {
                         }
                     }
 
+                    let open_topic = imp
+                        .pending_open_topic
+                        .take()
+                        .filter(|(chat, _, _)| *chat == chat_id);
                     let open_thread = imp
                         .pending_open_thread
                         .take()
@@ -1076,7 +1084,11 @@ impl ChatHistory {
                         .pending_reveal
                         .take()
                         .filter(|(reveal_chat, _)| *reveal_chat == chat_id);
-                    if let Some((_, post_id, comment_id)) = open_thread {
+                    if let Some((_, topic_id, message)) = open_topic {
+                        // Swap to the topic window; it lands on `message` or the
+                        // topic's newest end itself.
+                        obj.open_topic(&chat_clone, topic_id, message);
+                    } else if let Some((_, post_id, comment_id)) = open_thread {
                         // Enter the post's comment thread once the anchor message
                         // is at hand; a comment-originated jump reveals it inside.
                         obj.jump_to_thread(post_id, comment_id);
@@ -3229,6 +3241,20 @@ impl ChatHistory {
         self.imp()
             .pending_open_thread
             .set(Some((channel, post, comment)));
+    }
+
+    /// Records that the next switch to `chat_id` should open the forum topic
+    /// `forum_topic_id`, revealing `message_id` inside it when given (the
+    /// notification-click route; see `Session::select_chat_open_topic`).
+    pub(crate) fn arm_open_topic(
+        &self,
+        chat_id: i64,
+        forum_topic_id: i32,
+        message_id: Option<i64>,
+    ) {
+        self.imp()
+            .pending_open_topic
+            .set(Some((chat_id, forum_topic_id, message_id)));
     }
 
     /// Opens the comment thread of the channel post `post_id`, revealing
