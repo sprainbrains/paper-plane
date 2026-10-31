@@ -44,6 +44,17 @@
                       </object>
                     </child>
                     <child>
+                      <object class="GtkLabel" id="header_topic_label">
+                        <property name="visible">False</property>
+                        <property name="halign">center</property>
+                        <property name="ellipsize">end</property>
+                        <property name="use-markup">True</property>
+                        <style>
+                          <class name="caption"/>
+                        </style>
+                      </object>
+                    </child>
+                    <child>
                       <object class="GtkBox" id="header_typing_box">
                         <property name="visible">False</property>
                         <property name="halign">center</property>

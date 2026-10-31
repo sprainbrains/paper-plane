@@ -186,7 +186,10 @@ impl ForumTopicList {
                 .last_message
                 .clone()
                 .map(|message| chat.upsert_message(message));
-            match imp.index.borrow().get(&id) {
+            // Look the topic up and drop the borrow before re-entering: the
+            // arms mutate `index` and emit signals (AGENTS.md borrow rule).
+            let existing = imp.index.borrow().get(&id).cloned();
+            match existing {
                 Some(topic) => {
                     let last_changed = topic.last_message().map(|m| m.id())
                         != last_message.as_ref().map(|m| m.id());

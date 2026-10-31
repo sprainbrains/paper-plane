@@ -49,7 +49,6 @@ pub(crate) enum HistorySource {
     #[default]
     Chat,
     Thread(ThreadContext),
-    #[allow(dead_code)] // constructed by the forum topic window (next change)
     ForumTopic {
         forum_topic_id: i32,
     },
@@ -186,7 +185,6 @@ impl ChatHistoryModel {
 
     /// A model showing a single forum topic of `chat`, keyed by TDLib's
     /// `forum_topic_id` (General is [`GENERAL_TOPIC_ID`]).
-    #[allow(dead_code)] // called by the forum topic window (next change)
     pub(crate) fn new_forum_topic(chat: &model::Chat, forum_topic_id: i32) -> Self {
         Self::build(chat, HistorySource::ForumTopic { forum_topic_id })
     }

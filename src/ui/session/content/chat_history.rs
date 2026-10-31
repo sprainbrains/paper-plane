@@ -123,6 +123,8 @@ mod imp {
         #[template_child]
         pub(super) header_typing_box: TemplateChild<gtk::Box>,
         #[template_child]
+        pub(super) header_topic_label: TemplateChild<gtk::Label>,
+        #[template_child]
         pub(super) header_typing_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) send_overlay: TemplateChild<gtk::Overlay>,
@@ -133,6 +135,9 @@ mod imp {
         /// Non-empty while the view shows a single comment thread instead of the
         /// whole chat. Records how to return to the channel post.
         pub(super) thread: RefCell<Option<super::ThreadUi>>,
+        /// Non-empty while the view shows a single forum topic of the current
+        /// chat. Records the topic and any message to reveal once loaded.
+        pub(super) topic: RefCell<Option<super::TopicUi>>,
         pub(super) send_animation: RefCell<Option<adw::Animation>>,
         pub(super) send_poll: RefCell<Option<gtk::TickCallbackId>>,
         pub(super) send_ghost: RefCell<Option<gtk::Overlay>>,
@@ -775,9 +780,12 @@ impl ChatHistory {
         }
 
         let imp = self.imp();
-        // Thread mode is scoped to the chat it was opened from: any real chat
-        // change (and the forced rebuild when backing out of a thread) leaves it.
+        // Thread and topic modes are scoped to the chat they were opened from:
+        // any real chat change (and the forced rebuild when backing out) leaves
+        // both.
         imp.thread.borrow_mut().take();
+        imp.topic.borrow_mut().take();
+        imp.header_topic_label.set_visible(false);
         self.chat_action_bar_settling_comments_mode_off();
         // The back arrow only exists for chats opened from within another chat:
         // the switch armed at request time claims the pending return when it
@@ -3249,12 +3257,20 @@ impl ChatHistory {
     /// thread, or a chat this one was opened from. Lets the Escape ladder
     /// distinguish "back" from "close the chat".
     pub(crate) fn has_back_target(&self) -> bool {
-        self.imp().thread.borrow().is_some() || self.imp().return_chat.get().is_some()
+        let imp = self.imp();
+        imp.thread.borrow().is_some()
+            || imp.topic.borrow().is_some()
+            || imp.return_chat.get().is_some()
     }
 
     /// Returns to the chat this one was opened from (header back arrow). The
     /// switch clears `return_chat` and hides the arrow.
     pub(crate) fn go_back(&self) {
+        // In a topic window, back leaves it for the whole forum chat.
+        if self.imp().topic.borrow().is_some() {
+            self.close_topic();
+            return;
+        }
         // In a thread, back returns to the channel post that opened it.
         if self.imp().thread.borrow().is_some() {
             self.close_thread();
@@ -3446,6 +3462,127 @@ impl ChatHistory {
         self.set_chat(Some(&channel));
     }
 
+    /// Opens a forum topic window over the current chat: swaps the list to the
+    /// topic's history, shows the topic identity in the header, and arms a
+    /// return to the whole-chat view.
+    pub(crate) fn open_topic(&self, chat: &model::Chat, forum_topic_id: i32, reveal: Option<i64>) {
+        let imp = self.imp();
+        if imp.chat.upgrade().as_ref() != Some(chat) {
+            self.set_chat(Some(chat));
+        }
+        // Re-opening the topic that is already on screen: just re-reveal.
+        if imp
+            .topic
+            .borrow()
+            .as_ref()
+            .is_some_and(|topic| topic.forum_topic_id == forum_topic_id)
+        {
+            if let Some(message_id) = reveal {
+                self.reveal_message(message_id);
+            }
+            return;
+        }
+        // A comment thread and a topic window never coexist.
+        imp.thread.borrow_mut().take();
+        *imp.topic.borrow_mut() = Some(TopicUi {
+            forum_topic_id,
+            reveal,
+        });
+
+        let model = model::ChatHistoryModel::new_forum_topic(chat, forum_topic_id);
+        model.connect_items_changed(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |model, position, removed, added| {
+                if removed > 0 || position + added >= model.n_items() {
+                    obj.refresh_grouping_visuals();
+                }
+            }
+        ));
+
+        let selection = gtk::NoSelection::new(Some(model.clone()));
+        imp.list_view.set_model(Some(&selection));
+        *imp.model.borrow_mut() = Some(model.clone());
+        imp.back_button.set_visible(true);
+        self.update_topic_header(chat, forum_topic_id);
+
+        // Load the topic window, then stick to the newest end unless the jump
+        // asked for a specific message to reveal.
+        utils::spawn(clone!(
+            #[weak]
+            model,
+            #[weak(rename_to = obj)]
+            self,
+            async move {
+                let _ = model.load_older_messages(50).await;
+                let (still_open, reveal) = {
+                    let borrow = obj.imp().topic.borrow();
+                    match borrow.as_ref() {
+                        Some(topic) if topic.forum_topic_id == forum_topic_id => {
+                            (true, topic.reveal)
+                        }
+                        _ => (false, None),
+                    }
+                };
+                if !still_open {
+                    return;
+                }
+                if let Some(message_id) = reveal {
+                    obj.reveal_message(message_id);
+                } else {
+                    obj.set_sticky(true);
+                    obj.scroll_down();
+                }
+            }
+        ));
+    }
+
+    /// Leaves the topic window: rebuilds the whole-chat view underneath.
+    fn close_topic(&self) {
+        if self.imp().topic.borrow_mut().take().is_none() {
+            return;
+        }
+        let Some(chat) = self.chat() else {
+            return;
+        };
+        self.set_chat(None);
+        self.set_chat(Some(&chat));
+    }
+
+    /// Sets the header's topic line (colored dot + name) for the open topic.
+    /// The dot color is TDLib's topic color; a topic whose info has not loaded
+    /// yet shows the plain name slot empty until the next open or refresh.
+    /// shortcut: no live rename tracking here; the topic rows get it in the
+    /// sidebar task, the header refreshes on reopen.
+    fn update_topic_header(&self, chat: &model::Chat, forum_topic_id: i32) {
+        let imp = self.imp();
+        match chat
+            .forum_topic_list()
+            .topic(forum_topic_id)
+            .as_ref()
+            .map(|topic| (topic.name(), topic.icon_color()))
+        {
+            Some((name, color)) => {
+                let dot = format!("<span foreground='#{color:06X}'>●</span> ");
+                imp.header_topic_label
+                    .set_markup(&format!("{dot}{}", glib::markup_escape_text(&name)));
+                imp.header_topic_label.set_visible(true);
+            }
+            None => imp.header_topic_label.set_visible(false),
+        }
+    }
+
+    /// The forum topic shown by this window, if any. Consumed by the composer
+    /// send-routing task; kept here so topic state has one owner.
+    #[allow(dead_code)] // read by send routing in the next change
+    pub(crate) fn current_topic_id(&self) -> Option<i32> {
+        self.imp()
+            .topic
+            .borrow()
+            .as_ref()
+            .map(|topic| topic.forum_topic_id)
+    }
+
     pub(crate) fn view_messages(&self) {
         let imp = self.imp();
 
@@ -3546,6 +3683,17 @@ pub(crate) struct ThreadUi {
     message_thread_id: i64,
     /// Comment to reveal after the thread window loads (jump from "View in
     /// Chat"), if any.
+    reveal: Option<i64>,
+}
+
+/// Live state while the view shows a single forum topic instead of the whole
+/// chat. The forum itself stays the current chat, so only the topic id and any
+/// message to reveal on load are recorded.
+#[derive(Clone, Debug)]
+pub(crate) struct TopicUi {
+    forum_topic_id: i32,
+    /// Message to reveal after the topic window loads (jump from a
+    /// notification), if any.
     reveal: Option<i64>,
 }
 

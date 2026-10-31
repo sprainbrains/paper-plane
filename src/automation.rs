@@ -172,6 +172,18 @@ impl Application {
             };
             app.auto_open_chat(chat_id);
         });
+        self.add_auto_action(
+            "auto-open-topic",
+            Some(glib::VariantTy::new("(xi)").unwrap()),
+            |app, p| {
+                let Some((chat_id, forum_topic_id)) = p.and_then(glib::Variant::get::<(i64, i32)>)
+                else {
+                    log::warn!("auto-open-topic: missing or invalid parameters");
+                    return;
+                };
+                app.auto_open_topic(chat_id, forum_topic_id);
+            },
+        );
         self.add_auto_action("auto-user-info", Some(glib::VariantTy::INT64), |app, p| {
             let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
                 log::warn!("auto-user-info: missing or invalid parameters");
@@ -569,6 +581,26 @@ impl Application {
             return;
         };
         self.main_window().select_chat(client_id, chat_id);
+    }
+
+    /// Opens a forum topic window in the active session, mirroring what a
+    /// sidebar topic row will do: select the chat (the content binding sets it
+    /// synchronously), then swap in the topic window.
+    fn auto_open_topic(&self, chat_id: ChatId, forum_topic_id: i32) {
+        let window = self.main_window();
+        let Some(session) = utils::descendant::<_, ui::Session>(&window) else {
+            log::warn!("auto-open-topic: no active session view");
+            return;
+        };
+        session.select_chat(chat_id);
+        let Some(history) = utils::descendant::<_, ui::ChatHistory>(&window) else {
+            log::warn!("auto-open-topic: no chat history view");
+            return;
+        };
+        match history.chat() {
+            Some(chat) => history.open_topic(&chat, forum_topic_id, None),
+            None => log::warn!("auto-open-topic: chat {chat_id} did not open"),
+        }
     }
 
     /// Opens the send-media window with the given files but does not send, so

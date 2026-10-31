@@ -517,7 +517,6 @@ impl Chat {
 
     /// The chat's forum topic list, created (and first fetched) on demand.
     /// Only meaningful for forum chats; see [`Chat::is_forum`].
-    #[allow(dead_code)] // called by the forum UI in the next change
     pub(crate) fn forum_topic_list(&self) -> model::ForumTopicList {
         let imp = self.imp();
         if imp.forum_topic_list.borrow().is_none() {
