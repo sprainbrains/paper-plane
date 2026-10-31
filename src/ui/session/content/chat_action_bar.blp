@@ -101,6 +101,15 @@ template $PaplChatActionBar  {
       };
     }
     StackPage {
+      name: "topic-closed";
+      child: Label {
+        wrap: true;
+        wrap-mode: word_char;
+        justify: center;
+        label: _("This topic is closed.");
+      };
+    }
+    StackPage {
       name: "unblock";
       child: Adw.Clamp {
         maximum-size: 360;

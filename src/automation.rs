@@ -636,11 +636,13 @@ impl Application {
                 Ok(tdlib::enums::ForumTopics::ForumTopics(data)) => {
                     for topic in &data.topics {
                         log::warn!(
-                            "TOPIC id={} name={} color={:06X} order={}",
+                            "TOPIC id={} name={} color={:06X} order={} closed={} general={}",
                             topic.info.forum_topic_id,
                             topic.info.name,
                             topic.info.icon.color,
-                            topic.order
+                            topic.order,
+                            topic.info.is_closed,
+                            topic.info.is_general
                         );
                     }
                 }

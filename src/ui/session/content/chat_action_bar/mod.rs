@@ -38,6 +38,9 @@ mod imp {
         /// does not require joining the group, so a `Left` status must not
         /// replace the entry with a "Join" button here.
         pub(super) comments_mode: std::cell::Cell<bool>,
+        /// True while an open forum topic blocks the composer (closed topic the
+        /// user may not write in); set by the history view.
+        pub(super) topic_closed: std::cell::Cell<bool>,
         pub(super) state: Cell<ChatActionBarState>,
         pub(super) state_change_generation: Cell<u64>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
@@ -814,6 +817,17 @@ impl ChatActionBar {
         self.update_stack_page();
     }
 
+    /// Shows the "This topic is closed" notice in place of the composer. Called
+    /// by the history view when opening a topic the user may not write in, and
+    /// with `false` on leaving the topic window.
+    pub(crate) fn set_topic_closed(&self, on: bool) {
+        if self.imp().topic_closed.get() == on {
+            return;
+        }
+        self.imp().topic_closed.set(on);
+        self.update_stack_page();
+    }
+
     pub(crate) fn reply_to_message_id(&self, id: MessageId) {
         self.set_state(ChatActionBarState::Replying(id));
         // Focus the composer so the user can start typing the reply immediately.
@@ -828,6 +842,13 @@ impl ChatActionBar {
     fn update_stack_page(&self) {
         if let Some(chat) = self.chat() {
             let imp = self.imp();
+
+            // A closed topic outranks every chat-level page: writing there is
+            // simply not available (TDLib rule, checked by the history view).
+            if imp.topic_closed.get() {
+                imp.action_bar_stack.set_visible_child_name("topic-closed");
+                return;
+            }
 
             match chat.chat_type() {
                 model::ChatType::Private(user) => {

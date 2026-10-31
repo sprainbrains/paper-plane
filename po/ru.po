@@ -1803,6 +1803,9 @@ msgstr "Удалить из альбома"
 msgid "Start of discussion"
 msgstr "Начало обсуждения"
 
+msgid "This topic is closed."
+msgstr "Эта тема закрыта."
+
 #: src/model/chat.rs
 msgid "Replies"
 msgstr "Ответы"

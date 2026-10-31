@@ -793,6 +793,7 @@ impl ChatHistory {
         imp.thread.borrow_mut().take();
         imp.topic.borrow_mut().take();
         imp.header_topic_label.set_visible(false);
+        imp.chat_action_bar.set_topic_closed(false);
         self.chat_action_bar_settling_comments_mode_off();
         // The back arrow only exists for chats opened from within another chat:
         // the switch armed at request time claims the pending return when it
@@ -3533,6 +3534,8 @@ impl ChatHistory {
             .map(model::BoxedDraftMessage);
         imp.chat_action_bar
             .retarget_draft(outgoing_topic, incoming_draft);
+        imp.chat_action_bar
+            .set_topic_closed(topic_blocks_composer(chat, forum_topic_id));
 
         // Load the topic window, then stick to the newest end unless the jump
         // asked for a specific message to reveal.
@@ -3727,6 +3730,35 @@ pub(crate) struct TopicUi {
     /// Message to reveal after the topic window loads (jump from a
     /// notification), if any.
     reveal: Option<i64>,
+}
+
+/// Whether an open topic's closed state blocks the composer: the topic
+/// creator and holders of the manage-topics right can still write there
+/// (TDLib's rule for closed topics). An unknown topic (list not loaded yet)
+/// does not block; the notice appears on the next open.
+/// shortcut: no live re-check while the window stays open; renames/closures
+/// apply on reopen.
+fn topic_blocks_composer(chat: &model::Chat, forum_topic_id: i32) -> bool {
+    let Some(topic) = chat
+        .try_forum_topic_list()
+        .and_then(|list| list.topic(forum_topic_id))
+    else {
+        return false;
+    };
+    if !topic.is_closed() {
+        return false;
+    }
+    let me = chat.session_().me_();
+    let is_creator = matches!(topic.creator(),
+        Some(tdlib::enums::MessageSender::User(user)) if user.user_id == me.id());
+    let can_manage = match chat.chat_type().supergroup().map(|s| s.status().0) {
+        Some(tdlib::enums::ChatMemberStatus::Creator(_)) => true,
+        Some(tdlib::enums::ChatMemberStatus::Administrator(admin)) => {
+            admin.rights.can_manage_topics
+        }
+        _ => false,
+    };
+    !(is_creator || can_manage)
 }
 
 /// Decides the header back-arrow state for a completed chat switch. Only the
