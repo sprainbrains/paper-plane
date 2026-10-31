@@ -51,6 +51,10 @@ mod imp {
         /// topic id -> the topic object, so refreshes update in place and every
         /// consumer resolves the same `Topic` (object identity).
         pub(super) index: RefCell<HashMap<i32, model::Topic>>,
+        /// A coalesced re-fetch is already queued (new messages and page
+        /// pushes refresh the snapshot; TDLib's list carries unread/last
+        /// message that `updateForumTopic` does not).
+        pub(super) refresh_scheduled: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -253,6 +257,41 @@ impl ForumTopicList {
             self.upcast_ref::<gio::ListModel>()
                 .items_changed(0, before.len() as u32, new_len);
         }
+    }
+
+    /// Coalesced re-fetch: at most one pending refresh per list, fired after
+    /// a short quiet period so message bursts cost one round trip.
+    pub(crate) fn schedule_refresh(&self) {
+        let imp = self.imp();
+        if imp.refresh_scheduled.replace(true) {
+            return;
+        }
+        let weak = self.downgrade();
+        glib::timeout_add_local(std::time::Duration::from_millis(2000), move || {
+            if let Some(list) = weak.upgrade() {
+                list.imp().refresh_scheduled.set(false);
+                list.refresh();
+            }
+            glib::ControlFlow::Break
+        });
+    }
+
+    /// Drops a locally deleted topic from the list (TDLib announces the
+    /// deletion only through chat events, not a topic update).
+    pub(crate) fn remove_topic(&self, forum_topic_id: i32) {
+        let imp = self.imp();
+        let Some(position) = imp
+            .topics
+            .borrow()
+            .iter()
+            .position(|topic| topic.forum_topic_id() == forum_topic_id)
+        else {
+            return;
+        };
+        imp.topics.borrow_mut().remove(position);
+        imp.index.borrow_mut().remove(&forum_topic_id);
+        self.upcast_ref::<gio::ListModel>()
+            .items_changed(position as u32, 1, 0);
     }
 
     pub(crate) fn apply_update(&self, update: &tdlib::types::UpdateForumTopic) {

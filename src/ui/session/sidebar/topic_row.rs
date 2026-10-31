@@ -342,15 +342,19 @@ impl TopicRow {
                 return;
             }
             let client_id = chat.session_().client_().id();
+            let chat_id = chat.id();
+            let topic_id = topic.forum_topic_id();
+            let list = chat.try_forum_topic_list();
             utils::spawn(async move {
-                if let Err(e) = tdlib::functions::delete_forum_topic(
-                    chat.id(),
-                    topic.forum_topic_id(),
-                    client_id,
-                )
-                .await
+                if tdlib::functions::delete_forum_topic(chat_id, topic_id, client_id)
+                    .await
+                    .is_ok()
                 {
-                    log::warn!("Failed to delete a forum topic: {e:?}");
+                    // TDLib announces deletions only via chat events; drop the
+                    // row ourselves so the menu action visibly works.
+                    if let Some(list) = list {
+                        list.remove_topic(topic_id);
+                    }
                 }
             });
         });

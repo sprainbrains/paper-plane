@@ -3848,7 +3848,9 @@ impl ChatHistory {
 
     /// Leaves the topic window: rebuilds the whole-chat view underneath.
     fn close_topic(&self) {
-        if self.imp().topic.borrow_mut().take().is_none() {
+        // Do NOT clear the topic here: `set_chat` below captures it as the
+        // composer's outgoing target before its own cleanup drops it.
+        if self.imp().topic.borrow().is_none() {
             return;
         }
         let Some(chat) = self.chat() else {

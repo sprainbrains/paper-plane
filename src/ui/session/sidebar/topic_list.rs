@@ -107,9 +107,8 @@ mod imp {
             };
             let Some(topic) = obj
                 .imp()
-                .topics
-                .borrow()
-                .as_ref()
+                .list_view
+                .model()
                 .and_then(|model| model.item(position))
                 .and_downcast::<model::Topic>()
             else {
@@ -138,7 +137,15 @@ impl TopicList {
 
         let model = chat.forum_topic_list();
         *self.imp().topics.borrow_mut() = Some(model.clone());
-        let selection = gtk::NoSelection::new(Some(model));
+        // Hidden topics (General hidden above the list) stay in the model for
+        // lookups but leave the visible rows.
+        let filter = gtk::CustomFilter::new(|item| {
+            !item
+                .downcast_ref::<model::Topic>()
+                .is_some_and(|topic| topic.is_hidden())
+        });
+        let filtered = gtk::FilterListModel::new(Some(model), Some(filter));
+        let selection = gtk::NoSelection::new(Some(filtered));
         imp.list_view.set_model(Some(&selection));
         imp.list_view.set_factory(Some(&factory));
     }

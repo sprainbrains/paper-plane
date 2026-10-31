@@ -600,7 +600,15 @@ impl ClientStateSession {
             MessageInteractionInfo(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageMentionRead(ref data) => self.chat(data.chat_id).handle_update(update),
             MessageSendSucceeded(ref data) => self.chat(data.message.chat_id).handle_update(update),
-            NewMessage(ref data) => self.chat(data.message.chat_id).handle_update(update),
+            NewMessage(ref data) => {
+                let chat = self.chat(data.message.chat_id);
+                // Forums keep their topic snapshots fresh (unread counts and
+                // last messages ride only on getForumTopics).
+                if let Some(list) = chat.try_forum_topic_list() {
+                    list.schedule_refresh();
+                }
+                chat.handle_update(update)
+            }
             BasicGroup(data) => self.upsert_basic_group(data.basic_group),
             File(update) => {
                 self.handle_file_update(update.file);

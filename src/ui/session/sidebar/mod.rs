@@ -402,6 +402,11 @@ impl Sidebar {
             return;
         };
         imp.topic_list.set_chat(Some(&chat));
+        // Re-entering the topic page refreshes the snapshot (unread badges
+        // and previews do not ride on updateForumTopic).
+        if let Some(list) = chat.try_forum_topic_list() {
+            list.refresh();
+        }
         // Chat-level mute shows as a bell in the topic page header (tdesktop).
         // shortcut: refreshed on selection, not live on a mute toggle.
         let mut title = chat.title();

@@ -72,6 +72,15 @@ pub(crate) fn show_topic_dialog(
             .unwrap_or(0),
     ));
 
+    // The dialog is its own top-level with no ToastOverlay ancestor, so
+    // failures surface as an inline error line instead of a toast.
+    let error_label = gtk::Label::builder()
+        .visible(false)
+        .wrap(true)
+        .xalign(0.0)
+        .build();
+    error_label.add_css_class("error");
+
     let name_row = adw::EntryRow::builder()
         .title(gettext("Name"))
         .text(edit_topic.as_ref().map(|t| t.name()).unwrap_or_default())
@@ -179,6 +188,7 @@ pub(crate) fn show_topic_dialog(
 
     let chat_for_save = chat.clone();
     let name_row_for_save = name_row.clone();
+    let error_label_for_save = error_label.clone();
     save.connect_clicked(move |button| {
         let name = name_row_for_save.text().trim().to_string();
         if name.is_empty() {
@@ -189,6 +199,7 @@ pub(crate) fn show_topic_dialog(
         let color = selected_color.get();
         let emoji_id = selected_emoji.get();
         let edit_id = edit_topic.as_ref().map(|t| t.forum_topic_id());
+        let error_label = error_label_for_save.clone();
         glib::spawn_future_local(async move {
             let result = match edit_id {
                 None => tdlib::functions::create_forum_topic(
@@ -222,9 +233,8 @@ pub(crate) fn show_topic_dialog(
                     }
                 }
                 Err(e) => {
-                    if let Some(window) = window {
-                        utils::show_toast(&window, e.message);
-                    }
+                    error_label.set_text(&e.message);
+                    error_label.set_visible(true);
                 }
             }
         });
@@ -248,6 +258,7 @@ pub(crate) fn show_topic_dialog(
     content_box.append(&form);
     content_box.append(&color_box);
     content_box.append(&icon_box);
+    content_box.append(&error_label);
     content_box.append(&buttons);
 
     let toolbar = adw::ToolbarView::new();

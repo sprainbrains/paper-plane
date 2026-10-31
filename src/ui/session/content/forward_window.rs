@@ -181,8 +181,14 @@ impl ForwardWindow {
         let imp = self.imp();
         imp.forum_chat.replace(Some(chat.clone()));
         let list = chat.forum_topic_list();
+        let filter = gtk::CustomFilter::new(|item| {
+            !item
+                .downcast_ref::<model::Topic>()
+                .is_some_and(|topic| topic.is_hidden())
+        });
+        let filtered = gtk::FilterListModel::new(Some(list), Some(filter));
         imp.topic_list_view
-            .set_model(Some(&gtk::NoSelection::new(Some(list))));
+            .set_model(Some(&gtk::NoSelection::new(Some(filtered))));
         imp.topic_list_view
             .set_factory(Some(&super::super::sidebar::topic_row_factory(chat)));
         imp.forward_stack.set_visible_child_name("topics");
