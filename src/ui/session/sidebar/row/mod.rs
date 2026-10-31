@@ -34,6 +34,29 @@ mod imp {
         pub(super) item_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) chat_signal_group: OnceCell<glib::SignalGroup>,
         pub(super) session_signal_group: OnceCell<glib::SignalGroup>,
+        /// Watches the bound forum's topic list so the chips refresh when it
+        /// arrives or re-sorts.
+        pub(super) forum_list_signal_group: OnceCell<glib::SignalGroup>,
+        /// Topic ids currently shown on the two chips (0 = empty).
+        pub(super) forum_chip_topics: [std::cell::Cell<i32>; 2],
+        #[template_child]
+        pub(super) sidebar_avatar: TemplateChild<ui::SidebarAvatar>,
+        #[template_child]
+        pub(super) preview_block: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) forum_chips_box: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) forum_chip_1: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) forum_chip_1_icon: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) forum_chip_1_name: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) forum_chip_2: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) forum_chip_2_icon: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) forum_chip_2_name: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) title: TemplateChild<ui::ChatTitle>,
         #[template_child]
@@ -250,6 +273,30 @@ mod imp {
                 }
             ));
             obj.add_controller(drop_target);
+
+            // Clicking a topic chip on a collapsed forum row opens that topic
+            // directly (tdesktop); the gesture claims the press so the row
+            // itself is not activated.
+            for (chip, index) in [
+                (self.forum_chip_1.get(), 0usize),
+                (self.forum_chip_2.get(), 1usize),
+            ] {
+                let gesture = gtk::GestureClick::new();
+                gesture.set_button(gdk::BUTTON_PRIMARY);
+                gesture.connect_released(clone!(
+                    #[weak]
+                    obj,
+                    move |gesture, _, _, _| {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        obj.open_chip_topic(index);
+                    }
+                ));
+                chip.add_controller(gesture);
+            }
+
+            // The topic list fetch is per-row work: start it when the row is
+            // mapped, never on bind (AGENTS.md); the list dedupes refreshes.
+            obj.connect_map(|row| row.on_map_forum());
         }
 
         fn dispose(&self) {
@@ -448,6 +495,7 @@ impl Row {
                     obj.update_subtitle_prefix_label();
                     obj.update_minithumbnail();
                     obj.update_subtitle_label();
+                    obj.update_forum_chips();
                 }
             ),
         );
@@ -520,6 +568,20 @@ impl Row {
             ),
         );
         imp.session_signal_group.set(session_signal_group).unwrap();
+
+        // A forum's chips follow its topic list; the target is (re)set in
+        // `update_forum_chips` since the list is created lazily.
+        let forum_list_signal_group = glib::SignalGroup::new::<model::ForumTopicList>();
+        let weak = self.downgrade();
+        forum_list_signal_group.connect_local("items-changed", false, move |_| {
+            if let Some(obj) = weak.upgrade() {
+                obj.update_forum_chips();
+            }
+            None
+        });
+        imp.forum_list_signal_group
+            .set(forum_list_signal_group)
+            .unwrap();
     }
 
     pub(crate) fn item(&self) -> Option<model::ChatListItem> {
@@ -553,6 +615,7 @@ impl Row {
         self.update_status_stack();
         self.update_unread_count_style();
         self.update_actions();
+        self.update_forum_chips();
 
         self.notify("item");
     }

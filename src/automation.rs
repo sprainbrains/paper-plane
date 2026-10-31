@@ -164,7 +164,6 @@ impl Application {
             },
         );
 
-        // Navigation & write actions.
         self.add_auto_action("auto-open-chat", Some(glib::VariantTy::INT64), |app, p| {
             let Some(chat_id) = p.and_then(glib::Variant::get::<i64>) else {
                 log::warn!("auto-open-chat: missing or invalid parameters");

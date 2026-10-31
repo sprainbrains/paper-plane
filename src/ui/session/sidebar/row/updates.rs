@@ -329,3 +329,160 @@ pub(crate) fn timestamp_text(date: i64) -> glib::GString {
     }
     .unwrap()
 }
+
+/// Chips for a collapsed forum row: the topic of the chat's last message
+/// first, then the next most recent topic. `recent` is (topic id, last
+/// message date) pairs; unknown topics are ignored.
+fn forum_chip_topics(last_topic: Option<i32>, recent: &[(i32, i32)]) -> Vec<i32> {
+    let mut chips = Vec::with_capacity(2);
+    if let Some(id) = last_topic.filter(|id| recent.iter().any(|(topic, _)| topic == id)) {
+        chips.push(id);
+    }
+    for (id, _) in recent {
+        if chips.len() == 2 {
+            break;
+        }
+        if !chips.contains(id) {
+            chips.push(*id);
+        }
+    }
+    chips
+}
+
+impl super::Row {
+    /// Renders the collapsed forum row (tdesktop image 1): up to two topic
+    /// chips above the `Author: message` line, the pair wrapped in one
+    /// outline. Chips show the topic's dot color + name.
+    /// shortcut: chips use a colored dot, not the topic emoji image; upgrade
+    /// when the sidebar shares the custom-emoji decode with topic rows.
+    pub(super) fn update_forum_chips(&self) {
+        let imp = self.imp();
+        let Some(chat) = self.item().map(|item| item.chat_()) else {
+            return;
+        };
+
+        let list = chat.try_forum_topic_list();
+        imp.forum_list_signal_group
+            .get()
+            .unwrap()
+            .set_target(list.as_ref());
+
+        let is_forum = chat.is_forum();
+        if is_forum {
+            imp.sidebar_avatar.add_css_class("forum-squircle");
+        } else {
+            imp.sidebar_avatar.remove_css_class("forum-squircle");
+        }
+
+        let mut chips: Vec<(i32, String, i32)> = Vec::new();
+        if let (true, Some(list)) = (is_forum, list.as_ref()) {
+            let mut topics: Vec<(i32, i32, String, i32)> = (0..list.n_items())
+                .filter_map(|i| list.item(i).and_downcast::<model::Topic>())
+                .map(|topic| {
+                    let date = topic.last_message().map(|m| m.date()).unwrap_or(0);
+                    (
+                        topic.forum_topic_id(),
+                        date,
+                        topic.name(),
+                        topic.icon_color(),
+                    )
+                })
+                .collect();
+            topics.sort_by_key(|(_, date, _, _)| std::cmp::Reverse(*date));
+            let recency: Vec<(i32, i32)> =
+                topics.iter().map(|(id, date, _, _)| (*id, *date)).collect();
+            chips = forum_chip_topics(
+                chat.last_message().and_then(|m| m.topic_forum_id()),
+                &recency,
+            )
+            .iter()
+            .filter_map(|id| {
+                topics
+                    .iter()
+                    .find(|(topic, _, _, _)| topic == id)
+                    .map(|(topic, _, name, color)| (*topic, name.clone(), *color))
+            })
+            .collect();
+        }
+
+        let slots = [
+            (
+                imp.forum_chip_1.get(),
+                imp.forum_chip_1_icon.get(),
+                imp.forum_chip_1_name.get(),
+            ),
+            (
+                imp.forum_chip_2.get(),
+                imp.forum_chip_2_icon.get(),
+                imp.forum_chip_2_name.get(),
+            ),
+        ];
+        for (index, (slot, icon, name)) in slots.into_iter().enumerate() {
+            match chips.get(index) {
+                Some((id, topic_name, color)) => {
+                    icon.set_markup(&format!("<span foreground='#{color:06X}'>●</span>"));
+                    name.set_text(topic_name);
+                    slot.set_visible(true);
+                    imp.forum_chip_topics[index].set(*id);
+                }
+                None => {
+                    slot.set_visible(false);
+                    imp.forum_chip_topics[index].set(0);
+                }
+            }
+        }
+        let show = !chips.is_empty();
+        imp.forum_chips_box.set_visible(show);
+        if show {
+            imp.preview_block.add_css_class("forum-preview");
+        } else {
+            imp.preview_block.remove_css_class("forum-preview");
+        }
+    }
+
+    /// Opens the topic shown on chip `index` directly in the content pane.
+    pub(super) fn open_chip_topic(&self, index: usize) {
+        let topic_id = self.imp().forum_chip_topics[index].get();
+        let Some(chat) = self
+            .item()
+            .map(|item| item.chat_())
+            .filter(|_| topic_id != 0)
+        else {
+            return;
+        };
+        if let Some(session) = crate::utils::ancestor::<_, crate::ui::Session>(self) {
+            session.open_topic(&chat, topic_id);
+            session.show_chat_content();
+        }
+    }
+
+    /// On map: kick the lazy topic-list fetch a collapsed forum row needs for
+    /// its chips (the list dedupes concurrent refreshes).
+    pub(super) fn on_map_forum(&self) {
+        let Some(chat) = self.item().map(|item| item.chat_()) else {
+            return;
+        };
+        if chat.is_forum() {
+            chat.forum_topic_list();
+            self.update_forum_chips();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::forum_chip_topics;
+
+    #[test]
+    fn chips_lead_with_last_message_topic_then_recency() {
+        let recent = [(5, 100), (2, 90), (1, 80)];
+        // Leftmost chip = topic of the last message, then the freshest others.
+        assert_eq!(forum_chip_topics(Some(2), &recent), [2, 5]);
+        // No last-message topic known: two most recent.
+        assert_eq!(forum_chip_topics(None, &recent), [5, 2]);
+        // Unknown last-message topic is ignored, not shown.
+        assert_eq!(forum_chip_topics(Some(99), &recent), [5, 2]);
+        // A one-topic forum shows a single chip.
+        assert_eq!(forum_chip_topics(Some(7), &[(7, 10)]), [7]);
+    }
+}
