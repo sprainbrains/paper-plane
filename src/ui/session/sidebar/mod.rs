@@ -5,17 +5,18 @@ mod mini_thumbnail;
 mod row;
 mod search;
 mod selection;
+mod topic_list;
 
 use std::cell::Cell;
 use std::cell::OnceCell;
 use std::cell::RefCell;
 
+use adw::prelude::*;
 use glib::Properties;
 use glib::clone;
 use glib::closure;
 use gtk::CompositeTemplate;
 use gtk::glib;
-use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 
 pub(crate) use self::avatar::Avatar;
@@ -33,6 +34,7 @@ pub(crate) use self::search::Section as SearchSection;
 pub(crate) use self::search::SectionRow as SearchSectionRow;
 pub(crate) use self::search::SectionType as SearchSectionType;
 pub(crate) use self::selection::Selection;
+pub(crate) use self::topic_list::TopicList as SidebarTopicList;
 use crate::model;
 use crate::ui;
 use crate::utils;
@@ -46,8 +48,11 @@ mod imp {
     pub(crate) struct Sidebar {
         #[property(get, set)]
         pub(super) compact: Cell<bool>,
-        #[property(get, set, nullable)]
+        #[property(get, set = Self::set_selected_chat, nullable, explicit_notify)]
         pub(super) selected_chat: glib::WeakRef<model::Chat>,
+        /// The selected forum's `view-as-topics` watcher, re-targeted whenever
+        /// the selection changes (a remote toggle moves the sidebar with it).
+        pub(super) view_as_topics_handler: RefCell<Option<(model::Chat, glib::SignalHandlerId)>>,
         #[property(get, set = Self::set_session, explicit_notify)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         // Kept alive so the `vertical-folders` change handler stays connected.
@@ -82,6 +87,10 @@ mod imp {
         pub(super) folder_bar: TemplateChild<ui::SidebarChatFolderBar>,
         #[template_child]
         pub(super) folder_rail: TemplateChild<gtk::Box>,
+        #[template_child]
+        pub(super) forum_topics_page: TemplateChild<adw::NavigationPage>,
+        #[template_child]
+        pub(super) topic_list: TemplateChild<super::SidebarTopicList>,
     }
 
     #[glib::object_subclass]
@@ -118,6 +127,29 @@ mod imp {
 
     #[gtk::template_callbacks]
     impl Sidebar {
+        fn set_selected_chat(&self, chat: Option<&model::Chat>) {
+            let obj = self.obj();
+            // No early return on the same chat: the chat list re-activates the
+            // selected row on every click, and that must re-push the topic page.
+            if let Some((watched, id)) = self.view_as_topics_handler.take() {
+                watched.disconnect(id);
+            }
+            if let Some(chat) = chat
+                && chat.is_forum()
+            {
+                let id = chat.connect_view_as_topics_notify(clone!(
+                    #[weak(rename_to = sidebar)]
+                    obj,
+                    move |_| sidebar.sync_topics_page()
+                ));
+                self.view_as_topics_handler
+                    .replace(Some((chat.clone(), id)));
+            }
+            self.selected_chat.set(chat);
+            obj.sync_topics_page();
+            obj.notify_selected_chat();
+        }
+
         fn set_session(&self, session: Option<&model::ClientStateSession>) {
             let obj = &*self.obj();
             if obj.session().as_ref() == session {
@@ -290,6 +322,9 @@ mod imp {
             {
                 list.disconnect(id);
             }
+            if let Some((watched, id)) = self.view_as_topics_handler.take() {
+                watched.disconnect(id);
+            }
             if let Some((weak, id)) = self.loading_handler.take()
                 && let Some(list) = weak.upgrade()
             {
@@ -317,6 +352,36 @@ glib::wrapper! {
 }
 
 impl Sidebar {
+    /// Keeps the forum-topics page in step with the selection: a topics-mode
+    /// forum pushes it over the chat list (the tdesktop "list transforms"
+    /// slide), anything else pops back to the chats.
+    fn sync_topics_page(&self) {
+        let imp = self.imp();
+        let on_page = imp
+            .navigation_view
+            .visible_page_tag()
+            .is_some_and(|tag| tag == "forum-topics");
+        let Some(chat) = self
+            .selected_chat()
+            .filter(|chat| chat.is_forum() && chat.view_as_topics())
+        else {
+            if on_page {
+                imp.navigation_view.pop_to_tag("chats");
+            }
+            return;
+        };
+        imp.topic_list.set_chat(Some(&chat));
+        imp.forum_topics_page.set_title(&chat.title());
+        if !on_page {
+            imp.navigation_view.push_by_tag("forum-topics");
+        }
+    }
+
+    /// Returns the sidebar to its chat-list page (topic list Escape/back).
+    pub(crate) fn pop_to_chats(&self) {
+        self.imp().navigation_view.pop_to_tag("chats");
+    }
+
     /// Moves the chat-folder bar between the top toolbar (horizontal) and a rail on the
     /// far left (vertical), matching the `vertical-folders` preference.
     fn apply_folder_layout(&self, vertical: bool) {

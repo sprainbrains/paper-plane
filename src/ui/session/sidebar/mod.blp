@@ -213,5 +213,19 @@ template $PaplSidebar: Widget {
         }
       };
     }
+
+    Adw.NavigationPage forum_topics_page {
+      tag: "forum-topics";
+      title: _("Topics");
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {}
+
+        $PaplSidebarTopicList topic_list {
+          vexpand: true;
+        }
+      };
+    }
   }
 }

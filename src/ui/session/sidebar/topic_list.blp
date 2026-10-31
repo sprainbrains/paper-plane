@@ -1,0 +1,23 @@
+using Gtk 4.0;
+
+// The forum topic list shown in the sidebar while a forum chat is selected
+// (the tdesktop "chat list transforms" page). Rows are plain names until the
+// full topic row lands; activation opens the topic in the content pane.
+template $PaplSidebarTopicList: Widget {
+  layout-manager: BinLayout {};
+
+  ScrolledWindow {
+    vexpand: true;
+    hscrollbar-policy: never;
+
+    ListView list_view {
+      single-click-activate: true;
+
+      activate => $list_activate() swapped;
+
+      styles [
+        "navigation-sidebar",
+      ]
+    }
+  }
+}

@@ -30,6 +30,13 @@ fn merge_orders(existing: &[(i32, i64)], incoming: &[(i32, i64)]) -> Vec<(i32, i
     merged
 }
 
+/// Whether the merged sequence differs from the current one in position or
+/// count: a first fetch into an empty list must report `items-changed` even
+/// though nothing "moved".
+fn sequence_moved(current: &[(i32, i64)], merged: &[(i32, i64)]) -> bool {
+    current.len() != merged.len() || current.iter().zip(merged).any(|(a, b)| a != b)
+}
+
 mod imp {
     use super::*;
 
@@ -178,6 +185,16 @@ impl ForumTopicList {
         let Some(chat) = imp.chat.upgrade() else {
             return;
         };
+        // What the view believes it holds until this batch is reported: the
+        // sequence must be captured BEFORE inserting, or a fetch that merely
+        // fills an empty (or unchanged) list would compare against itself and
+        // never emit.
+        let before: Vec<(i32, i64)> = imp
+            .topics
+            .borrow()
+            .iter()
+            .map(|topic| (topic.forum_topic_id(), topic.order()))
+            .collect();
 
         let mut incoming = Vec::with_capacity(td_topics.len());
         for td in td_topics {
@@ -216,9 +233,9 @@ impl ForumTopicList {
             .map(|topic| (topic.forum_topic_id(), topic.order()))
             .collect();
         let sorted = merge_orders(&pairs, &incoming);
-        let moved = sorted.iter().zip(pairs.iter()).any(|(a, b)| a != b);
-        if moved {
-            let old_len = imp.topics.borrow().len() as u32;
+        // Emit whenever the sequence the view holds differs from the merged
+        // one — including the plain "empty list got filled" case.
+        if sequence_moved(&before, &sorted) {
             let mut by_id: HashMap<_, _> = imp
                 .topics
                 .borrow_mut()
@@ -234,7 +251,7 @@ impl ForumTopicList {
             let new_len = reordered.len() as u32;
             *imp.topics.borrow_mut() = reordered;
             self.upcast_ref::<gio::ListModel>()
-                .items_changed(0, old_len, new_len);
+                .items_changed(0, before.len() as u32, new_len);
         }
     }
 
@@ -264,6 +281,17 @@ impl ForumTopicList {
 #[cfg(test)]
 mod tests {
     use super::merge_orders;
+    use super::sequence_moved;
+
+    #[test]
+    fn first_fetch_reports_change_even_without_moves() {
+        // The bug this pins: an empty list filled in TDLib's own order emitted
+        // nothing, leaving the topic list blank forever.
+        assert!(sequence_moved(&[], &[(1, 20), (2, 10)]));
+        assert!(sequence_moved(&[(1, 20)], &[(1, 20), (2, 10)]));
+        assert!(!sequence_moved(&[(1, 20), (2, 10)], &[(1, 20), (2, 10)]));
+        assert!(sequence_moved(&[(1, 20), (2, 10)], &[(2, 10), (1, 20)]));
+    }
 
     #[test]
     fn merged_topic_orders_desc_and_keeps_identity() {

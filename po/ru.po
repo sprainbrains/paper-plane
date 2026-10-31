@@ -1806,6 +1806,9 @@ msgstr "Начало обсуждения"
 msgid "This topic is closed."
 msgstr "Эта тема закрыта."
 
+msgid "Topics"
+msgstr "Темы"
+
 #: src/model/chat.rs
 msgid "Replies"
 msgstr "Ответы"

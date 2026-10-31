@@ -508,6 +508,11 @@ impl Session {
         self.imp().content.scroll_history_to_latest();
     }
 
+    /// Opens a forum topic window in the content (sidebar topic row activation).
+    pub(crate) fn open_topic(&self, chat: &model::Chat, forum_topic_id: i32) {
+        self.imp().content.open_topic(chat, forum_topic_id);
+    }
+
     /// Reveals the content (chat) page. On a collapsed (mobile) layout this navigates
     /// away from the chat-list sidebar; when expanded both are already visible, so it
     /// has no visible effect.

@@ -211,6 +211,13 @@ impl Content {
         glib::Object::new()
     }
 
+    /// Opens a forum topic window in the chat history (sidebar topic row).
+    pub(crate) fn open_topic(&self, chat: &model::Chat, forum_topic_id: i32) {
+        self.imp()
+            .chat_history
+            .open_topic(chat, forum_topic_id, None);
+    }
+
     pub(crate) fn handle_paste_action(&self) {
         self.imp().chat_history.handle_paste_action();
     }
