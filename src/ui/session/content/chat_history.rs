@@ -240,6 +240,9 @@ mod imp {
             klass.install_action("chat-history.search", None, |widget, _, _| {
                 widget.open_search();
             });
+            klass.install_action("chat-history.view-as-topics", None, |widget, _, _| {
+                widget.set_forum_view_as_topics(true);
+            });
             klass.install_action("chat-history.scroll-down", None, move |widget, _, _| {
                 widget.scroll_down();
             });
@@ -873,6 +876,11 @@ impl ChatHistory {
                     }
                     _ => false,
                 },
+            );
+            // "View as Topics" only makes sense for a forum in unified mode.
+            self.action_set_enabled(
+                "chat-history.view-as-topics",
+                chat.is_forum() && !chat.view_as_topics(),
             );
 
             let model = model::ChatHistoryModel::new(chat);
@@ -3069,6 +3077,24 @@ impl ChatHistory {
                     hist.close_search();
                     hist.reveal_message(message.id());
                 }
+            }
+        });
+    }
+
+    /// Flips the forum's view mode (TDLib persists `view_as_topics`; the
+    /// `updateChatViewAsTopics` echo moves the sidebar and this window).
+    fn set_forum_view_as_topics(&self, view_as_topics: bool) {
+        let Some(chat) = self.chat().filter(|chat| chat.is_forum()) else {
+            return;
+        };
+        let client_id = chat.session_().client_().id();
+        let chat_id = chat.id();
+        utils::spawn(async move {
+            if let Err(e) =
+                tdlib::functions::toggle_chat_view_as_topics(chat_id, view_as_topics, client_id)
+                    .await
+            {
+                log::warn!("Failed to change the forum view mode: {e:?}");
             }
         });
     }

@@ -532,6 +532,11 @@
         <attribute name="action">chat-history.view-info</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">View as Topics</attribute>
+        <attribute name="action">chat-history.view-as-topics</attribute>
+        <attribute name="hidden-when">action-disabled</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">Show Pinned Panel</attribute>
         <attribute name="action">chat-history.show-pinned</attribute>
         <attribute name="hidden-when">action-disabled</attribute>

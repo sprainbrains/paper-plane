@@ -27,6 +27,15 @@ menu primary_menu {
   }
 }
 
+menu forum_menu_model {
+  section {
+    item {
+      label: _("View as Messages");
+      action: "sidebar.forum-unified";
+    }
+  }
+}
+
 template $PaplSidebar: Widget {
   layout-manager: BinLayout {};
 
@@ -220,7 +229,13 @@ template $PaplSidebar: Widget {
 
       child: Adw.ToolbarView {
         [top]
-        Adw.HeaderBar {}
+        Adw.HeaderBar {
+          [end]
+          MenuButton {
+            icon-name: "view-more-symbolic";
+            menu-model: forum_menu_model;
+          }
+        }
 
         $PaplSidebarTopicList topic_list {
           vexpand: true;

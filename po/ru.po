@@ -1809,6 +1809,12 @@ msgstr "Эта тема закрыта."
 msgid "Search in this chat"
 msgstr "Поиск в этом чате"
 
+msgid "View as Messages"
+msgstr "Просматривать как сообщения"
+
+msgid "View as Topics"
+msgstr "Просматривать как темы"
+
 msgid "Topics"
 msgstr "Темы"
 

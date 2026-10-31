@@ -122,6 +122,23 @@ mod imp {
             klass.install_action("sidebar.show-archived-chats", None, move |widget, _, _| {
                 widget.show_archived_chats();
             });
+
+            klass.install_action("sidebar.forum-unified", None, move |widget, _, _| {
+                // Flip the open forum to the unified (messages) view; the
+                // updateChatViewAsTopics echo pops this page via the watcher.
+                if let Some(chat) = widget.selected_chat().filter(|chat| chat.is_forum()) {
+                    let client_id = chat.session_().client_().id();
+                    let chat_id = chat.id();
+                    utils::spawn(async move {
+                        if let Err(e) =
+                            tdlib::functions::toggle_chat_view_as_topics(chat_id, false, client_id)
+                                .await
+                        {
+                            log::warn!("Failed to switch the forum to messages view: {e:?}");
+                        }
+                    });
+                }
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
