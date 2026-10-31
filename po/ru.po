@@ -1817,6 +1817,27 @@ msgstr "Просматривать как темы"
 
 msgid "Topics"
 msgstr "Темы"
+msgid "New Topic"
+msgstr "Новая тема"
+msgid "_Mute"
+msgstr "_Заглушить"
+
+msgid "_Unmute"
+msgstr "_Включить звук"
+
+msgid "_Edit Topic"
+msgstr "_Изменить тему"
+
+
+msgid "Edit Topic"
+msgstr "Изменить тему"
+
+msgid "Name"
+msgstr "Название"
+
+msgid "Create"
+msgstr "Создать"
+
 
 #: src/model/chat.rs
 msgid "Replies"

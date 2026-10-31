@@ -123,6 +123,16 @@ mod imp {
                 widget.show_archived_chats();
             });
 
+            klass.install_action("sidebar.forum-new-topic", None, move |widget, _, _| {
+                let Some(chat) = widget.selected_chat().filter(|chat| chat.is_forum()) else {
+                    return;
+                };
+                let Some(window) = widget.root().and_downcast::<gtk::Window>() else {
+                    return;
+                };
+                super::super::forum::show_topic_dialog(&window, &chat, None);
+            });
+
             klass.install_action("sidebar.forum-unified", None, move |widget, _, _| {
                 // Flip the open forum to the unified (messages) view; the
                 // updateChatViewAsTopics echo pops this page via the watcher.

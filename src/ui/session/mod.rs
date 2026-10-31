@@ -1,5 +1,6 @@
 mod contacts_window;
 mod content;
+mod forum;
 mod preferences_window;
 mod row;
 mod sidebar;

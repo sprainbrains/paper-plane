@@ -77,6 +77,9 @@ mod imp {
             klass.install_action("topic-row.unmute", None, move |row, _, _| {
                 row.toggle_mute(false);
             });
+            klass.install_action("topic-row.edit", None, move |row, _, _| {
+                row.open_edit_dialog();
+            });
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -228,6 +231,26 @@ impl TopicRow {
 
         self.action_set_enabled("topic-row.mute", !topic.is_muted());
         self.action_set_enabled("topic-row.unmute", topic.is_muted());
+        self.action_set_enabled(
+            "topic-row.edit",
+            imp.chat
+                .borrow()
+                .as_ref()
+                .is_some_and(|chat| crate::ui::session::forum::can_manage_topic(chat, &topic)),
+        );
+    }
+
+    /// Opens the rename/re-icon dialog for this topic.
+    fn open_edit_dialog(&self) {
+        let imp = self.imp();
+        let (Some(topic), Some(chat)) = (imp.topic.borrow().clone(), imp.chat.borrow().clone())
+        else {
+            return;
+        };
+        let Some(window) = self.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        crate::ui::session::forum::show_topic_dialog(&window, &chat, Some(&topic));
     }
 
     fn show_menu(&self, x: f64, y: f64) {

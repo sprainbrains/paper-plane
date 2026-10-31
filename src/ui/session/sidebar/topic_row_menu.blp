@@ -14,6 +14,14 @@ menu model {
       hidden-when: "action-disabled";
     }
   }
+
+  section {
+    item {
+      label: _("_Edit Topic");
+      action: "topic-row.edit";
+      hidden-when: "action-disabled";
+    }
+  }
 }
 
 PopoverMenu menu {
