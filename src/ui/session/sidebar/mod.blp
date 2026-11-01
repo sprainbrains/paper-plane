@@ -182,11 +182,64 @@ template $PaplSidebar: Widget {
             orientation: vertical;
           }
 
-          $PaplSidebarChatList {
+          // tdesktop transforms the chat list in place for a forum: the
+          // header, folder bar and their menus stay; only the list swaps.
+          Stack topic_stack {
             hexpand: true;
-            chat-list: bind folder_bar.selected-chat-list;
-            selected-chat: bind template.selected-chat bidirectional;
-            compact: bind template.compact;
+            vexpand: true;
+            transition-type: slide_left_right;
+
+            StackPage chats_page {
+              name: "chats";
+
+              child: $PaplSidebarChatList {
+                hexpand: true;
+                chat-list: bind folder_bar.selected-chat-list;
+                selected-chat: bind template.selected-chat bidirectional;
+                compact: bind template.compact;
+              };
+            }
+
+            StackPage topics_page {
+              name: "topics";
+
+              child: Box {
+                orientation: vertical;
+
+                Box {
+                  spacing: 4;
+                  margin-top: 4;
+                  margin-bottom: 4;
+                  margin-start: 6;
+                  margin-end: 6;
+
+                  Button {
+                    icon-name: "go-previous-symbolic";
+                    tooltip-text: _("Back");
+                    action-name: "sidebar.topics-back";
+
+                    styles ["flat"]
+                  }
+
+                  Label topics_title {
+                    hexpand: true;
+                    ellipsize: end;
+                    xalign: 0;
+
+                    styles ["title-heading"]
+                  }
+
+                  MenuButton {
+                    icon-name: "view-more-symbolic";
+                    menu-model: forum_menu_model;
+                  }
+                }
+
+                $PaplSidebarTopicList topic_list {
+                  vexpand: true;
+                }
+              };
+            }
           }
         }
       };
@@ -224,26 +277,6 @@ template $PaplSidebar: Widget {
           chat-list: bind template.session as <$ClientStateSession>.archive-chat-list;
           selected-chat: bind template.selected-chat bidirectional;
           compact: bind template.compact;
-        }
-      };
-    }
-
-    Adw.NavigationPage forum_topics_page {
-      tag: "forum-topics";
-      title: _("Topics");
-
-      child: Adw.ToolbarView {
-        [top]
-        Adw.HeaderBar {
-          [end]
-          MenuButton {
-            icon-name: "view-more-symbolic";
-            menu-model: forum_menu_model;
-          }
-        }
-
-        $PaplSidebarTopicList topic_list {
-          vexpand: true;
         }
       };
     }

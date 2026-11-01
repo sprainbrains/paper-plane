@@ -1,5 +1,4 @@
 using Gtk 4.0;
-using Adw 1;
 
 /// One row of the sidebar forum topic list: colored emoji icon, name, time,
 /// `Author: message` preview and the mute/pin/lock/unread markers. Clicking is
@@ -91,9 +90,12 @@ template $PaplSidebarTopicRow: Widget {
       spacing: 6;
       hexpand: true;
 
-      Inscription preview_label {
+      // Plain label, not an Inscription: tdesktop left-aligns the preview and
+      // keeps it on one line; Adw.Inscription centers it.
+      Label preview_label {
         hexpand: true;
-        text-overflow: ellipsize_end;
+        ellipsize: end;
+        xalign: 0;
         valign: center;
 
         styles ["small-body"]

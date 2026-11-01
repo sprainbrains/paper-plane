@@ -39,10 +39,12 @@ mod imp {
         pub(super) forum_list_signal_group: OnceCell<glib::SignalGroup>,
         /// Topic ids currently shown on the two chips (0 = empty).
         pub(super) forum_chip_topics: [std::cell::Cell<i32>; 2],
+        /// Emoji id the loaded chip texture belongs to (0 = none).
+        pub(super) forum_emoji_loaded_for: [std::cell::Cell<i64>; 2],
+        /// Whether chip emoji work is still demanded (row mapped).
+        pub(super) forum_demand: std::rc::Rc<std::cell::Cell<bool>>,
         #[template_child]
         pub(super) sidebar_avatar: TemplateChild<ui::SidebarAvatar>,
-        #[template_child]
-        pub(super) preview_block: TemplateChild<gtk::Box>,
         #[template_child]
         pub(super) forum_chips_box: TemplateChild<gtk::Box>,
         #[template_child]
@@ -57,6 +59,10 @@ mod imp {
         pub(super) forum_chip_2_icon: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) forum_chip_2_name: TemplateChild<gtk::Label>,
+        #[template_child]
+        pub(super) forum_chip_1_emoji: TemplateChild<gtk::Picture>,
+        #[template_child]
+        pub(super) forum_chip_2_emoji: TemplateChild<gtk::Picture>,
         #[template_child]
         pub(super) title: TemplateChild<ui::ChatTitle>,
         #[template_child]
@@ -297,6 +303,7 @@ mod imp {
             // The topic list fetch is per-row work: start it when the row is
             // mapped, never on bind (AGENTS.md); the list dedupes refreshes.
             obj.connect_map(|row| row.on_map_forum());
+            obj.connect_unmap(|row| row.imp().forum_demand.set(false));
         }
 
         fn dispose(&self) {

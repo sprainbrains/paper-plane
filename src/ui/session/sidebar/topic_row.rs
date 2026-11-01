@@ -59,7 +59,7 @@ mod imp {
         #[template_child]
         pub(super) timestamp_label: TemplateChild<gtk::Label>,
         #[template_child]
-        pub(super) preview_label: TemplateChild<gtk::Inscription>,
+        pub(super) preview_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) unread_label: TemplateChild<gtk::Label>,
     }
@@ -228,10 +228,8 @@ impl TopicRow {
                 .set_label(&timestamp_text(message.date() as i64));
             imp.timestamp_label.set_visible(true);
             let sender = strings::message_sender(&message.sender(), true);
-            imp.preview_label.set_text(Some(&format!(
-                "{sender}: {}",
-                strings::message_content(message)
-            )));
+            imp.preview_label
+                .set_text(&format!("{sender}: {}", strings::message_content(message)));
             imp.preview_label.set_visible(true);
         } else {
             imp.timestamp_label.set_visible(false);

@@ -3100,22 +3100,36 @@ impl ChatHistory {
         });
     }
 
-    /// Flips the forum's view mode (TDLib persists `view_as_topics`; the
-    /// `updateChatViewAsTopics` echo moves the sidebar and this window).
+    /// Flips the forum's view mode (TDLib persists `view_as_topics`); on
+    /// success the sidebar re-syncs, so "View as Topics" brings the list back.
     fn set_forum_view_as_topics(&self, view_as_topics: bool) {
         let Some(chat) = self.chat().filter(|chat| chat.is_forum()) else {
             return;
         };
         let client_id = chat.session_().client_().id();
         let chat_id = chat.id();
-        utils::spawn(async move {
-            if let Err(e) =
-                tdlib::functions::toggle_chat_view_as_topics(chat_id, view_as_topics, client_id)
-                    .await
-            {
-                log::warn!("Failed to change the forum view mode: {e:?}");
+        utils::spawn(clone!(
+            #[weak(rename_to = hist)]
+            self,
+            async move {
+                let Ok(_) = tdlib::functions::toggle_chat_view_as_topics(
+                    chat_id,
+                    view_as_topics,
+                    client_id,
+                )
+                .await
+                else {
+                    log::warn!("Failed to change the forum view mode");
+                    return;
+                };
+                if view_as_topics
+                    && let Some(root) = hist.root()
+                    && let Some(sidebar) = utils::descendant::<_, ui::Sidebar>(&root)
+                {
+                    sidebar.sync_topics_page();
+                }
             }
-        });
+        ));
     }
 
     fn open_search(&self) {
@@ -3926,6 +3940,13 @@ impl ChatHistory {
 
         let chat_id = chat.id();
         let client_id = chat.session_().client_().id();
+        // Topic unread counts ride only on getForumTopics: nudge the snapshot
+        // (coalesced) whenever reads are credited in a forum.
+        if chat.is_forum()
+            && let Some(list) = chat.try_forum_topic_list()
+        {
+            list.schedule_refresh();
+        }
         // Reads inside a topic window must credit the topic, not the chat.
         let source = match imp.model.borrow().as_ref().map(|m| m.source()) {
             Some(model::HistorySource::ForumTopic { .. }) => {

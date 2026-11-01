@@ -1,4 +1,5 @@
 use gettextrs::gettext;
+use glib::clone;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
@@ -6,6 +7,8 @@ use gtk::subclass::prelude::*;
 
 use crate::model;
 use crate::strings;
+use crate::ui;
+use crate::utils;
 
 impl super::Row {
     pub(super) fn update_message_status_icon(&self) {
@@ -374,9 +377,9 @@ impl super::Row {
             imp.sidebar_avatar.remove_css_class("forum-squircle");
         }
 
-        let mut chips: Vec<(i32, String, i32)> = Vec::new();
+        let mut chips: Vec<(i32, String, i32, i64)> = Vec::new();
         if let (true, Some(list)) = (is_forum, list.as_ref()) {
-            let mut topics: Vec<(i32, i32, String, i32)> = (0..list.n_items())
+            let mut topics: Vec<(i32, i32, String, i32, i64)> = (0..list.n_items())
                 .filter_map(|i| list.item(i).and_downcast::<model::Topic>())
                 .map(|topic| {
                     let date = topic.last_message().map(|m| m.date()).unwrap_or(0);
@@ -385,12 +388,15 @@ impl super::Row {
                         date,
                         topic.name(),
                         topic.icon_color(),
+                        topic.icon_custom_emoji_id(),
                     )
                 })
                 .collect();
-            topics.sort_by_key(|(_, date, _, _)| std::cmp::Reverse(*date));
-            let recency: Vec<(i32, i32)> =
-                topics.iter().map(|(id, date, _, _)| (*id, *date)).collect();
+            topics.sort_by_key(|(_, date, _, _, _)| std::cmp::Reverse(*date));
+            let recency: Vec<(i32, i32)> = topics
+                .iter()
+                .map(|(id, date, _, _, _)| (*id, *date))
+                .collect();
             chips = forum_chip_topics(
                 chat.last_message().and_then(|m| m.topic_forum_id()),
                 &recency,
@@ -399,8 +405,8 @@ impl super::Row {
             .filter_map(|id| {
                 topics
                     .iter()
-                    .find(|(topic, _, _, _)| topic == id)
-                    .map(|(topic, _, name, color)| (*topic, name.clone(), *color))
+                    .find(|(topic, _, _, _, _)| topic == id)
+                    .map(|(topic, _, name, color, emoji)| (*topic, name.clone(), *color, *emoji))
             })
             .collect();
         }
@@ -409,35 +415,102 @@ impl super::Row {
             (
                 imp.forum_chip_1.get(),
                 imp.forum_chip_1_icon.get(),
+                imp.forum_chip_1_emoji.get(),
                 imp.forum_chip_1_name.get(),
             ),
             (
                 imp.forum_chip_2.get(),
                 imp.forum_chip_2_icon.get(),
+                imp.forum_chip_2_emoji.get(),
                 imp.forum_chip_2_name.get(),
             ),
         ];
-        for (index, (slot, icon, name)) in slots.into_iter().enumerate() {
+        for (index, (slot, icon, emoji_pic, name)) in slots.into_iter().enumerate() {
             match chips.get(index) {
-                Some((id, topic_name, color)) => {
+                Some((id, topic_name, color, emoji)) => {
                     icon.set_markup(&format!("<span foreground='#{color:06X}'>●</span>"));
                     name.set_text(topic_name);
+                    // tdesktop shows the topic emoji when it has one, the
+                    // colored dot otherwise; the texture arrives async.
+                    let loaded = imp.forum_emoji_loaded_for[index].get() == *emoji && *emoji != 0;
+                    icon.set_visible(*emoji == 0 || !loaded);
+                    emoji_pic.set_visible(loaded);
                     slot.set_visible(true);
                     imp.forum_chip_topics[index].set(*id);
                 }
                 None => {
                     slot.set_visible(false);
                     imp.forum_chip_topics[index].set(0);
+                    imp.forum_emoji_loaded_for[index].set(0);
+                    emoji_pic.set_visible(false);
                 }
             }
         }
-        let show = !chips.is_empty();
-        imp.forum_chips_box.set_visible(show);
-        if show {
-            imp.preview_block.add_css_class("forum-preview");
-        } else {
-            imp.preview_block.remove_css_class("forum-preview");
+        imp.forum_chips_box.set_visible(!chips.is_empty());
+
+        // Off-screen rows do zero work (AGENTS.md): decode only while mapped.
+        if self.is_mapped() {
+            for (index, (_, _, _, emoji)) in chips.iter().enumerate() {
+                if *emoji != 0 {
+                    self.load_chip_emoji(index, *emoji, &chat);
+                }
+            }
         }
+    }
+
+    /// Decodes one chip's topic emoji while the row is demanded; mirrors
+    /// `TopicRow::load_emoji` at chip size.
+    fn load_chip_emoji(&self, index: usize, emoji_id: i64, chat: &model::Chat) {
+        let imp = self.imp();
+        let demand = imp.forum_demand.clone();
+        demand.set(self.is_mapped());
+        if !demand.get() || imp.forum_emoji_loaded_for[index].get() == emoji_id {
+            return;
+        }
+        imp.forum_emoji_loaded_for[index].set(emoji_id);
+        let session = chat.session_();
+        utils::spawn(clone!(
+            #[weak(rename_to = row)]
+            self,
+            async move {
+                let client_id = session.client_().id();
+                let Ok(tdlib::enums::Stickers::Stickers(data)) =
+                    tdlib::functions::get_custom_emoji_stickers(vec![emoji_id], client_id).await
+                else {
+                    return;
+                };
+                let Some(sticker) = data.stickers.into_iter().next() else {
+                    return;
+                };
+                let Ok(texture) =
+                    ui::load_picker_preview(&sticker, 16, &session, demand.clone()).await
+                else {
+                    return;
+                };
+                // The row may have been recycled to another chat meanwhile.
+                let imp = row.imp();
+                if !demand.get()
+                    || imp.forum_emoji_loaded_for[index].get() != emoji_id
+                    || imp.forum_chip_topics[index].get() == 0
+                {
+                    return;
+                }
+                let (icon, emoji_pic) = if index == 0 {
+                    (
+                        imp.forum_chip_1_icon.get().clone(),
+                        imp.forum_chip_1_emoji.get().clone(),
+                    )
+                } else {
+                    (
+                        imp.forum_chip_2_icon.get().clone(),
+                        imp.forum_chip_2_emoji.get().clone(),
+                    )
+                };
+                emoji_pic.set_paintable(Some(&texture));
+                emoji_pic.set_visible(true);
+                icon.set_visible(false);
+            }
+        ));
     }
 
     /// Opens the topic shown on chip `index` directly in the content pane.
@@ -463,6 +536,7 @@ impl super::Row {
             return;
         };
         if chat.is_forum() {
+            self.imp().forum_demand.set(true);
             chat.forum_topic_list();
             self.update_forum_chips();
         }

@@ -56,7 +56,7 @@ mod imp {
         pub(super) selected_chat: glib::WeakRef<model::Chat>,
         /// The selected forum's `view-as-topics` watcher, re-targeted whenever
         /// the selection changes (a remote toggle moves the sidebar with it).
-        pub(super) view_as_topics_handler: RefCell<Option<(model::Chat, glib::SignalHandlerId)>>,
+        pub(super) is_forum_handler: RefCell<Option<(model::Supergroup, glib::SignalHandlerId)>>,
         #[property(get, set = Self::set_session, explicit_notify)]
         pub(super) session: glib::WeakRef<model::ClientStateSession>,
         // Kept alive so the `vertical-folders` change handler stays connected.
@@ -92,7 +92,9 @@ mod imp {
         #[template_child]
         pub(super) folder_rail: TemplateChild<gtk::Box>,
         #[template_child]
-        pub(super) forum_topics_page: TemplateChild<adw::NavigationPage>,
+        pub(super) topic_stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub(super) topics_title: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) topic_list: TemplateChild<super::SidebarTopicList>,
     }
@@ -134,9 +136,10 @@ mod imp {
             });
 
             klass.install_action("sidebar.forum-unified", None, move |widget, _, _| {
-                // Flip the open forum to the unified (messages) view; the
-                // updateChatViewAsTopics echo pops this page via the watcher.
+                // Flip the open forum to the unified (messages) view: show the
+                // chat list again right away and persist the preference.
                 if let Some(chat) = widget.selected_chat().filter(|chat| chat.is_forum()) {
+                    widget.pop_to_chats();
                     let client_id = chat.session_().client_().id();
                     let chat_id = chat.id();
                     utils::spawn(async move {
@@ -148,6 +151,10 @@ mod imp {
                         }
                     });
                 }
+            });
+
+            klass.install_action("sidebar.topics-back", None, move |widget, _, _| {
+                widget.pop_to_chats();
             });
         }
 
@@ -161,20 +168,24 @@ mod imp {
         fn set_selected_chat(&self, chat: Option<&model::Chat>) {
             let obj = self.obj();
             // No early return on the same chat: the chat list re-activates the
-            // selected row on every click, and that must re-push the topic page.
-            if let Some((watched, id)) = self.view_as_topics_handler.take() {
+            // selected row on every click, and that must re-open the topic list.
+            if let Some((watched, id)) = self.is_forum_handler.take() {
                 watched.disconnect(id);
             }
-            if let Some(chat) = chat
-                && chat.is_forum()
-            {
-                let id = chat.connect_view_as_topics_notify(clone!(
-                    #[weak(rename_to = sidebar)]
-                    obj,
-                    move |_| sidebar.sync_topics_page()
-                ));
-                self.view_as_topics_handler
-                    .replace(Some((chat.clone(), id)));
+            // A forum is only recognizable once its supergroup info has
+            // arrived; watching `is-forum` lets a late load still open the
+            // topic list instead of leaving the chat in plain view.
+            if let Some(chat) = chat {
+                let chat_type = chat.chat_type();
+                if let Some(supergroup) = chat_type.supergroup() {
+                    let id = supergroup.connect_is_forum_notify(clone!(
+                        #[weak(rename_to = sidebar)]
+                        obj,
+                        move |_| sidebar.sync_topics_page()
+                    ));
+                    self.is_forum_handler
+                        .replace(Some((supergroup.clone(), id)));
+                }
             }
             self.selected_chat.set(chat);
             obj.sync_topics_page();
@@ -353,7 +364,7 @@ mod imp {
             {
                 list.disconnect(id);
             }
-            if let Some((watched, id)) = self.view_as_topics_handler.take() {
+            if let Some((watched, id)) = self.is_forum_handler.take() {
                 watched.disconnect(id);
             }
             if let Some((weak, id)) = self.loading_handler.take()
@@ -383,45 +394,34 @@ glib::wrapper! {
 }
 
 impl Sidebar {
-    /// Keeps the forum-topics page in step with the selection: a topics-mode
-    /// forum pushes it over the chat list (the tdesktop "list transforms"
-    /// slide), anything else pops back to the chats.
-    fn sync_topics_page(&self) {
+    /// Keeps the topic list in step with the selection: a forum swaps the
+    /// chat list out in place (tdesktop's transform — the header and folder
+    /// bar stay visible); anything else shows the chat list again.
+    pub(crate) fn sync_topics_page(&self) {
         let imp = self.imp();
-        let on_page = imp
-            .navigation_view
-            .visible_page_tag()
-            .is_some_and(|tag| tag == "forum-topics");
-        let Some(chat) = self
-            .selected_chat()
-            .filter(|chat| chat.is_forum() && chat.view_as_topics())
-        else {
-            if on_page {
-                imp.navigation_view.pop_to_tag("chats");
-            }
+        let Some(chat) = self.selected_chat().filter(|chat| chat.is_forum()) else {
+            imp.topic_stack.set_visible_child_name("chats");
             return;
         };
         imp.topic_list.set_chat(Some(&chat));
-        // Re-entering the topic page refreshes the snapshot (unread badges
+        // Re-entering the topic list refreshes the snapshot (unread badges
         // and previews do not ride on updateForumTopic).
         if let Some(list) = chat.try_forum_topic_list() {
             list.refresh();
         }
-        // Chat-level mute shows as a bell in the topic page header (tdesktop).
+        // Chat-level mute shows as a bell in the topic list header (tdesktop).
         // shortcut: refreshed on selection, not live on a mute toggle.
         let mut title = chat.title();
         if chat.is_muted() {
             title.push_str(" \u{1f515}");
         }
-        imp.forum_topics_page.set_title(&title);
-        if !on_page {
-            imp.navigation_view.push_by_tag("forum-topics");
-        }
+        imp.topics_title.set_text(&title);
+        imp.topic_stack.set_visible_child_name("topics");
     }
 
-    /// Returns the sidebar to its chat-list page (topic list Escape/back).
+    /// Returns the sidebar to its chat list (topic list Escape/back).
     pub(crate) fn pop_to_chats(&self) {
-        self.imp().navigation_view.pop_to_tag("chats");
+        self.imp().topic_stack.set_visible_child_name("chats");
     }
 
     /// Moves the chat-folder bar between the top toolbar (horizontal) and a rail on the

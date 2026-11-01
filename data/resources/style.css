@@ -194,12 +194,6 @@ chatbubble .topic-chip-color-FB6F5F { background-color: alpha(#FB6F5F, 0.25); }
   border-radius: 30%;
 }
 
-chatlist row .forum-preview {
-  border: 1px solid @borders;
-  border-radius: 10px;
-  padding: 4px 8px;
-}
-
 chatlist row .forum-chip {
   font-size: smaller;
 }
