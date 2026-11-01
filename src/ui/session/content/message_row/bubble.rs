@@ -91,6 +91,13 @@ mod imp {
         pub(super) topic_chip_color: RefCell<Option<String>>,
         pub(super) topic_chip_id: Cell<i32>,
         #[template_child]
+        pub(super) topic_chip_emoji: TemplateChild<gtk::Picture>,
+        /// Emoji id whose texture is in place / fetch in flight (0 = none).
+        pub(super) topic_chip_emoji_loaded: Cell<i64>,
+        pub(super) topic_chip_emoji_requested: Cell<i64>,
+        /// Whether chip emoji work is demanded (bubble mapped).
+        pub(super) chip_demand: std::rc::Rc<std::cell::Cell<bool>>,
+        #[template_child]
         pub(super) forward_label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) message_reply_bin: TemplateChild<adw::Bin>,
@@ -195,6 +202,18 @@ mod imp {
                 }
             ));
             self.topic_chip.add_controller(chip_gesture);
+
+            // Badge emoji is per-row media: demanded only while mapped.
+            obj.connect_map(clone!(
+                #[weak]
+                obj,
+                move |_| obj.reload_chip_emoji()
+            ));
+            obj.connect_unmap(clone!(
+                #[weak]
+                obj,
+                move |_| obj.imp().chip_demand.set(false)
+            ));
         }
 
         fn dispose(&self) {
@@ -415,14 +434,14 @@ impl MessageBubble {
     /// heads in a forum's unified view only (a topic window is single-topic,
     /// and the sidebar there shows the list anyway). Called both from the bind
     /// and from grouping updates, so it reads the bound message itself.
-    /// shortcut: colored dot instead of the topic emoji image; upgrade when
-    /// the sidebar and bubbles share a custom-emoji decode.
     pub(crate) fn update_topic_chip(&self, grouped_head: bool) {
         let imp = self.imp();
+        let mut badge_chat = None;
         let topic = match (grouped_head, imp.message.upgrade()) {
             (true, Some(message)) => {
                 let chat = message.chat_();
                 if chat.is_forum() {
+                    badge_chat = Some(chat.clone());
                     chat.try_forum_topic_list().and_then(|list| {
                         list.topic(message.topic_forum_id().unwrap_or(model::GENERAL_TOPIC_ID))
                     })
@@ -447,13 +466,95 @@ impl MessageBubble {
                     }
                     imp.topic_chip.add_css_class(&class);
                 }
+                // tdesktop shows the topic's emoji when it has one; the
+                // colored # stays as the fallback until the texture is in.
+                let emoji = topic.icon_custom_emoji_id();
+                let ready = emoji != 0
+                    && imp.topic_chip_emoji_loaded.get() == emoji
+                    && imp.topic_chip_emoji.paintable().is_some();
+                imp.topic_chip_emoji.set_visible(ready);
+                imp.topic_chip_icon.set_visible(!ready);
                 imp.topic_chip_id.set(topic.forum_topic_id());
                 imp.topic_chip.set_visible(true);
+                if !ready && emoji != 0 {
+                    if let Some(chat) = &badge_chat {
+                        self.maybe_load_chip_emoji(emoji, chat);
+                    }
+                }
             }
             None => {
                 imp.topic_chip.set_visible(false);
                 imp.topic_chip_id.set(0);
             }
+        }
+    }
+
+    /// Decodes the badge's topic emoji while the bubble is mapped
+    /// (AGENTS.md: off-screen rows do zero work).
+    fn maybe_load_chip_emoji(&self, emoji_id: i64, chat: &model::Chat) {
+        let imp = self.imp();
+        if !self.is_mapped()
+            || imp.topic_chip_emoji_requested.get() == emoji_id
+            || imp.topic_chip_emoji_loaded.get() == emoji_id
+        {
+            return;
+        }
+        imp.topic_chip_emoji_requested.set(emoji_id);
+        let demand = imp.chip_demand.clone();
+        demand.set(true);
+        let session = chat.session_();
+        utils::spawn(clone!(
+            #[weak(rename_to = bubble)]
+            self,
+            async move {
+                let client_id = session.client_().id();
+                let Ok(tdlib::enums::Stickers::Stickers(data)) =
+                    tdlib::functions::get_custom_emoji_stickers(vec![emoji_id], client_id).await
+                else {
+                    return;
+                };
+                let Some(sticker) = data.stickers.into_iter().next() else {
+                    return;
+                };
+                let Ok(texture) =
+                    ui::load_picker_preview(&sticker, 16, &session, demand.clone()).await
+                else {
+                    return;
+                };
+                let imp = bubble.imp();
+                if !demand.get()
+                    || imp.topic_chip_emoji_requested.get() != emoji_id
+                    || !imp.topic_chip.is_visible()
+                {
+                    return;
+                }
+                imp.topic_chip_emoji.set_paintable(Some(&texture));
+                imp.topic_chip_emoji_loaded.set(emoji_id);
+                imp.topic_chip_emoji.set_visible(true);
+                imp.topic_chip_icon.set_visible(false);
+            }
+        ));
+    }
+
+    /// Re-issue the badge emoji fetch when the bubble maps back on screen.
+    fn reload_chip_emoji(&self) {
+        let imp = self.imp();
+        if !imp.topic_chip.is_visible() || imp.topic_chip_emoji.is_visible() {
+            return;
+        }
+        let Some(message) = imp.message.upgrade() else {
+            return;
+        };
+        let chat = message.chat_();
+        let Some(topic) = chat.try_forum_topic_list().and_then(|list| {
+            list.topic(message.topic_forum_id().unwrap_or(model::GENERAL_TOPIC_ID))
+        }) else {
+            return;
+        };
+        let emoji = topic.icon_custom_emoji_id();
+        if emoji != 0 {
+            imp.topic_chip_emoji_requested.set(0);
+            self.maybe_load_chip_emoji(emoji, &chat);
         }
     }
 

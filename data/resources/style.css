@@ -175,18 +175,25 @@ chatlist row > widget {
 }
 
 /* Forum topic badges on unified-view bubbles (six TDLib colors). */
-chatbubble .topic-chip {
+messagebubble .topic-chip {
   border-radius: 9999px;
   padding: 1px 8px;
   font-size: smaller;
 }
 
-chatbubble .topic-chip-color-6FB9F0 { background-color: alpha(#6FB9F0, 0.25); }
-chatbubble .topic-chip-color-FFD67E { background-color: alpha(#FFD67E, 0.25); }
-chatbubble .topic-chip-color-CB86DB { background-color: alpha(#CB86DB, 0.25); }
-chatbubble .topic-chip-color-8EEE98 { background-color: alpha(#8EEE98, 0.25); }
-chatbubble .topic-chip-color-FF93B2 { background-color: alpha(#FF93B2, 0.25); }
-chatbubble .topic-chip-color-FB6F5F { background-color: alpha(#FB6F5F, 0.25); }
+messagebubble .topic-chip picture {
+  min-width: 16px;
+  min-height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+}
+
+messagebubble .topic-chip-color-6FB9F0 { background-color: alpha(#6FB9F0, 0.45); }
+messagebubble .topic-chip-color-FFD67E { background-color: alpha(#FFD67E, 0.45); }
+messagebubble .topic-chip-color-CB86DB { background-color: alpha(#CB86DB, 0.45); }
+messagebubble .topic-chip-color-8EEE98 { background-color: alpha(#8EEE98, 0.45); }
+messagebubble .topic-chip-color-FF93B2 { background-color: alpha(#FF93B2, 0.45); }
+messagebubble .topic-chip-color-FB6F5F { background-color: alpha(#FB6F5F, 0.45); }
 
 /* Collapsed forum chat row: squarish avatar, chips + message line in one
    outline (tdesktop parity). */
