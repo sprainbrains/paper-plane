@@ -440,6 +440,21 @@
                         </style>
                       </object>
                     </child>
+                    <child type="overlay">
+                      <object class="GtkLabel">
+                        <property name="halign">center</property>
+                        <property name="valign">start</property>
+                        <binding name="label">
+                          <lookup name="topic-unread">PaplChatHistory</lookup>
+                        </binding>
+                        <binding name="visible">
+                          <lookup name="topic-unread">PaplChatHistory</lookup>
+                        </binding>
+                        <style>
+                          <class name="unread-count"/>
+                        </style>
+                      </object>
+                    </child>
                     <child>
                       <object class="GtkButton">
                         <property name="halign">center</property>

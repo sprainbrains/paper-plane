@@ -82,6 +82,10 @@ mod imp {
         pub(super) is_auto_scrolling: Cell<bool>,
         pub(super) is_loading_messages: Cell<bool>,
         pub(super) sticky: Cell<bool>,
+        /// Unread credited to the open topic window; the scroll-down badge
+        /// shows it because TDLib keeps a forum chat's own counter at 0.
+        pub(super) topic_unread: Cell<i32>,
+        pub(super) topic_unread_group: OnceCell<glib::SignalGroup>,
         /// Collapsed (mobile) layout: the header avatar is shown only here, standing in
         /// for the identity the (hidden) sidebar would otherwise convey. On the expanded
         /// layout the sidebar already shows it, so the header avatar is hidden.
@@ -324,6 +328,10 @@ mod imp {
                     glib::ParamSpecBoolean::builder("sticky")
                         .read_only()
                         .build(),
+                    glib::ParamSpecInt::builder("topic-unread")
+                        .read_only()
+                        .explicit_notify()
+                        .build(),
                     glib::ParamSpecBoolean::builder("compact").build(),
                 ]
             })
@@ -353,6 +361,7 @@ mod imp {
             match pspec.name() {
                 "chat" => obj.chat().to_value(),
                 "sticky" => obj.sticky().to_value(),
+                "topic-unread" => self.topic_unread.get().to_value(),
                 "compact" => self.compact.get().to_value(),
                 _ => unimplemented!(),
             }
@@ -374,6 +383,17 @@ mod imp {
             ));
 
             obj.setup_search();
+
+            // The topic window's unread badge follows the open topic object.
+            let unread_group = glib::SignalGroup::new::<model::Topic>();
+            let unread_weak = obj.downgrade();
+            unread_group.connect_local("changed", false, move |_| {
+                if let Some(history) = unread_weak.upgrade() {
+                    history.update_topic_unread();
+                }
+                None
+            });
+            self.topic_unread_group.set(unread_group).unwrap();
 
             // Clicking the pinned-message bar reveals the message in the history.
             let pinned_gesture = gtk::GestureClick::new();
@@ -824,6 +844,7 @@ impl ChatHistory {
         *imp.outgoing_topic.borrow_mut() = self.send_topic();
         imp.thread.borrow_mut().take();
         imp.topic.borrow_mut().take();
+        self.update_topic_unread();
         imp.header_topic_label.set_visible(false);
         self.close_search();
         imp.chat_action_bar.set_topic_closed(false);
@@ -877,7 +898,10 @@ impl ChatHistory {
                     let id = list.connect_items_changed(clone!(
                         #[weak(rename_to = obj)]
                         self,
-                        move |_, _, _, _| obj.refresh_grouping_visuals()
+                        move |_, _, _, _| {
+                            obj.refresh_grouping_visuals();
+                            obj.update_topic_unread();
+                        }
                     ));
                     imp.forum_badge_handlers.borrow_mut().insert(chat.id(), id);
                 }
@@ -3432,6 +3456,26 @@ impl ChatHistory {
         self.notify("sticky");
     }
 
+    /// Refresh the topic window's unread badge from the (possibly not yet
+    /// fetched) topic list, and watch that topic so read progress credited
+    /// via the debounced `getForumTopics` refresh lands on the badge.
+    fn update_topic_unread(&self) {
+        let imp = self.imp();
+        let topic = imp.topic.borrow().as_ref().and_then(|ui_topic| {
+            self.chat()
+                .and_then(|chat| chat.try_forum_topic_list())
+                .and_then(|list| list.topic(ui_topic.forum_topic_id))
+        });
+        if let Some(group) = imp.topic_unread_group.get() {
+            group.set_target(topic.as_ref());
+        }
+        let unread = topic.map(|topic| topic.unread_count()).unwrap_or(0);
+        if imp.topic_unread.get() != unread {
+            imp.topic_unread.set(unread);
+            self.notify("topic-unread");
+        }
+    }
+
     fn scroll_down(&self) {
         let imp = self.imp();
 
@@ -3800,6 +3844,7 @@ impl ChatHistory {
             forum_topic_id,
             reveal,
         });
+        self.update_topic_unread();
 
         let model = model::ChatHistoryModel::new_forum_topic(chat, forum_topic_id);
         model.connect_items_changed(clone!(
