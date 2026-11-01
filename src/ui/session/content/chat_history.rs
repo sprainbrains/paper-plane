@@ -3888,7 +3888,7 @@ impl ChatHistory {
             .map(|topic| (topic.name(), topic.icon_color()))
         {
             Some((name, color)) => {
-                let dot = format!("<span foreground='#{color:06X}'>●</span> ");
+                let dot = format!("<span foreground='#{color:06X}'>#</span> ");
                 imp.header_topic_label
                     .set_markup(&format!("{dot}{}", glib::markup_escape_text(&name)));
                 imp.header_topic_label.set_visible(true);

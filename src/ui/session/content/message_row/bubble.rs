@@ -438,7 +438,7 @@ impl MessageBubble {
                 imp.topic_chip_name.set_text(&topic.name());
                 let color = topic.icon_color();
                 imp.topic_chip_icon
-                    .set_markup(&format!("<span foreground='#{color:06X}'>●</span>"));
+                    .set_markup(&format!("<span foreground='#{color:06X}'>#</span>"));
                 let class = format!("topic-chip-color-{color:06X}");
                 let old = imp.topic_chip_color.replace(Some(class.clone()));
                 if old.as_deref() != Some(class.as_str()) {

@@ -55,6 +55,9 @@ mod imp {
         /// pushes refresh the snapshot; TDLib's list carries unread/last
         /// message that `updateForumTopic` does not).
         pub(super) refresh_scheduled: Cell<bool>,
+        /// Sum of topic unread counts at the last `apply_topics`; a delta
+        /// re-emits `items-changed` so chat-row badges refresh.
+        pub(super) unread_total: Cell<i32>,
     }
 
     #[glib::object_subclass]
@@ -110,6 +113,17 @@ impl ForumTopicList {
 
     pub(crate) fn topic(&self, forum_topic_id: i32) -> Option<model::Topic> {
         self.imp().index.borrow().get(&forum_topic_id).cloned()
+    }
+
+    /// Total unread across topics: TDLib keeps the forum chat's own counter
+    /// at 0, so chat-list badges must sum the topics (tdesktop does the same).
+    pub(crate) fn total_unread(&self) -> i32 {
+        self.imp()
+            .topics
+            .borrow()
+            .iter()
+            .map(|topic| topic.unread_count())
+            .sum()
     }
 
     fn set_loading(&self, loading: bool) {
@@ -239,7 +253,8 @@ impl ForumTopicList {
         let sorted = merge_orders(&pairs, &incoming);
         // Emit whenever the sequence the view holds differs from the merged
         // one — including the plain "empty list got filled" case.
-        if sequence_moved(&before, &sorted) {
+        let moved = sequence_moved(&before, &sorted);
+        if moved {
             let mut by_id: HashMap<_, _> = imp
                 .topics
                 .borrow_mut()
@@ -256,6 +271,15 @@ impl ForumTopicList {
             *imp.topics.borrow_mut() = reordered;
             self.upcast_ref::<gio::ListModel>()
                 .items_changed(0, before.len() as u32, new_len);
+        }
+        // Unread deltas move nothing: wake the views explicitly so chat-row
+        // badges (which sum the topics) refresh.
+        let total = self.total_unread();
+        let unread_moved = total != imp.unread_total.replace(total);
+        if unread_moved && !moved {
+            let len = imp.topics.borrow().len() as u32;
+            self.upcast_ref::<gio::ListModel>()
+                .items_changed(0, len, len);
         }
     }
 

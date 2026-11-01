@@ -148,9 +148,25 @@ impl super::Row {
             let chat = item.chat_();
             let stack = &imp.status_stack;
 
+            // A forum's unread lives on its topics (TDLib keeps the chat
+            // counter at 0), so the badge sums the fetched list.
+            let unread = match chat.try_forum_topic_list() {
+                Some(list) if chat.is_forum() => {
+                    let total = list.total_unread();
+                    let text = if total > 0 || chat.is_marked_as_unread() {
+                        total.to_string()
+                    } else {
+                        String::new()
+                    };
+                    imp.unread_count_label.set_label(&text);
+                    total
+                }
+                _ => chat.unread_count(),
+            };
+
             if chat.unread_mention_count() > 0 {
                 stack.set_visible_child(&*imp.unread_mention_label);
-            } else if chat.unread_count() > 0 || chat.is_marked_as_unread() {
+            } else if unread > 0 || chat.is_marked_as_unread() {
                 stack.set_visible_child(&*imp.unread_count_label);
             } else if item.is_pinned() {
                 stack.set_visible_child(&*imp.pin_icon);
@@ -428,7 +444,7 @@ impl super::Row {
         for (index, (slot, icon, emoji_pic, name)) in slots.into_iter().enumerate() {
             match chips.get(index) {
                 Some((id, topic_name, color, emoji)) => {
-                    icon.set_markup(&format!("<span foreground='#{color:06X}'>●</span>"));
+                    icon.set_markup(&format!("<span foreground='#{color:06X}'>#</span>"));
                     name.set_text(topic_name);
                     // tdesktop shows the topic emoji when it has one, the
                     // colored dot otherwise; the texture arrives async.
@@ -447,6 +463,9 @@ impl super::Row {
             }
         }
         imp.forum_chips_box.set_visible(!chips.is_empty());
+
+        // The badge mirrors the chips' source: re-evaluate the forum total.
+        self.update_status_stack();
 
         // Off-screen rows do zero work (AGENTS.md): decode only while mapped.
         if self.is_mapped() {
