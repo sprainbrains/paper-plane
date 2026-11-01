@@ -37,6 +37,8 @@ mod imp {
         pub(super) selection: TemplateChild<ui::SidebarSelection>,
         #[template_child]
         pub(super) stack: TemplateChild<gtk::Stack>,
+        #[template_child]
+        pub(super) scroller: TemplateChild<gtk::ScrolledWindow>,
     }
 
     #[glib::object_subclass]
@@ -168,6 +170,21 @@ mod imp {
         #[template_callback]
         fn on_notify_chat_list(&self) {
             let obj = self.obj();
+
+            // Folder switch (tdesktop): leave the forum topic page behind and
+            // start the new folder's list at the very top. Deferred to idle:
+            // this notify also fires while the sidebar template is still
+            // being built, before its own template children are bound.
+            let weak = obj.downgrade();
+            glib::idle_add_local_once(move || {
+                let Some(list) = weak.upgrade() else {
+                    return;
+                };
+                list.imp().scroller.vadjustment().set_value(0.0);
+                if let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(&list) {
+                    sidebar.pop_to_chats();
+                }
+            });
 
             self.disconnect_placeholder_handlers();
 
