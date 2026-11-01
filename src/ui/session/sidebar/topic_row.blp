@@ -16,6 +16,11 @@ template $PaplSidebarTopicRow: Widget {
     halign: start;
     valign: center;
 
+    // BinLayout centers whichever child it shows without the child needing
+    // hexpand (which would propagate onto icon_box and steal the row's
+    // slack space, shifting the text column).
+    layout-manager: BinLayout {};
+
     styles ["topic-icon"]
 
     Label icon_fallback {
