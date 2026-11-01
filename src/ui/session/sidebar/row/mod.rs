@@ -398,11 +398,13 @@ impl Row {
     fn toggle_chat_marked_as_unread(&self) {
         if let Some(chat) = self.item().map(|i| i.chat_()) {
             utils::spawn(async move {
-                if let Err(e) = if chat.unread_count() > 0 || chat.is_marked_as_unread() {
-                    chat.mark_as_read().await
-                } else {
-                    chat.mark_as_unread().await
-                } {
+                if let Err(e) =
+                    if self::updates::effective_unread(&chat) > 0 || chat.is_marked_as_unread() {
+                        chat.mark_as_read().await
+                    } else {
+                        chat.mark_as_unread().await
+                    }
+                {
                     log::warn!("Error on toggling chat's unread state: {e:?}");
                 }
             });

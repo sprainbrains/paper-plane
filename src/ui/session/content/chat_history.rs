@@ -3829,14 +3829,20 @@ impl ChatHistory {
         // The pinned bar must reflect the topic's pins, not the chat's.
         self.fetch_pinned_message(chat);
 
-        // Load the topic window, then stick to the newest end unless the jump
-        // asked for a specific message to reveal.
+        // Load the topic window, then land like a plain chat open: at the
+        // first unread message when the topic has unread, else newest end.
+        let chat = chat.clone();
         utils::spawn(clone!(
             #[weak]
             model,
             #[weak(rename_to = obj)]
             self,
             async move {
+                let imp = obj.imp();
+                // Rows mapping while the window streams in are not "seen"
+                // yet (the chat-open guard): without it the first layout
+                // credits the whole loaded window as read.
+                imp.is_loading_messages.set(true);
                 let _ = model.load_older_messages(50).await;
                 let (still_open, reveal) = {
                     let borrow = obj.imp().topic.borrow();
@@ -3848,13 +3854,57 @@ impl ChatHistory {
                     }
                 };
                 if !still_open {
+                    imp.is_loading_messages.set(false);
                     return;
                 }
+                let generation = imp.generation.get();
+                let chat_id = chat.id();
+                let mut jumped = false;
                 if let Some(message_id) = reveal {
                     obj.reveal_message(message_id);
                 } else {
-                    obj.set_sticky(true);
-                    obj.scroll_down();
+                    let boundary = chat
+                        .try_forum_topic_list()
+                        .and_then(|list| list.topic(forum_topic_id))
+                        .filter(|topic| topic.unread_count() > 0)
+                        .map(|topic| topic.last_read_inbox_message_id())
+                        .unwrap_or(0);
+                    if boundary != 0 {
+                        if model.insert_unread_divider(boundary) {
+                            // The boundary sits inside the loaded window: pin
+                            // to the newest end and let the settle tick decide
+                            // stay-vs-jump (the chat-open machinery).
+                            imp.list_view.scroll_to(
+                                model.n_items().saturating_sub(1),
+                                gtk::ListScrollFlags::empty(),
+                                None,
+                            );
+                            obj.settle_unread_open(generation, chat_id, false);
+                            jumped = true;
+                        } else if model.load_around_message(boundary).await.is_ok()
+                            && obj.is_current_history(generation, chat_id, &model)
+                        {
+                            model.insert_unread_divider(boundary);
+                            if let Some(position) = obj.unread_divider_position() {
+                                imp.list_view.scroll_to(
+                                    position,
+                                    gtk::ListScrollFlags::empty(),
+                                    None,
+                                );
+                                obj.settle_unread_open(generation, chat_id, true);
+                                jumped = true;
+                            }
+                        }
+                    }
+                    if !jumped {
+                        obj.set_sticky(true);
+                        obj.scroll_down();
+                    }
+                }
+                imp.is_loading_messages.set(false);
+                // The settle tick owns the first read flush when it runs.
+                if !imp.settle_pending.get() {
+                    obj.view_messages();
                 }
             }
         ));

@@ -10,6 +10,15 @@ use crate::strings;
 use crate::ui;
 use crate::utils;
 
+/// Unread shown for a chat row: forums count topics holding unread, as
+/// TDLib keeps the forum chat's own counter at 0.
+pub(super) fn effective_unread(chat: &model::Chat) -> i32 {
+    match chat.try_forum_topic_list() {
+        Some(list) if chat.is_forum() => list.unread_topic_count(),
+        _ => chat.unread_count(),
+    }
+}
+
 impl super::Row {
     pub(super) fn update_message_status_icon(&self) {
         if let Some(item) = self.item() {
@@ -206,7 +215,7 @@ impl super::Row {
 
             self.update_pin_actions(!item.is_pinned(), item.is_pinned());
 
-            if chat.unread_count() > 0 {
+            if effective_unread(&chat) > 0 {
                 self.update_mark_as_unread_actions(false, true);
             } else {
                 self.update_mark_as_unread_actions(
@@ -464,8 +473,10 @@ impl super::Row {
         }
         imp.forum_chips_box.set_visible(!chips.is_empty());
 
-        // The badge mirrors the chips' source: re-evaluate the forum total.
+        // The badge mirrors the chips' source: re-evaluate the forum total
+        // and the menu's read/unread gating.
         self.update_status_stack();
+        self.update_actions();
 
         // Off-screen rows do zero work (AGENTS.md): decode only while mapped.
         if self.is_mapped() {

@@ -30,6 +30,9 @@ mod imp {
         pub(super) creator: RefCell<Option<tdlib::enums::MessageSender>>,
         pub(super) is_pinned: Cell<bool>,
         pub(super) unread_count: Cell<i32>,
+        /// Last read incoming message id — the unread boundary inside the
+        /// topic (landing on open); Rust-side only, refreshed with snapshots.
+        pub(super) last_read_inbox: Cell<i64>,
         /// Null until a snapshot carrying settings arrives.
         pub(super) notification_settings: RefCell<Option<tdlib::types::ChatNotificationSettings>>,
         pub(super) draft: RefCell<Option<tdlib::types::DraftMessage>>,
@@ -123,6 +126,10 @@ impl Topic {
         self.imp().unread_count.get()
     }
 
+    pub(crate) fn last_read_inbox_message_id(&self) -> i64 {
+        self.imp().last_read_inbox.get()
+    }
+
     pub(crate) fn order(&self) -> i64 {
         self.imp().order.get()
     }
@@ -155,6 +162,7 @@ impl Topic {
             imp.is_pinned.get() != td.is_pinned || imp.unread_count.get() != td.unread_count;
         imp.is_pinned.set(td.is_pinned);
         imp.unread_count.set(td.unread_count);
+        imp.last_read_inbox.set(td.last_read_inbox_message_id);
         let settings_changed =
             imp.notification_settings.borrow().as_ref() != Some(&td.notification_settings);
         imp.notification_settings

@@ -872,6 +872,77 @@ impl Chat {
     }
 
     pub(crate) async fn mark_as_read(&self) -> Result<(), tdlib::types::Error> {
+        // A forum's unread lives on its topics (the chat counter stays 0):
+        // credit each topic's newest message through the topic-history
+        // source, the way tdesktop marks the whole forum read.
+        if self.is_forum() {
+            let client_id = self.session_().client_().id();
+            let chat_id = self.id();
+            let topic_source = Some(tdlib::enums::MessageSource::ForumTopicHistory);
+            match self
+                .try_forum_topic_list()
+                .filter(|list| list.n_items() > 0)
+            {
+                Some(list) => {
+                    for i in 0..list.n_items() {
+                        let Some(topic) = list.item(i).and_downcast::<model::Topic>() else {
+                            continue;
+                        };
+                        if topic.unread_count() == 0 {
+                            continue;
+                        }
+                        if let Some(message) = topic.last_message() {
+                            tdlib::functions::view_messages(
+                                chat_id,
+                                vec![message.id()],
+                                topic_source.clone(),
+                                true,
+                                client_id,
+                            )
+                            .await?;
+                        }
+                    }
+                }
+                // The list is not fetched yet: ask TDLib for the topics.
+                // shortcut: one page of 100; deeper forums need pagination
+                // when someone hits it.
+                None => {
+                    if let Ok(tdlib::enums::ForumTopics::ForumTopics(data)) =
+                        tdlib::functions::get_forum_topics(
+                            chat_id,
+                            String::new(),
+                            0,
+                            0,
+                            0,
+                            100,
+                            client_id,
+                        )
+                        .await
+                    {
+                        for topic in &data.topics {
+                            if topic.unread_count == 0 {
+                                continue;
+                            }
+                            let Some(message) = &topic.last_message else {
+                                continue;
+                            };
+                            tdlib::functions::view_messages(
+                                chat_id,
+                                vec![message.id],
+                                topic_source.clone(),
+                                true,
+                                client_id,
+                            )
+                            .await?;
+                        }
+                    }
+                }
+            }
+            if let Some(list) = self.try_forum_topic_list() {
+                list.schedule_refresh();
+            }
+        }
+
         if let Some(message) = self.last_message() {
             tdlib::functions::view_messages(
                 self.id(),
