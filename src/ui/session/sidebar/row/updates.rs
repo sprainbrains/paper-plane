@@ -149,10 +149,10 @@ impl super::Row {
             let stack = &imp.status_stack;
 
             // A forum's unread lives on its topics (TDLib keeps the chat
-            // counter at 0), so the badge sums the fetched list.
+            // counter at 0), so the badge counts topics holding unread.
             let unread = match chat.try_forum_topic_list() {
                 Some(list) if chat.is_forum() => {
-                    let total = list.total_unread();
+                    let total = list.unread_topic_count();
                     let text = if total > 0 || chat.is_marked_as_unread() {
                         total.to_string()
                     } else {
