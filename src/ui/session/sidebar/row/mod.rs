@@ -129,6 +129,7 @@ mod imp {
     impl Row {
         #[template_callback]
         fn on_pressed(&self, _n_press: i32, x: f64, y: f64) {
+            log::warn!("MENU-PRESS chat row at {x},{y}");
             self.show_menu(x as i32, y as i32);
         }
 

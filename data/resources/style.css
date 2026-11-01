@@ -207,6 +207,22 @@ chatlist row .forum-chip label {
   font-weight: bold;
 }
 
+/* Cap the decoded emoji: a GtkPicture wants its texture's natural size,
+   which would stretch rows unevenly (the requests only set minimums). */
+.topic-icon picture {
+  min-width: 26px;
+  min-height: 26px;
+  max-width: 26px;
+  max-height: 26px;
+}
+
+chatlist row .forum-chip picture {
+  min-width: 16px;
+  min-height: 16px;
+  max-width: 16px;
+  max-height: 16px;
+}
+
 .topic-icon-color-6FB9F0 { background-color: #6FB9F0; }
 .topic-icon-color-FFD67E { background-color: #FFD67E; }
 .topic-icon-color-CB86DB { background-color: #CB86DB; }

@@ -151,6 +151,8 @@ impl Topic {
     pub(crate) fn update_from_td(&self, td: &tdlib::types::ForumTopic) -> bool {
         let imp = self.imp();
         let info_changed = self.apply_info(&td.info);
+        let state_changed =
+            imp.is_pinned.get() != td.is_pinned || imp.unread_count.get() != td.unread_count;
         imp.is_pinned.set(td.is_pinned);
         imp.unread_count.set(td.unread_count);
         let settings_changed =
@@ -160,7 +162,7 @@ impl Topic {
         let draft_changed = *imp.draft.borrow() != td.draft_message;
         imp.draft.replace(td.draft_message.clone());
         imp.order.set(td.order);
-        info_changed || settings_changed || draft_changed
+        info_changed || settings_changed || draft_changed || state_changed
     }
 
     /// Stores the model object of the topic's last message (owned by the chat).

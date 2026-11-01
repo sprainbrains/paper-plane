@@ -138,7 +138,10 @@ mod imp {
             right_click.connect_released(clone!(
                 #[weak(rename_to = row)]
                 obj,
-                move |_, _, x, y| row.show_menu(x, y)
+                move |_, _, x, y| {
+                    log::warn!("MENU-PRESS topic row at {x},{y}");
+                    row.show_menu(x, y);
+                }
             ));
             obj.add_controller(right_click);
         }
@@ -228,8 +231,9 @@ impl TopicRow {
                 .set_label(&timestamp_text(message.date() as i64));
             imp.timestamp_label.set_visible(true);
             let sender = strings::message_sender(&message.sender(), true);
-            imp.preview_label
-                .set_text(&format!("{sender}: {}", strings::message_content(message)));
+            // One line only: tdesktop never grows a row for the preview.
+            let content = strings::message_content(message).replace('\n', " ");
+            imp.preview_label.set_text(&format!("{sender}: {content}"));
             imp.preview_label.set_visible(true);
         } else {
             imp.timestamp_label.set_visible(false);

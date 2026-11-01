@@ -222,6 +222,11 @@ mod imp {
                 session.show_chat_content();
                 if newly_selected.is_some() && newly_selected == previously_selected {
                     session.scroll_content_to_latest();
+                    // The property did not change, so nothing re-synced the
+                    // sidebar: a re-clicked forum must show its topics again.
+                    if let Some(sidebar) = utils::ancestor::<_, ui::Sidebar>(obj) {
+                        sidebar.sync_topics_page();
+                    }
                 }
             }
         }
