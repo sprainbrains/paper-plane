@@ -92,13 +92,9 @@ mod imp {
         #[template_child]
         pub(super) folder_rail: TemplateChild<gtk::Box>,
         #[template_child]
-        pub(super) chat_list: TemplateChild<super::ChatList>,
-        #[template_child]
-        pub(super) chat_rail_scroll: TemplateChild<gtk::ScrolledWindow>,
+        pub(super) topic_stack: TemplateChild<gtk::Stack>,
         #[template_child]
         pub(super) chat_rail: TemplateChild<gtk::ListView>,
-        #[template_child]
-        pub(super) topics_column: TemplateChild<gtk::Box>,
         #[template_child]
         pub(super) topics_title: TemplateChild<gtk::Label>,
         #[template_child]
@@ -425,9 +421,7 @@ impl Sidebar {
     pub(crate) fn sync_topics_page(&self) {
         let imp = self.imp();
         let Some(chat) = self.selected_chat().filter(|chat| chat.is_forum()) else {
-            imp.chat_list.set_visible(true);
-            imp.chat_rail_scroll.set_visible(false);
-            imp.topics_column.set_visible(false);
+            imp.topic_stack.set_visible_child_name("chats");
             return;
         };
         imp.topic_list.set_chat(Some(&chat));
@@ -443,18 +437,13 @@ impl Sidebar {
             title.push_str(" \u{1f515}");
         }
         imp.topics_title.set_text(&title);
-        imp.chat_list.set_visible(false);
-        imp.chat_rail_scroll.set_visible(true);
-        imp.topics_column.set_visible(true);
+        imp.topic_stack.set_visible_child_name("topics");
     }
 
     /// Returns the sidebar to its chat list (topic list Escape/back). The
     /// forum stays selected; re-clicking its rail avatar opens topics again.
     pub(crate) fn pop_to_chats(&self) {
-        let imp = self.imp();
-        imp.chat_list.set_visible(true);
-        imp.chat_rail_scroll.set_visible(false);
-        imp.topics_column.set_visible(false);
+        self.imp().topic_stack.set_visible_child_name("chats");
     }
 
     /// Moves the chat-folder bar between the top toolbar (horizontal) and a rail on the
