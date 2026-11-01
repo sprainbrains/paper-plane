@@ -340,6 +340,7 @@ impl Application {
                 "Karol Lademan https://github.com/karl0d",
                 "Marco Melorio (orig. author) https://github.com/melix99",
                 "Marcus Behrendt https://github.com/marhkb",
+                "Nikolay Sinyov https://github.com/sprainbrains",
                 "Yuri Izmer https://github.com/yuraiz",
             ])
             .designers([

@@ -43,6 +43,16 @@
   <url type="translate">https://hosted.weblate.org/engage/paper-plane</url>
   <content_rating type="oars-1.1" />
   <releases>
+    <release version="0.7.1" date="2026-11-01">
+      <description translatable="no">
+        <p>This release adds Telegram forum (topics) support:</p>
+        <ul>
+          <li>Forums open as a topic list over an avatar rail, with per-topic windows, drafts, pinned messages and topic-scoped search.</li>
+          <li>Topic badges in the unified view, per-topic unread counts and notifications that route into the right topic.</li>
+          <li>Topic management: create, edit, mute, pin, close, hide and delete.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0~beta.5" date="2023-11-03">
       <description translatable="no">
         <p>This is the fifth beta release of Paper Plane 0.1.0 with new features and bug fixes:</p>
