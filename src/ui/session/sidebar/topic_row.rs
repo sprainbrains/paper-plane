@@ -138,10 +138,7 @@ mod imp {
             right_click.connect_released(clone!(
                 #[weak(rename_to = row)]
                 obj,
-                move |_, _, x, y| {
-                    log::warn!("MENU-PRESS topic row at {x},{y}");
-                    row.show_menu(x, y);
-                }
+                move |_, _, x, y| row.show_menu(x, y)
             ));
             obj.add_controller(right_click);
         }
