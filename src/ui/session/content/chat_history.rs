@@ -1263,16 +1263,16 @@ impl ChatHistory {
         self.imp().chat_action_bar.set_comments_mode(false);
     }
 
-    /// Asks TDLib for the chat's full info, which refreshes our membership
-    /// status (and permissions) from the server. A chat materialized from an
-    /// id reference alone can carry a placeholder `Left` status, which the
-    /// composer would otherwise render as a bogus "Join" button.
     /// Whether the history currently shows a comment thread (writing there
     /// does not require joining the discussion group).
     pub(crate) fn is_thread_mode(&self) -> bool {
         self.imp().thread.borrow().is_some()
     }
 
+    /// Asks TDLib for the chat's full info, which refreshes our membership
+    /// status (and permissions) from the server. A chat materialized from an
+    /// id reference alone can carry a placeholder `Left` status, which the
+    /// composer would otherwise render as a bogus "Join" button.
     fn request_full_info(&self, chat: &model::Chat) {
         let client_id = chat.session_().client_().id();
         match chat.chat_type() {

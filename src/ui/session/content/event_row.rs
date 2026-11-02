@@ -1,10 +1,13 @@
 use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
+use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;
 use gtk::prelude::*;
+
+use crate::model;
 
 mod imp {
     use super::*;
@@ -16,6 +19,8 @@ mod imp {
         pub(super) label: TemplateChild<gtk::Label>,
         #[template_child]
         pub(super) thumbnail: TemplateChild<gtk::Picture>,
+        /// Whose profile a tapped sender-name link opens (0 = no link).
+        pub(super) link_user_id: std::cell::Cell<i64>,
     }
 
     #[glib::object_subclass]
@@ -34,6 +39,23 @@ mod imp {
     }
 
     impl ObjectImpl for EventRow {
+        fn constructed(&self) {
+            self.parent_constructed();
+            let weak = self.obj().downgrade();
+            self.label.connect_activate_link(move |_, _| {
+                let Some(row) = weak.upgrade() else {
+                    return glib::Propagation::Stop;
+                };
+                let id = row.imp().link_user_id.get();
+                if id != 0
+                    && let Some(session) = crate::utils::ancestor::<_, crate::ui::Session>(&row)
+                {
+                    session.show_chat_info(id);
+                }
+                glib::Propagation::Stop
+            });
+        }
+
         fn properties() -> &'static [glib::ParamSpec] {
             static PROPERTIES: OnceLock<Vec<glib::ParamSpec>> = OnceLock::new();
             PROPERTIES.get_or_init(|| vec![glib::ParamSpecString::builder("label").build()])
@@ -84,7 +106,19 @@ impl EventRow {
     }
 
     pub(crate) fn set_label(&self, label: &str) {
+        self.imp().link_user_id.set(0);
         self.imp().label.set_label(label);
+    }
+
+    /// Renders `text` with the sender's display name as a link that opens
+    /// their profile (tdesktop). `name` must be the exact text `text` uses.
+    pub(crate) fn set_label_with_link(&self, text: &str, name: &str, user: &model::User) {
+        let escaped = glib::markup_escape_text(text).to_string();
+        let name_escaped = glib::markup_escape_text(name);
+        let link = format!("<a href=\"user\">{name_escaped}</a>");
+        let markup = escaped.replacen(name_escaped.as_str(), &link, 1);
+        self.imp().link_user_id.set(user.id());
+        self.imp().label.set_markup(&markup);
     }
 
     /// Shows a small preview built from an inline minithumbnail, e.g. the new

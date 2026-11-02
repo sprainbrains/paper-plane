@@ -149,7 +149,17 @@ impl ChatHistoryRow {
                             | MessageForumTopicIsClosedToggled(_)
                             | MessageForumTopicIsHiddenToggled(_) => {
                                 let event_row = self.get_or_create_event_row();
-                                event_row.set_label(&strings::message_content(message));
+                                // tdesktop: the actor's name is a link to
+                                // their profile.
+                                let text = strings::message_content(message);
+                                match message.sender().as_user() {
+                                    Some(user) => event_row.set_label_with_link(
+                                        &text,
+                                        &strings::user_display_name(user, true),
+                                        user,
+                                    ),
+                                    None => event_row.set_label(&text),
+                                }
                             }
                             _ => {
                                 self.set_comments_suppressed(false);
