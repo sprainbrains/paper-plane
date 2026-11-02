@@ -1247,24 +1247,19 @@ fn sticker_message_set_id(message: &model::Message) -> i64 {
     }
 }
 
-/// Whether the current user may pin messages here: Saved Messages, chat
-/// creators, and admins holding the pin right (tdesktop hides the item
-/// otherwise).
+/// Whether the current user may pin messages here (tdesktop): Saved Messages
+/// and legacy basic groups allow every member; supergroups and channels need
+/// the creator or the pin right.
 fn can_pin_in_chat(chat: &model::Chat) -> bool {
     if chat.is_own_chat() {
         return true;
     }
-    let status = match chat.chat_type() {
-        model::ChatType::Supergroup(supergroup) => Some(supergroup.status()),
-        model::ChatType::BasicGroup(group) => Some(group.status()),
-        _ => None,
-    };
-    match status.map(|status| status.0) {
-        Some(tdlib::enums::ChatMemberStatus::Creator(_)) => true,
-        // Basic-group admins implicitly hold every applicable right.
-        Some(tdlib::enums::ChatMemberStatus::Administrator(admin)) => match chat.chat_type() {
-            model::ChatType::BasicGroup(_) => true,
-            _ => admin.rights.can_pin_messages,
+    match chat.chat_type() {
+        model::ChatType::BasicGroup(_) => true,
+        model::ChatType::Supergroup(supergroup) => match supergroup.status().0 {
+            tdlib::enums::ChatMemberStatus::Creator(_) => true,
+            tdlib::enums::ChatMemberStatus::Administrator(admin) => admin.rights.can_pin_messages,
+            _ => false,
         },
         _ => false,
     }

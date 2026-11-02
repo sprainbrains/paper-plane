@@ -260,26 +260,27 @@ pub(crate) fn show(parent: &impl IsA<gtk::Widget>, message: &model::Message, ids
                 return;
             }
             state.borrow_mut().0 = true;
-            let subs = media_subs.borrow();
-            let on = subs.iter().filter(|(c, _)| c.is_active()).count();
-            media_count.set_label(&format!("{on}/{}", subs.len()));
-            media_switch.set_active(on == subs.len());
+            let (on, total) = {
+                let subs = media_subs.borrow();
+                (
+                    subs.iter().filter(|(c, _)| c.is_active()).count(),
+                    subs.len(),
+                )
+            };
+            media_count.set_label(&format!("{on}/{total}"));
+            media_switch.set_active(on == total);
             state.borrow_mut().0 = false;
         });
     }
     {
-        let (switch_for_cb, media_subs, media_count, state) = (
-            media_switch.clone(),
-            media_subs.clone(),
-            media_count.clone(),
-            state.clone(),
-        );
-        media_switch.connect_local("toggled", false, move |_| {
+        let (media_subs, media_count, state) =
+            (media_subs.clone(), media_count.clone(), state.clone());
+        media_switch.connect_active_notify(move |switch| {
             if state.borrow().1 {
-                return None;
+                return;
             }
             state.borrow_mut().1 = true;
-            let on = switch_for_cb.is_active();
+            let on = switch.is_active();
             let subs = media_subs.borrow();
             for (sub, _) in subs.iter() {
                 sub.set_active(on);
@@ -290,7 +291,6 @@ pub(crate) fn show(parent: &impl IsA<gtk::Widget>, message: &model::Message, ids
                 subs.len()
             ));
             state.borrow_mut().1 = false;
-            None
         });
     }
 
