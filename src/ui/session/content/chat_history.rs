@@ -3600,13 +3600,30 @@ impl ChatHistory {
             let Some(chat) = obj.chat() else {
                 return;
             };
-            match chat.fetch_message(post_id).await {
-                Ok(post) => obj.open_thread_revealing(&post, comment_id),
-                Err(e) => {
-                    log::warn!("Failed to fetch thread anchor: {e:?}");
-                    obj.reveal_message(post_id);
+            // The anchor post is often not in TDLib's cache yet right after a
+            // jump from Replies; one failed attempt must not drop the user
+            // into the plain channel view (with its bogus "Join" for
+            // non-members). Retry while the window is still ours.
+            let mut attempt = 0;
+            let post = loop {
+                match chat.fetch_message(post_id).await {
+                    Ok(post) => break post,
+                    Err(e) if attempt < 3 => {
+                        attempt += 1;
+                        log::debug!("Thread anchor fetch retry {attempt}: {e:?}");
+                        glib::timeout_future(std::time::Duration::from_millis(400)).await;
+                        if !obj.is_current_chat(generation, chat_id) {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to fetch thread anchor: {e:?}");
+                        obj.reveal_message(post_id);
+                        return;
+                    }
                 }
-            }
+            };
+            obj.open_thread_revealing(&post, comment_id);
         });
     }
 
