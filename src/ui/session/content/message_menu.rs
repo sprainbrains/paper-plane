@@ -247,6 +247,7 @@ impl MessageMenu {
     /// Called just before popping up, since this menu is a shared singleton
     /// re-parented per message.
     pub(crate) fn rebind(&self, row: &ui::MessageRow) {
+        row.refresh_actions_for_menu();
         let imp = self.imp();
         for (action, button) in imp.rows.borrow().iter() {
             button.set_visible(row.menu_action_enabled(action));

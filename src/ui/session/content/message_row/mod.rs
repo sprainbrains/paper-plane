@@ -959,6 +959,12 @@ impl Row {
         }
     }
 
+    /// Recomputes the action states for the context menu: property fetches
+    /// resolve asynchronously after the row was bound.
+    pub(crate) fn refresh_actions_for_menu(&self) {
+        self.update_actions();
+    }
+
     fn update_actions(&self) {
         self.action_set_enabled("message-row.reply", self.can_reply_to_message());
         self.action_set_enabled("message-row.edit", self.can_edit_message());

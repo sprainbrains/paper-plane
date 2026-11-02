@@ -3,6 +3,7 @@ use std::cell::OnceCell;
 use std::cell::RefCell;
 
 use glib::Properties;
+use glib::clone;
 use gtk::glib;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
@@ -10,6 +11,7 @@ use gtk::subclass::prelude::*;
 use crate::expressions;
 use crate::model;
 use crate::types::MessageSenderId;
+use crate::utils;
 
 #[derive(Clone, Debug, glib::Boxed)]
 #[boxed_type(name = "MessageSender")]
@@ -66,6 +68,8 @@ mod imp {
         pub(super) can_be_deleted_only_for_self: Cell<bool>,
         #[property(get, set, construct_only)]
         pub(super) can_be_deleted_for_all_users: Cell<bool>,
+        /// Whether `getMessageProperties` was already asked for this message.
+        pub(super) properties_requested: Cell<bool>,
         #[property(get, set, construct_only)]
         pub(super) sending_state: RefCell<Option<model::BoxedMessageSendingState>>,
         #[property(get, set, construct_only)]
@@ -126,12 +130,7 @@ impl Message {
                 model::MessageSender::new(&chat.session_(), &td_message.sender_id),
             )
             .property("is-outgoing", td_message.is_outgoing)
-            // TODO: `can_be_edited`/`can_be_deleted_only_for_self`/
-            // `can_be_deleted_for_all_users` were removed from `message` in newer
-            // TDLib; they now come from `getMessageProperties`. Until that async
-            // lookup is wired up, approximate from `is_outgoing` — except that a
-            // chat with oneself has no "everyone", so revoke-delete never applies
-            // to Saved Messages.
+            // Initial guesses until `ensure_properties` lands (see there).
             .property("can-be-edited", td_message.is_outgoing)
             .property("can-be-deleted-only-for-self", true)
             .property(
@@ -174,7 +173,50 @@ impl Message {
         imp.is_pinned.set(td_message.is_pinned);
         *imp.topic_id.borrow_mut() = td_message.topic_id;
 
+        obj.ensure_properties();
+
         obj
+    }
+
+    /// TDLib moved the edit/delete flags out of `Message` into
+    /// `getMessageProperties`; fetch them once per message and notify on
+    /// change. Until they land, the constructor's outgoing-based guesses hold.
+    pub(crate) fn ensure_properties(&self) {
+        let imp = self.imp();
+        if imp.properties_requested.replace(true) {
+            return;
+        }
+        let chat = self.chat_();
+        let message_id = self.id();
+        let client_id = chat.session_().client_().id();
+        utils::spawn(clone!(
+            #[weak(rename_to = message)]
+            self,
+            async move {
+                let Ok(tdlib::enums::MessageProperties::MessageProperties(props)) =
+                    tdlib::functions::get_message_properties(chat.id(), message_id, client_id)
+                        .await
+                else {
+                    message.imp().properties_requested.set(false);
+                    return;
+                };
+                let imp = message.imp();
+                if imp.can_be_edited.get() != props.can_be_edited {
+                    imp.can_be_edited.set(props.can_be_edited);
+                    message.notify_can_be_edited();
+                }
+                if imp.can_be_deleted_only_for_self.get() != props.can_be_deleted_only_for_self {
+                    imp.can_be_deleted_only_for_self
+                        .set(props.can_be_deleted_only_for_self);
+                    message.notify_can_be_deleted_only_for_self();
+                }
+                if imp.can_be_deleted_for_all_users.get() != props.can_be_deleted_for_all_users {
+                    imp.can_be_deleted_for_all_users
+                        .set(props.can_be_deleted_for_all_users);
+                    message.notify_can_be_deleted_for_all_users();
+                }
+            }
+        ));
     }
 
     /// Forum topic id this message belongs to, if TDLib tagged it with one.
@@ -201,20 +243,9 @@ impl Message {
             self.notify_is_outgoing();
         }
 
-        // See the constructor's note about these approximated properties.
-        if self.can_be_edited() != td_message.is_outgoing {
-            imp.can_be_edited.set(td_message.is_outgoing);
-            self.notify_can_be_edited();
-        }
-        if !self.can_be_deleted_only_for_self() {
-            imp.can_be_deleted_only_for_self.set(true);
-            self.notify_can_be_deleted_only_for_self();
-        }
-        let can_revoke = td_message.is_outgoing && !self.chat_().is_own_chat();
-        if self.can_be_deleted_for_all_users() != can_revoke {
-            imp.can_be_deleted_for_all_users.set(can_revoke);
-            self.notify_can_be_deleted_for_all_users();
-        }
+        // Permissions come from `ensure_properties` (a failed first attempt
+        // left the guard reset, so this retries).
+        self.ensure_properties();
 
         imp.sending_state.replace(
             td_message
