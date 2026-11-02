@@ -92,6 +92,39 @@ pub(crate) fn message_content(message: &model::Message) -> String {
         ),
         MessageGameScore(data) => message_game_score(&data, &chat, &sender),
         MessageContactRegistered => message_contact_registered(&sender),
+        MessageForumTopicCreated(_) => gettext_f(
+            "{sender} created the topic",
+            &[("sender", &message_sender(&sender, true))],
+        ),
+        MessageForumTopicEdited(data) => {
+            let sender_name = message_sender(&sender, true);
+            if !data.name.is_empty() && data.edit_icon_custom_emoji_id {
+                gettext_f("{sender} edited the topic", &[("sender", &sender_name)])
+            } else if !data.name.is_empty() {
+                gettext_f("{sender} renamed the topic", &[("sender", &sender_name)])
+            } else {
+                gettext_f(
+                    "{sender} changed the topic icon",
+                    &[("sender", &sender_name)],
+                )
+            }
+        }
+        MessageForumTopicIsClosedToggled(data) => gettext_f(
+            if data.is_closed {
+                "{sender} closed the topic"
+            } else {
+                "{sender} reopened the topic"
+            },
+            &[("sender", &message_sender(&sender, true))],
+        ),
+        MessageForumTopicIsHiddenToggled(data) => gettext_f(
+            if data.is_hidden {
+                "{sender} hid the General topic"
+            } else {
+                "{sender} showed the General topic"
+            },
+            &[("sender", &message_sender(&sender, true))],
+        ),
         MessageVenue(data) => gettext_f("Location, {venue}", &[("venue", &data.venue.title)]),
         _ => gettext("Unsupported Message"),
     }

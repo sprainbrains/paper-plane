@@ -220,6 +220,12 @@ impl TopicRow {
         } else if imp.emoji_loaded_for.get() == emoji_id {
             imp.icon_fallback.set_visible(false);
             imp.icon_emoji.set_visible(true);
+        } else {
+            // The icon changed (topic edited): fall back to "#" and decode
+            // the new emoji right away, not only on the next map.
+            imp.icon_fallback.set_visible(true);
+            imp.icon_emoji.set_visible(false);
+            self.load_emoji();
         }
 
         let last_message = topic.last_message();

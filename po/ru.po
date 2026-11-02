@@ -1893,6 +1893,31 @@ msgstr "Создание тем"
 msgid "Block User"
 msgstr "Заблокировать пользователя"
 
+msgid "{sender} created the topic"
+msgstr "{sender} создал(а) тему"
+
+msgid "{sender} renamed the topic"
+msgstr "{sender} переименовал(а) тему"
+
+msgid "{sender} changed the topic icon"
+msgstr "{sender} изменил(а) иконку темы"
+
+msgid "{sender} edited the topic"
+msgstr "{sender} изменил(а) тему"
+
+msgid "{sender} closed the topic"
+msgstr "{sender} закрыл(а) тему"
+
+msgid "{sender} reopened the topic"
+msgstr "{sender} возобновил(а) тему"
+
+msgid "{sender} hid the General topic"
+msgstr "{sender} скрыл(а) общую тему"
+
+msgid "{sender} showed the General topic"
+msgstr "{sender} показал(а) общую тему"
+
+
 msgid "Restrict Permissions"
 msgstr "Ограничить права"
 

@@ -108,7 +108,16 @@ pub(crate) fn show_topic_dialog(
         color_box.set_visible(false);
     }
 
-    let icon_box = gtk::Box::builder().spacing(8).build();
+    // FlowBox wraps the icon grid: a plain Box grew to the natural width of
+    // ~30 emoji buttons and pushed the dialog off the screen.
+    let icon_box = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(true)
+        .min_children_per_line(4)
+        .max_children_per_line(8)
+        .row_spacing(6)
+        .column_spacing(6)
+        .build();
     // The "no custom emoji" option (plain colored square).
     let none_button = gtk::ToggleButton::builder()
         .label("#")
