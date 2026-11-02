@@ -1267,14 +1267,29 @@ impl ChatHistory {
     /// status (and permissions) from the server. A chat materialized from an
     /// id reference alone can carry a placeholder `Left` status, which the
     /// composer would otherwise render as a bogus "Join" button.
+    /// Whether the history currently shows a comment thread (writing there
+    /// does not require joining the discussion group).
+    pub(crate) fn is_thread_mode(&self) -> bool {
+        self.imp().thread.borrow().is_some()
+    }
+
     fn request_full_info(&self, chat: &model::Chat) {
         let client_id = chat.session_().client_().id();
         match chat.chat_type() {
             model::ChatType::Supergroup(data) => {
                 let supergroup_id = data.id();
+                let session = chat.session_();
                 utils::spawn(async move {
                     let _ =
                         tdlib::functions::get_supergroup_full_info(supergroup_id, client_id).await;
+                    // Membership rides on the supergroup itself: re-ask so a
+                    // jump never shows a stale "Join" for a chat the user is
+                    // in (the response upserts and notifies the composer).
+                    if let Ok(tdlib::enums::Supergroup::Supergroup(supergroup)) =
+                        tdlib::functions::get_supergroup(supergroup_id, client_id).await
+                    {
+                        session.upsert_supergroup(supergroup);
+                    }
                 });
             }
             model::ChatType::BasicGroup(data) => {

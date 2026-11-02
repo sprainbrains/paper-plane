@@ -958,11 +958,15 @@ impl Row {
     }
 
     fn can_reply_to_message(&self) -> bool {
-        if let Some(message) = self.primary_message() {
-            can_send_messages_in_chat(&message.chat_())
-        } else {
-            false
+        let Some(message) = self.primary_message() else {
+            return false;
+        };
+        if can_send_messages_in_chat(&message.chat_()) {
+            return true;
         }
+        // Commenting through a thread works without joining the discussion
+        // group, exactly like the composer's entry in that mode.
+        utils::ancestor::<_, ui::ChatHistory>(self).is_some_and(|history| history.is_thread_mode())
     }
 
     fn can_edit_message(&self) -> bool {

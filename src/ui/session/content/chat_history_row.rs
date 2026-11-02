@@ -143,7 +143,11 @@ impl ChatHistoryRow {
                             | MessagePinMessage(_)
                             | MessageScreenshotTaken
                             | MessageGameScore(_)
-                            | MessageContactRegistered => {
+                            | MessageContactRegistered
+                            | MessageForumTopicCreated(_)
+                            | MessageForumTopicEdited(_)
+                            | MessageForumTopicIsClosedToggled(_)
+                            | MessageForumTopicIsHiddenToggled(_) => {
                                 let event_row = self.get_or_create_event_row();
                                 event_row.set_label(&strings::message_content(message));
                             }

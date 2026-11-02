@@ -135,16 +135,7 @@ fn apply_rich_text(bubble: &ui::MessageBubble, message: &model::Message) {
         tdlib::enums::MessageContent::MessageRichMessage(content) => {
             bubble.set_rich_blocks(&content.message, message);
         }
-        _ => {
-            // Service messages (members, topic lifecycle, pins…) have no
-            // dedicated widget: render their human-readable summary.
-            let text = crate::strings::message_content(message);
-            if text == gettext("Unsupported Message") {
-                bubble.set_label(unsupported_notice());
-            } else {
-                bubble.set_label(format!("<i>{text}</i>"));
-            }
-        }
+        _ => bubble.set_label(unsupported_notice()),
     }
 }
 
