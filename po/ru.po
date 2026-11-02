@@ -1846,6 +1846,8 @@ msgid "_Delete Topic"
 msgstr "_Удалить тему"
 
 msgid "Delete Topic"
+msgstr "Удалить тему"
+
 msgid "Delete This Message"
 msgstr "Удалить это сообщение"
 
@@ -1890,8 +1892,6 @@ msgstr "Создание тем"
 
 msgid "Block User"
 msgstr "Заблокировать пользователя"
-
-msgstr "Удалить тему"
 
 msgid "Are you sure you want to delete this topic for everyone?"
 msgstr "Вы уверены, что хотите удалить эту тему для всех?"
