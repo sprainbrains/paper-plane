@@ -98,6 +98,7 @@ src/ui/session/content/chat_info_window.blp
 src/ui/session/content/chat_info_window.rs
 src/ui/session/content/event_row.blp
 src/ui/session/content/event_row.rs
+src/ui/session/content/message_delete_dialog.rs
 src/ui/session/content/message_menu.rs
 src/ui/session/content/message_row/base.blp
 src/ui/session/content/message_row/base.rs

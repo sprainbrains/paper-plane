@@ -1846,6 +1846,51 @@ msgid "_Delete Topic"
 msgstr "_Удалить тему"
 
 msgid "Delete Topic"
+msgid "Delete This Message"
+msgstr "Удалить это сообщение"
+
+msgid "Report Spam"
+msgstr "Сообщить о спаме"
+
+msgid "Delete All Messages from {sender}"
+msgstr "Удалить все сообщения от {sender}"
+
+msgid "Restrict Member"
+msgstr "Ограничить участника"
+
+msgid "Send Messages"
+msgstr "Отправка сообщений"
+
+msgid "Send Media"
+msgstr "Отправка медиафайлов"
+
+msgid "Create Polls"
+msgstr "Создание опросов"
+
+msgid "Send Stickers and GIFs"
+msgstr "Отправка стикеров и GIF"
+
+msgid "Web Page Previews"
+msgstr "Предпросмотр ссылок"
+
+msgid "Reactions"
+msgstr "Реакции"
+
+msgid "Change Chat Info"
+msgstr "Изменение информации"
+
+msgid "Invite Users"
+msgstr "Добавление участников"
+
+msgid "Pin Messages"
+msgstr "Закрепление сообщений"
+
+msgid "Create Topics"
+msgstr "Создание тем"
+
+msgid "Block User"
+msgstr "Заблокировать пользователя"
+
 msgstr "Удалить тему"
 
 msgid "Are you sure you want to delete this topic for everyone?"

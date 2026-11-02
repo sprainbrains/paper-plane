@@ -427,6 +427,26 @@ impl Row {
     }
 
     fn show_delete_dialog(&self, revoke: bool) {
+        // Admins deleting someone else's message in a group or forum get the
+        // tdesktop option dialog (report spam, delete all, restrict/block).
+        if revoke
+            && let Some(primary) = self.primary_message()
+            && !primary.is_outgoing()
+            && primary.can_be_deleted_for_all_users()
+            && primary.sender().as_user().is_some()
+            && matches!(
+                primary.chat_().chat_type(),
+                model::ChatType::BasicGroup(_) | model::ChatType::Supergroup(_)
+            )
+        {
+            let ids: Vec<i64> = match self.message().downcast_ref::<model::ChatHistoryItem>() {
+                Some(item) => item.messages().iter().map(|m| m.id()).collect(),
+                None => vec![primary.id()],
+            };
+            super::message_delete_dialog::show(self, &primary, ids);
+            return;
+        }
+
         let message = if revoke {
             gettext("Do you want to delete this message for <b>everyone</b>?")
         } else {
@@ -985,9 +1005,11 @@ impl Row {
                 "message-row.revoke-delete",
                 message.can_be_deleted_for_all_users(),
             );
-            // Pin and Unpin are mutually exclusive, following the message's live state.
-            self.action_set_enabled("message-row.pin", !message.is_pinned());
-            self.action_set_enabled("message-row.unpin", message.is_pinned());
+            // Pin and Unpin are mutually exclusive, following the message's
+            // live state — and only offered where the rights allow it.
+            let can_pin = can_pin_in_chat(&message.chat_());
+            self.action_set_enabled("message-row.pin", can_pin && !message.is_pinned());
+            self.action_set_enabled("message-row.unpin", can_pin && message.is_pinned());
         } else {
             self.action_set_enabled("message-row.delete", false);
             self.action_set_enabled("message-row.revoke-delete", false);
@@ -1221,6 +1243,29 @@ fn sticker_message_set_id(message: &model::Message) -> i64 {
         data.sticker.set_id
     } else {
         0
+    }
+}
+
+/// Whether the current user may pin messages here: Saved Messages, chat
+/// creators, and admins holding the pin right (tdesktop hides the item
+/// otherwise).
+fn can_pin_in_chat(chat: &model::Chat) -> bool {
+    if chat.is_own_chat() {
+        return true;
+    }
+    let status = match chat.chat_type() {
+        model::ChatType::Supergroup(supergroup) => Some(supergroup.status()),
+        model::ChatType::BasicGroup(group) => Some(group.status()),
+        _ => None,
+    };
+    match status.map(|status| status.0) {
+        Some(tdlib::enums::ChatMemberStatus::Creator(_)) => true,
+        // Basic-group admins implicitly hold every applicable right.
+        Some(tdlib::enums::ChatMemberStatus::Administrator(admin)) => match chat.chat_type() {
+            model::ChatType::BasicGroup(_) => true,
+            _ => admin.rights.can_pin_messages,
+        },
+        _ => false,
     }
 }
 

@@ -7,6 +7,7 @@ mod content_picker;
 mod event_row;
 mod forward_window;
 mod media_viewer;
+mod message_delete_dialog;
 mod message_menu;
 mod message_menu_reactions;
 mod message_row;
