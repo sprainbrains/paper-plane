@@ -408,13 +408,14 @@ impl Row {
             ),
             // Forward and select are always offered for real messages.
             "message-row.forward" | "message-row.select" => self.primary_message().is_some(),
-            // Pin and Unpin are mutually exclusive, following the message's live state.
+            // Pin and Unpin are mutually exclusive, following the message's
+            // live state — and only where the chat rights allow pinning.
             "message-row.pin" => self
                 .primary_message()
-                .is_some_and(|message| !message.is_pinned()),
+                .is_some_and(|message| !message.is_pinned() && can_pin_in_chat(&message.chat_())),
             "message-row.unpin" => self
                 .primary_message()
-                .is_some_and(|message| message.is_pinned()),
+                .is_some_and(|message| message.is_pinned() && can_pin_in_chat(&message.chat_())),
             _ => true,
         }
     }

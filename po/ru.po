@@ -1893,6 +1893,52 @@ msgstr "Создание тем"
 msgid "Block User"
 msgstr "Заблокировать пользователя"
 
+msgid "Restrict Permissions"
+msgstr "Ограничить права"
+
+msgid "Restrictions for User"
+msgstr "Ограничения для пользователя"
+
+msgid "Delete All Messages from {sender} ({count})"
+msgstr "Удалить все сообщения от {sender} ({count})"
+
+msgid "Add Members"
+msgstr "Добавление участников"
+
+msgid "Change Own Tag"
+msgstr "Изменение своего тега"
+
+msgid "Change Group Profile"
+msgstr "Изменение профиля группы"
+
+msgid "Photos"
+msgstr "Фотографии"
+
+msgid "Videos"
+msgstr "Видео"
+
+msgid "Video Messages"
+msgstr "Видеосообщения"
+
+msgid "Music"
+msgstr "Музыка"
+
+msgid "Voice Messages"
+msgstr "Голосовые сообщения"
+
+msgid "Files"
+msgstr "Файлы"
+
+msgid "Stickers and GIFs"
+msgstr "Стикеры и GIF"
+
+msgid "Link Previews"
+msgstr "Предпросмотр ссылок"
+
+msgid "Polls"
+msgstr "Опросы"
+
+
 msgid "Are you sure you want to delete this topic for everyone?"
 msgstr "Вы уверены, что хотите удалить эту тему для всех?"
 
