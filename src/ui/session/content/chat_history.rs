@@ -999,6 +999,21 @@ impl ChatHistory {
                     // way tdesktop loads full chat info.
                     obj.request_full_info(&chat_clone);
 
+                    // A jump from Replies opens the comment thread directly:
+                    // skip the plain-channel load entirely (tdesktop never
+                    // transits through the channel list). The empty channel
+                    // model is replaced by the thread model in setup.
+                    if imp
+                        .pending_open_thread
+                        .get()
+                        .is_some_and(|(channel, _, _)| channel == chat_id)
+                    {
+                        let (_, post, comment) = imp.pending_open_thread.take().unwrap();
+                        imp.is_loading_messages.set(false);
+                        obj.jump_to_thread(post, comment);
+                        return;
+                    }
+
                     let scrollbar = imp.scrolled_window.vscrollbar();
                     scrollbar.set_visible(false);
 
