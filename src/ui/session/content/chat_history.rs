@@ -3608,10 +3608,10 @@ impl ChatHistory {
             let post = loop {
                 match chat.fetch_message(post_id).await {
                     Ok(post) => break post,
-                    Err(e) if attempt < 3 => {
+                    Err(e) if attempt < 8 => {
                         attempt += 1;
                         log::debug!("Thread anchor fetch retry {attempt}: {e:?}");
-                        glib::timeout_future(std::time::Duration::from_millis(400)).await;
+                        glib::timeout_future(std::time::Duration::from_millis(500)).await;
                         if !obj.is_current_chat(generation, chat_id) {
                             return;
                         }

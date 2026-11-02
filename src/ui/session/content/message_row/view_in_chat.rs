@@ -72,15 +72,21 @@ impl MessageViewInChatBar {
     /// Binds the bar to a message: shown only when the message mirrors an
     /// original living in another chat (`forward_info.source`).
     pub(crate) fn set_message(&self, message: Option<&model::Message>) {
-        let target =
-            message.and_then(|message| message.forward_info()?.view_in_chat(message.chat_().id()));
+        // Keep the message's own coordinates: the origin resolver walks the
+        // full mirror → discussion → channel chain itself and must start at the
+        // mirror, not at its already-unwrapped forward source (passing the
+        // source made it see a plain, non-forwarded message and open the bare
+        // discussion, where a non-member gets a bogus "Join").
+        let has_target = message
+            .and_then(|message| message.forward_info()?.view_in_chat(message.chat_().id()))
+            .is_some();
 
-        match target {
-            Some((chat_id, message_id)) => {
-                self.imp().target.set((chat_id, message_id));
+        match message {
+            Some(message) if has_target => {
+                self.imp().target.set((message.chat_().id(), message.id()));
                 self.set_visible(true);
             }
-            None => {
+            _ => {
                 self.imp().target.set((0, 0));
                 self.set_visible(false);
             }

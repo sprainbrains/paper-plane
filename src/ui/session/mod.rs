@@ -434,6 +434,17 @@ impl Session {
             self.imp().content.jump_to_thread(post, comment);
             return;
         }
+        // Warm the anchor post in TDLib's cache while the UI switches: the
+        // thread fetch in `jump_to_thread` would otherwise race the server
+        // round trip and fall back to the plain channel view.
+        if let Some(session) = self.model() {
+            let weak = session.clone();
+            utils::spawn(async move {
+                if let Some(chat) = weak.chat_or_fetch(channel).await {
+                    let _ = chat.fetch_message(post).await;
+                }
+            });
+        }
         self.imp().content.arm_open_thread(channel, post, comment);
         self.select_chat_with_return(channel);
     }
@@ -479,7 +490,16 @@ impl Session {
                 Some((channel, post, comment)) => {
                     obj.select_chat_and_open_thread(channel, post, comment)
                 }
-                None => obj.select_chat_and_reveal(chat_id, message_id),
+                None => {
+                    // Not a thread: reveal at the message's forward source
+                    // (the mirror itself has no origin to jump to).
+                    let target = session
+                        .try_chat(chat_id)
+                        .and_then(|chat| chat.message(message_id))
+                        .and_then(|message| message.forward_info()?.view_in_chat(chat_id))
+                        .unwrap_or((chat_id, message_id));
+                    obj.select_chat_and_reveal(target.0, target.1);
+                }
             }
         });
     }
