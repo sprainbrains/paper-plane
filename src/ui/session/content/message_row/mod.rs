@@ -1061,6 +1061,7 @@ impl Row {
                                 s.format,
                                 tdlib::enums::StickerFormat::Webp
                                     | tdlib::enums::StickerFormat::Tgs
+                                    | tdlib::enums::StickerFormat::Webm
                             )
                         })
                         .unwrap_or_default() =>
@@ -1079,7 +1080,9 @@ impl Row {
                 MessageSticker(data)
                     if matches!(
                         data.sticker.format,
-                        tdlib::enums::StickerFormat::Webp | tdlib::enums::StickerFormat::Tgs
+                        tdlib::enums::StickerFormat::Webp
+                            | tdlib::enums::StickerFormat::Tgs
+                            | tdlib::enums::StickerFormat::Webm
                     ) =>
                 {
                     self.update_specific_content::<_, ui::MessageSticker>(message_);

@@ -476,10 +476,11 @@ impl MessageBubble {
                 imp.topic_chip_icon.set_visible(!ready);
                 imp.topic_chip_id.set(topic.forum_topic_id());
                 imp.topic_chip.set_visible(true);
-                if !ready && emoji != 0 {
-                    if let Some(chat) = &badge_chat {
-                        self.maybe_load_chip_emoji(emoji, chat);
-                    }
+                if !ready
+                    && emoji != 0
+                    && let Some(chat) = &badge_chat
+                {
+                    self.maybe_load_chip_emoji(emoji, chat);
                 }
             }
             None => {

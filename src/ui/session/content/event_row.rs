@@ -1,7 +1,6 @@
 use std::sync::OnceLock;
 
 use adw::subclass::prelude::*;
-use glib::clone;
 use gtk::CompositeTemplate;
 use gtk::gdk;
 use gtk::glib;

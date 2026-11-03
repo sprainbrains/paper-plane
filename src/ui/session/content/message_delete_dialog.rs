@@ -407,8 +407,8 @@ pub(crate) fn show(parent: &impl IsA<gtk::Widget>, message: &model::Message, ids
         let sender = sender.clone();
         utils::spawn(async move {
             let mut delete_ids = ids.clone();
-            if all {
-                if let Ok(tdlib::enums::FoundChatMessages::FoundChatMessages(found)) =
+            if all
+                && let Ok(tdlib::enums::FoundChatMessages::FoundChatMessages(found)) =
                     tdlib::functions::search_chat_messages(
                         chat_id,
                         None,
@@ -421,21 +421,17 @@ pub(crate) fn show(parent: &impl IsA<gtk::Widget>, message: &model::Message, ids
                         client_id,
                     )
                     .await
-                {
-                    delete_ids.extend(found.messages.into_iter().map(|m| m.id));
-                    delete_ids.sort_unstable();
-                    delete_ids.dedup();
-                }
+            {
+                delete_ids.extend(found.messages.into_iter().map(|m| m.id));
+                delete_ids.sort_unstable();
+                delete_ids.dedup();
             }
-            if report_spam {
-                if let Some(supergroup_id) = supergroup_id {
-                    if let Err(e) =
-                        tdlib::functions::report_supergroup_spam(supergroup_id, ids, client_id)
-                            .await
-                    {
-                        log::warn!("Failed to report messages as spam: {e:?}");
-                    }
-                }
+            if report_spam
+                && let Some(supergroup_id) = supergroup_id
+                && let Err(e) =
+                    tdlib::functions::report_supergroup_spam(supergroup_id, ids, client_id).await
+            {
+                log::warn!("Failed to report messages as spam: {e:?}");
             }
             if let Err(e) =
                 tdlib::functions::delete_messages(chat_id, delete_ids, true, client_id).await
