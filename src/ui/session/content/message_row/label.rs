@@ -311,9 +311,19 @@ impl MessageLabel {
         let text = imp.text.borrow();
         if let Some(indicators) = imp.indicators.borrow().as_ref() {
             if !self.is_opposite_text_direction() {
-                imp.gutter_index.set(Some(text.len() as u32));
+                // The gutter char is appended to the label's *markup*, but Pango
+                // attribute indices address the *rendered* text. With entities
+                // (mentions, links, bold…) the markup is longer than what is laid
+                // out, so the markup's own length would place the reserved box past
+                // the trailing space and let the overlaid date collide with the text.
+                // Read the length back from the label — its parser (which understands
+                // `<a>`, unlike `pango::parse_markup`) is exactly what gets laid out.
                 imp.label
                     .set_label(&format!("{text}{INDICATOR_GUTTER_CHAR}"));
+                let rendered_len = imp.label.text().len();
+                imp.gutter_index.set(Some(
+                    (rendered_len - INDICATOR_GUTTER_CHAR.len_utf8()) as u32,
+                ));
             } else {
                 imp.gutter_index.set(None);
                 imp.label.set_label(&text);
