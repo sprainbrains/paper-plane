@@ -73,8 +73,6 @@ mod imp {
         /// Watches `reply-markup` so a bot editing only its keyboard (content
         /// unchanged, no content notify) still rebuilds the buttons.
         pub(super) markup_watch: RefCell<Option<gtk::ExpressionWatch>>,
-        pub(super) hover_pill: RefCell<Option<gtk::Box>>,
-        pub(super) hover_reaction_button: RefCell<Option<gtk::Button>>,
         #[template_child]
         pub(super) box_: TemplateChild<gtk::Box>,
         #[template_child]
@@ -167,7 +165,6 @@ mod imp {
         fn constructed(&self) {
             self.parent_constructed();
             let obj = self.obj();
-            obj.setup_hover_actions();
 
             // Clicking "Forwarded from …" opens the origin chat/user.
             self.forward_label.set_cursor_from_name(Some("pointer"));
@@ -572,107 +569,6 @@ impl MessageBubble {
         }
     }
 
-    /// Builds the hover-actions island (Reply + the favorite reaction) overlaid at the
-    /// bubble's top-trailing corner, revealed only while the pointer is over the bubble
-    /// and never in multi-select mode.
-    fn setup_hover_actions(&self) {
-        let imp = self.imp();
-
-        let reply_button = hover_icon_button("mail-reply-sender-symbolic");
-        reply_button.connect_clicked(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move |_| obj.hover_reply()
-        ));
-
-        let reaction_button = hover_icon_button("");
-        reaction_button.set_visible(false);
-        reaction_button.connect_clicked(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move |_| obj.hover_react()
-        ));
-
-        let pill = gtk::Box::builder()
-            .css_classes(["hover-actions"])
-            .halign(gtk::Align::End)
-            .valign(gtk::Align::Start)
-            .visible(false)
-            .build();
-        pill.append(&reply_button);
-        pill.append(&reaction_button);
-
-        imp.overlay.add_overlay(&pill);
-        imp.hover_pill.replace(Some(pill));
-        imp.hover_reaction_button.replace(Some(reaction_button));
-
-        let motion = gtk::EventControllerMotion::new();
-        motion.connect_enter(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move |_, _, _| obj.set_hover_actions_revealed(true)
-        ));
-        motion.connect_leave(clone!(
-            #[weak(rename_to = obj)]
-            self,
-            move |_| obj.set_hover_actions_revealed(false)
-        ));
-        self.add_controller(motion);
-    }
-
-    fn set_hover_actions_revealed(&self, revealed: bool) {
-        let imp = self.imp();
-        // Never while selecting: the pill would fight the selection click/drag.
-        let in_selection = utils::ancestor::<_, ui::ChatHistory>(self)
-            .is_some_and(|history| history.is_selection_mode());
-        if let Some(pill) = imp.hover_pill.borrow().as_ref() {
-            pill.set_visible(revealed && !in_selection && imp.message.upgrade().is_some());
-        }
-    }
-
-    fn hover_reply(&self) {
-        if let Some(message) = self.imp().message.upgrade() {
-            let _ = self.activate_action("chat-history.reply", Some(&message.id().to_variant()));
-        }
-    }
-
-    fn hover_react(&self) {
-        let Some(message) = self.imp().message.upgrade() else {
-            return;
-        };
-        let chat = message.chat_();
-        let Some(reaction) = chat.session_().default_reaction_type() else {
-            return;
-        };
-        if !reaction_allowed(&chat, &reaction.0) {
-            return;
-        }
-        super::reactions::toggle_reaction(&message, reaction.0);
-    }
-
-    /// Refreshes the hover reaction button's glyph for `message`'s session default.
-    fn update_hover_reaction(&self, message: &model::Message) {
-        let imp = self.imp();
-        let Some(button) = imp.hover_reaction_button.borrow().clone() else {
-            return;
-        };
-        let chat = message.chat_();
-        let session = chat.session_();
-        match session.default_reaction_type() {
-            Some(reaction) if reaction_allowed(&chat, &reaction.0) => {
-                let icon = super::reactions::reaction_icon_widget(
-                    reaction.0,
-                    &session,
-                    16,
-                    super::reactions::ReactionPresentation::Glyph,
-                );
-                button.set_child(Some(&icon));
-                button.set_visible(true);
-            }
-            _ => button.set_visible(false),
-        }
-    }
-
     pub(crate) fn update_from_message(&self, message: &model::Message, force_hide_sender: bool) {
         let imp = self.imp();
 
@@ -691,7 +587,6 @@ impl MessageBubble {
             ),
         );
         imp.markup_watch.replace(Some(watch));
-        self.update_hover_reaction(message);
 
         imp.indicators.set_message(message.upcast_ref());
         imp.reactions.set_message(Some(message.clone()));
@@ -812,11 +707,8 @@ impl MessageBubble {
     ) {
         let imp = self.imp();
 
-        // Sponsored messages have no reply/reaction affordances; keep the hover pill dormant.
+        // Sponsored messages have no reply/reaction affordances.
         imp.message.set(None);
-        if let Some(button) = imp.hover_reaction_button.borrow().as_ref() {
-            button.set_visible(false);
-        }
 
         imp.indicators.set_message(sponsored_message.upcast_ref());
 
@@ -1145,34 +1037,8 @@ impl MessageBubble {
     }
 }
 
-/// A small flat, circular icon button for the hover-actions island.
-fn hover_icon_button(icon_name: &str) -> gtk::Button {
-    let button = gtk::Button::builder()
-        .css_classes(["flat", "circular", "hover-action-button"])
-        .valign(gtk::Align::Center)
-        .build();
-    if !icon_name.is_empty() {
-        button.set_icon_name(icon_name);
-    }
-    button
-}
-
 fn hash_label(label: &str) -> i64 {
     let mut hasher = DefaultHasher::new();
     label.hash(&mut hasher);
     hasher.finish() as i64
-}
-
-/// Whether `reaction_type` may be used in `chat`. A chat with unrestricted (`All`) or
-/// not-yet-loaded reactions permits everything; a restricted chat permits only its set.
-fn reaction_allowed(chat: &model::Chat, reaction_type: &tdlib::enums::ReactionType) -> bool {
-    match chat.available_reactions() {
-        Some(tdlib::enums::ChatAvailableReactions::Some(some)) => {
-            let key = model::reaction_type_key(reaction_type);
-            some.reactions
-                .iter()
-                .any(|allowed| model::reaction_type_key(allowed) == key)
-        }
-        _ => true,
-    }
 }

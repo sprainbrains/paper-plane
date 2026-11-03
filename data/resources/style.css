@@ -875,35 +875,35 @@ messagesticker {
   border-radius: 9999px;
 }
 
-/* Hover-actions island (Reply + favorite reaction), overlaid at the bubble's top-
-   trailing corner and revealed only while the pointer is over the message. */
+/* Hover-actions island (Reply + favorite reaction), floated in the row's margin on
+   the side opposite the bubble and revealed only while the pointer is over the
+   message. tdesktop-style: no connected pill — each button is its own translucent
+   circle. */
 .hover-actions {
-  border-spacing: 2px;
-  padding: 2px;
-  margin: 3px;
-  border-radius: 9999px;
-  background-color: @popover_bg_color;
-  /* Reset the foreground to the popover's own, so the reply icon and emoji don't
-     inherit an outgoing bubble's white-on-accent text colour and vanish against the
-     pill's (light) background. */
-  color: @popover_fg_color;
-  /* An outline so the island stays distinct on incoming bubbles, whose background
-     matches @popover_bg_color in the light theme (both white) and would otherwise
-     make the pill look transparent. */
-  border: 1px solid alpha(@window_fg_color, 0.12);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 2px 6px 1px rgba(0, 0, 0, 0.12);
+  border-spacing: 4px;
+  margin: 4px;
+  background: none;
+  border: none;
+  box-shadow: none;
 }
 
 .hover-action-button {
-  min-width: 26px;
-  min-height: 26px;
+  min-width: 24px;
+  min-height: 24px;
   padding: 2px;
+  border-radius: 9999px;
+  background-color: alpha(black, 0.28);
+  color: white;
+}
+
+.hover-action-button:hover {
+  background-color: alpha(black, 0.42);
 }
 
 .hover-action-button image,
 .hover-action-button label {
-  -gtk-icon-size: 15px;
-  font-size: 15px;
+  -gtk-icon-size: 14px;
+  font-size: 14px;
 }
 
 .message-reactions {

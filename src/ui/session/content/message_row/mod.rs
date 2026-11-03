@@ -79,8 +79,20 @@ mod imp {
     pub(crate) struct Row {
         /// A `model::Message` or `SponsoredMessage`
         pub(super) message: RefCell<Option<glib::Object>>,
+        /// Full-width overlay: the horizontal `row_box` (avatar + bubble + selection
+        /// check) is its main child, and the hover-actions pill floats over it so the
+        /// quick buttons can sit in the margin on the bubble's *opposite* side (like
+        /// tdesktop) instead of overlapping the bubble itself.
+        pub(super) overlay: RefCell<Option<gtk::Overlay>>,
+        /// The horizontal box the avatar/content/check are actually parented to.
+        pub(super) row_box: RefCell<Option<gtk::Box>>,
         pub(super) content: RefCell<Option<gtk::Widget>>,
         pub(super) avatar: RefCell<Option<ui::Avatar>>,
+        /// Hover-actions island (Reply + favorite reaction), aligned to the side
+        /// opposite the bubble and revealed only while the pointer is over the row.
+        pub(super) hover_pill: RefCell<Option<gtk::Box>>,
+        pub(super) hover_reply_button: RefCell<Option<gtk::Button>>,
+        pub(super) hover_reaction_button: RefCell<Option<gtk::Button>>,
         /// The trailing selection checkbox, shown (empty or checked) for every message
         /// while in multi-select mode.
         pub(super) selection_check: RefCell<Option<gtk::CheckButton>>,
@@ -152,6 +164,9 @@ mod imp {
     impl ObjectImpl for Row {
         fn constructed(&self) {
             self.parent_constructed();
+
+            self.obj().ensure_container();
+            self.obj().setup_hover_actions();
             self.obj().setup_selection_gestures();
         }
 
@@ -185,16 +200,10 @@ mod imp {
         }
 
         fn dispose(&self) {
-            if let Some(avatar) = self.avatar.borrow().as_ref() {
-                avatar.unparent();
-            }
-
-            if let Some(content) = self.content.borrow().as_ref() {
-                content.unparent();
-            }
-
-            if let Some(check) = self.selection_check.borrow().as_ref() {
-                check.unparent();
+            // The avatar/content/check/pill all live under the full-width overlay;
+            // unparenting it tears down the whole subtree.
+            if let Some(overlay) = self.overlay.borrow().as_ref() {
+                overlay.unparent();
             }
         }
     }
@@ -211,7 +220,10 @@ glib::wrapper! {
 #[gtk::template_callbacks]
 impl Row {
     pub(crate) fn new(message: &glib::Object) -> Self {
-        let layout_manager = gtk::BoxLayout::builder().spacing(SPACING).build();
+        // The row's single managed child is a full-width `Overlay` (built in
+        // `constructed`); a BinLayout lets it fill the row so the hover pill can
+        // float over the whole width.
+        let layout_manager = gtk::BinLayout::new();
         glib::Object::builder()
             .property("layout-manager", layout_manager)
             .property("message", message)
@@ -229,6 +241,149 @@ impl Row {
         if let Some(message) = self.primary_message() {
             self.activate_action("chat-history.reply", Some(&message.id().to_variant()))
                 .unwrap();
+        }
+    }
+
+    /// Builds the full-width overlay + horizontal box that host the row's children
+    /// (avatar, bubble, selection check) and the hover pill. Lazy because the `message`
+    /// property is set during construction — before `constructed` runs — so the first
+    /// `set_message` already needs the box to exist.
+    fn ensure_container(&self) {
+        let imp = self.imp();
+        if imp.overlay.borrow().is_some() {
+            return;
+        }
+        let row_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .spacing(SPACING)
+            .build();
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&row_box));
+        overlay.set_parent(self);
+        imp.overlay.replace(Some(overlay));
+        imp.row_box.replace(Some(row_box));
+    }
+
+    /// Builds the hover-actions island (Reply + the favorite reaction) as a child of
+    /// the row's full-width overlay, so it sits in the margin on the side *opposite*
+    /// the bubble (tdesktop-style) instead of overlapping the bubble's face. Revealed
+    /// only while the pointer is over the row and never in multi-select mode.
+    fn setup_hover_actions(&self) {
+        let imp = self.imp();
+
+        let reply_button = hover_icon_button("mail-reply-sender-symbolic");
+        reply_button.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.reply()
+        ));
+
+        let reaction_button = hover_icon_button("");
+        reaction_button.set_visible(false);
+        reaction_button.connect_clicked(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.hover_react()
+        ));
+
+        let pill = gtk::Box::builder()
+            .css_classes(["hover-actions"])
+            .halign(gtk::Align::Start)
+            .valign(gtk::Align::Start)
+            .visible(false)
+            .build();
+        pill.append(&reply_button);
+        pill.append(&reaction_button);
+
+        if let Some(overlay) = imp.overlay.borrow().as_ref() {
+            overlay.add_overlay(&pill);
+        }
+        imp.hover_pill.replace(Some(pill));
+        imp.hover_reply_button.replace(Some(reply_button));
+        imp.hover_reaction_button.replace(Some(reaction_button));
+
+        let motion = gtk::EventControllerMotion::new();
+        motion.connect_enter(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_, _, _| obj.set_hover_actions_revealed(true)
+        ));
+        motion.connect_leave(clone!(
+            #[weak(rename_to = obj)]
+            self,
+            move |_| obj.set_hover_actions_revealed(false)
+        ));
+        self.add_controller(motion);
+    }
+
+    fn set_hover_actions_revealed(&self, revealed: bool) {
+        let imp = self.imp();
+        // Never while selecting: the pill would fight the selection click/drag.
+        let in_selection = utils::ancestor::<_, ui::ChatHistory>(self)
+            .is_some_and(|history| history.is_selection_mode());
+        // Sponsored messages carry no reply/reaction affordances.
+        let has_message = imp
+            .message
+            .borrow()
+            .as_ref()
+            .is_some_and(|m| m.downcast_ref::<model::Message>().is_some());
+        if let Some(pill) = imp.hover_pill.borrow().as_ref() {
+            pill.set_visible(revealed && !in_selection && has_message);
+        }
+    }
+
+    /// Places the hover pill on the side opposite the bubble: outgoing (right-aligned)
+    /// messages get it on the left, incoming on the right — matching tdesktop.
+    fn update_hover_actions_side(&self, outgoing: bool) {
+        if let Some(pill) = self.imp().hover_pill.borrow().as_ref() {
+            pill.set_halign(if outgoing {
+                gtk::Align::Start
+            } else {
+                gtk::Align::End
+            });
+        }
+    }
+
+    fn hover_react(&self) {
+        let Some(message) = self.primary_message() else {
+            return;
+        };
+        let chat = message.chat_();
+        let Some(reaction) = chat.session_().default_reaction_type() else {
+            return;
+        };
+        if !reactions::reaction_allowed(&chat, &reaction.0) {
+            return;
+        }
+        reactions::toggle_reaction(&message, reaction.0);
+    }
+
+    /// Refreshes the hover reaction button's glyph for the message's session default
+    /// reaction, hiding it when there is none or the chat disallows it.
+    fn update_hover_reaction(&self, message: Option<&model::Message>) {
+        let imp = self.imp();
+        let Some(button) = imp.hover_reaction_button.borrow().clone() else {
+            return;
+        };
+        let default = message.and_then(|message| {
+            let chat = message.chat_();
+            chat.session_()
+                .default_reaction_type()
+                .filter(|reaction| reactions::reaction_allowed(&chat, &reaction.0))
+                .map(|reaction| (reaction.0, chat.session_()))
+        });
+        match default {
+            Some((reaction_type, session)) => {
+                let icon = reactions::reaction_icon_widget(
+                    reaction_type,
+                    &session,
+                    16,
+                    reactions::ReactionPresentation::Glyph,
+                );
+                button.set_child(Some(&icon));
+                button.set_visible(true);
+            }
+            None => button.set_visible(false),
         }
     }
 
@@ -689,7 +844,7 @@ impl Row {
             .visible(false)
             .css_classes(["selection-check"])
             .build();
-        check.set_parent(self);
+        check.set_parent(self.imp().row_box.borrow().as_ref().unwrap());
         self.imp().selection_check.replace(Some(check));
     }
 
@@ -823,6 +978,10 @@ impl Row {
     pub(crate) fn set_message(&self, message: glib::Object) {
         let imp = self.imp();
 
+        // The `message` property is set before `constructed`, so make sure the
+        // container the content attaches to exists before touching it.
+        self.ensure_container();
+
         if imp.message.borrow().as_ref() == Some(&message) {
             return;
         }
@@ -876,7 +1035,10 @@ impl Row {
                         avatar.add_controller(gesture);
 
                         // Insert at the beginning
-                        avatar.insert_after(self, gtk::Widget::NONE);
+                        avatar.insert_after(
+                            imp.row_box.borrow().as_ref().unwrap(),
+                            gtk::Widget::NONE,
+                        );
 
                         *avatar_borrow = Some(avatar.clone());
                         avatar
@@ -920,14 +1082,16 @@ impl Row {
             }
         }
 
-        self.update_content(message.clone());
+        // Publish the message before building content: `update_content` reads it back
+        // (via `primary_message`/`can_reply_to_message`) to configure the hover pill.
+        imp.message.replace(Some(message.clone()));
+
+        self.update_content(message);
 
         // Keep the selection checkbox at the trailing edge, after the content.
         if let Some(check) = imp.selection_check.borrow().as_ref() {
-            check.insert_before(self, gtk::Widget::NONE);
+            check.insert_before(imp.row_box.borrow().as_ref().unwrap(), gtk::Widget::NONE);
         }
-
-        imp.message.replace(Some(message));
 
         // TODO: Update actions when needed (e.g. chat permissions change)
         self.update_actions();
@@ -1121,6 +1285,16 @@ impl Row {
         } else {
             content.set_halign(gtk::Align::Start);
         }
+
+        // Hover-actions island: on the side opposite the bubble, with the reaction
+        // glyph refreshed and the reply button shown only when a reply is possible.
+        drop(content_ref);
+        self.update_hover_actions_side(is_outgoing);
+        let primary = self.primary_message();
+        self.update_hover_reaction(primary.as_ref());
+        if let Some(button) = self.imp().hover_reply_button.borrow().as_ref() {
+            button.set_visible(self.can_reply_to_message());
+        }
     }
 
     fn update_specific_content<M, B>(&self, message: &M)
@@ -1142,12 +1316,27 @@ impl Row {
                 content.set_valign(gtk::Align::Start);
 
                 // Insert at the end
-                content.insert_before(self, gtk::Widget::NONE);
+                content.insert_before(
+                    self.imp().row_box.borrow().as_ref().unwrap(),
+                    gtk::Widget::NONE,
+                );
 
                 *content_ref = Some(content.upcast());
             }
         }
     }
+}
+
+/// A small flat, circular icon button for the hover-actions island.
+fn hover_icon_button(icon_name: &str) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .css_classes(["flat", "circular", "hover-action-button"])
+        .valign(gtk::Align::Center)
+        .build();
+    if !icon_name.is_empty() {
+        button.set_icon_name(icon_name);
+    }
+    button
 }
 
 /// Shows a small popover with the sender's profile (avatar, name, username/status,

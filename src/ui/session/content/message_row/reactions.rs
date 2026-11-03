@@ -194,6 +194,23 @@ impl MessageReactions {
     }
 }
 
+/// Whether `reaction_type` may be used in `chat`. A chat with unrestricted (`All`) or
+/// not-yet-loaded reactions permits everything; a restricted chat permits only its set.
+pub(crate) fn reaction_allowed(
+    chat: &model::Chat,
+    reaction_type: &tdlib::enums::ReactionType,
+) -> bool {
+    match chat.available_reactions() {
+        Some(tdlib::enums::ChatAvailableReactions::Some(some)) => {
+            let key = model::reaction_type_key(reaction_type);
+            some.reactions
+                .iter()
+                .any(|allowed| model::reaction_type_key(allowed) == key)
+        }
+        _ => true,
+    }
+}
+
 /// How a reaction's emoji is rendered.
 #[derive(Clone, Copy)]
 pub(crate) enum ReactionPresentation {
