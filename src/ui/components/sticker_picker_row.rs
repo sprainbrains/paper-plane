@@ -13,6 +13,7 @@ use gtk::graphene;
 use gtk::gsk;
 
 use crate::model;
+use crate::ui;
 use crate::utils;
 
 const DEFAULT_CELL_SIZE: i32 = 85;
@@ -76,6 +77,11 @@ mod imp {
         pub(super) animate: Cell<bool>,
         /// Whether a frame-tick callback is currently registered.
         pub(super) ticking: Cell<bool>,
+        /// The row's single child widget: plays the hovered `Webm` cell's video
+        /// sticker (tdesktop-style — only the cell under the pointer animates).
+        /// Hidden (unmapped, zero work) whenever the hovered cell isn't `Webm`;
+        /// positioned over it by [`HoverLayout`].
+        pub(super) hover_sticker: RefCell<Option<ui::Sticker>>,
     }
 
     impl Default for StickerPickerRow {
@@ -97,6 +103,7 @@ mod imp {
                 load_outlines: Cell::new(true),
                 animate: Cell::new(true),
                 ticking: Cell::new(false),
+                hover_sticker: RefCell::new(None),
             }
         }
     }
@@ -106,6 +113,13 @@ mod imp {
         const NAME: &'static str = "PaplStickerPickerRow";
         type Type = super::StickerPickerRow;
         type ParentType = gtk::Widget;
+
+        fn class_init(klass: &mut Self::Class) {
+            // The row paints its cells itself; the layout manager exists to position
+            // the single hover-animation child (see `HoverLayout`). It also takes over
+            // the row's size request from the former `WidgetImpl::measure`.
+            klass.set_layout_manager_type::<super::HoverLayout>();
+        }
     }
 
     impl ObjectImpl for StickerPickerRow {
@@ -135,6 +149,14 @@ mod imp {
             ));
             obj.add_controller(motion);
 
+            // The hover-animation child. Hidden until a `Webm` cell is hovered;
+            // `HoverLayout` allocates it over that cell. `ui::Sticker` downloads and
+            // plays the video itself, gated on map/unmap like every other sticker.
+            let hover_sticker: ui::Sticker = glib::Object::new();
+            hover_sticker.set_child_visible(false);
+            hover_sticker.set_parent(&*obj);
+            *self.hover_sticker.borrow_mut() = Some(hover_sticker);
+
             // Only on-screen rows do work (preview decode, animation, frame ticks): they
             // start on `map` and stop on `unmap`, tdesktop-style. This bounds the cost to
             // the viewport even when the `GtkListView` briefly over-realizes rows on its
@@ -147,23 +169,13 @@ mod imp {
             // Cancels in-flight load/meta/render tasks (they check demand/generation).
             self.demand.set(false);
             self.generation.set(self.generation.get().wrapping_add(1));
+            if let Some(hover_sticker) = self.hover_sticker.take() {
+                hover_sticker.unparent();
+            }
         }
     }
 
     impl WidgetImpl for StickerPickerRow {
-        fn measure(&self, orientation: gtk::Orientation, _: i32) -> (i32, i32, i32, i32) {
-            let cell_size = self.cell_size.get();
-            if orientation == gtk::Orientation::Horizontal {
-                // Minimum is a single cell so the row (and thus the list, the picker, and
-                // the whole sidebar) can shrink freely; the picker re-chunks to fewer
-                // columns as it narrows. Natural is the full width for the current column
-                // count so it fills the panel when there's room.
-                (cell_size, cell_size * self.columns.get(), -1, -1)
-            } else {
-                (cell_size, cell_size, -1, -1)
-            }
-        }
-
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
             let obj = self.obj();
             let cell_size = self.cell_size.get();
@@ -239,6 +251,84 @@ mod imp {
             }
         }
     }
+}
+
+/// Positions the row's single hover-animation child over the hovered cell. Setting
+/// this manager also moves the row's size request here (a widget with a layout
+/// manager does not use its own `WidgetImpl::measure`), so `measure` reproduces the
+/// former cell-based sizing exactly.
+mod hover_layout {
+    use gtk::subclass::layout_manager::LayoutManagerImpl;
+
+    use super::*;
+
+    #[derive(Default)]
+    pub(crate) struct HoverLayout {}
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for HoverLayout {
+        const NAME: &'static str = "PaplStickerHoverLayout";
+        type Type = super::HoverLayout;
+        type ParentType = gtk::LayoutManager;
+    }
+
+    impl ObjectImpl for HoverLayout {}
+
+    impl LayoutManagerImpl for HoverLayout {
+        fn request_mode(&self, _widget: &gtk::Widget) -> gtk::SizeRequestMode {
+            gtk::SizeRequestMode::ConstantSize
+        }
+
+        fn measure(
+            &self,
+            widget: &gtk::Widget,
+            orientation: gtk::Orientation,
+            _for_size: i32,
+        ) -> (i32, i32, i32, i32) {
+            let Some(row) = widget.downcast_ref::<super::StickerPickerRow>() else {
+                return (0, 0, -1, -1);
+            };
+            let cell_size = row.imp().cell_size.get();
+            if orientation == gtk::Orientation::Horizontal {
+                // Minimum is a single cell so the row (and thus the list, the picker, and
+                // the whole sidebar) can shrink freely; the picker re-chunks to fewer
+                // columns as it narrows. Natural is the full width for the current column
+                // count so it fills the panel when there's room.
+                (cell_size, cell_size * row.imp().columns.get(), -1, -1)
+            } else {
+                (cell_size, cell_size, -1, -1)
+            }
+        }
+
+        fn allocate(&self, widget: &gtk::Widget, width: i32, height: i32, _baseline: i32) {
+            let Some(row) = widget.downcast_ref::<super::StickerPickerRow>() else {
+                return;
+            };
+            let Some(hover_sticker) = row.imp().hover_sticker.borrow().clone() else {
+                return;
+            };
+            let rect = if hover_sticker.is_child_visible() {
+                row.imp()
+                    .hovered
+                    .get()
+                    .and_then(|index| row.cell_sticker_rect(index, width, height))
+            } else {
+                None
+            };
+            match rect {
+                Some((x, y, w, h)) => {
+                    let transform = gsk::Transform::new().translate(&graphene::Point::new(x, y));
+                    hover_sticker.allocate(w.round() as i32, h.round() as i32, -1, Some(transform));
+                }
+                None => hover_sticker.allocate(0, 0, -1, None),
+            }
+        }
+    }
+}
+
+glib::wrapper! {
+    pub(crate) struct HoverLayout(ObjectSubclass<hover_layout::HoverLayout>)
+        @extends gtk::LayoutManager;
 }
 
 glib::wrapper! {
@@ -434,8 +524,70 @@ impl StickerPickerRow {
 
     fn set_hovered(&self, index: Option<usize>) {
         if self.imp().hovered.replace(index) != index {
+            self.update_hover_sticker();
             self.queue_draw();
         }
+    }
+
+    /// Points the single hover-animation child at the hovered cell when that cell is
+    /// a `Webm` sticker, and hides it otherwise. Removable (recents/favorites) rows
+    /// keep the static preview: the remove badge is painted below child widgets and
+    /// the animation would cover it.
+    fn update_hover_sticker(&self) {
+        let imp = self.imp();
+        let Some(hover_sticker) = imp.hover_sticker.borrow().clone() else {
+            return;
+        };
+        let animated = !imp.removable.get()
+            && imp
+                .hovered
+                .get()
+                .and_then(|index| {
+                    imp.previews
+                        .borrow()
+                        .get(index)
+                        .map(|preview| preview.sticker.clone())
+                })
+                .is_some_and(|sticker| matches!(sticker.format, tdlib::enums::StickerFormat::Webm));
+        if !animated {
+            hover_sticker.set_child_visible(false);
+            return;
+        }
+        let index = imp.hovered.get().expect("animated hover has an index");
+        let sticker = imp.previews.borrow()[index].sticker.clone();
+        let Some(session) = imp.session.upgrade() else {
+            hover_sticker.set_child_visible(false);
+            return;
+        };
+        hover_sticker.set_longer_side_size(imp.sticker_size.get());
+        hover_sticker.update_sticker(sticker, true, session);
+        hover_sticker.set_child_visible(true);
+        // The child's allocation follows the hovered cell, so re-run the layout.
+        self.queue_resize();
+    }
+
+    /// The draw rect of cell `index`'s sticker (same math as `snapshot`), used to
+    /// allocate the hover-animation child exactly over it.
+    fn cell_sticker_rect(
+        &self,
+        index: usize,
+        width: i32,
+        height: i32,
+    ) -> Option<(f32, f32, f32, f32)> {
+        let imp = self.imp();
+        let previews = imp.previews.borrow();
+        let sticker = &previews.get(index)?.sticker;
+        let cell_width = width as f32 / imp.columns.get() as f32;
+        let sticker_size = imp.sticker_size.get() as f32;
+        let aspect = sticker.width as f32 / sticker.height.max(1) as f32;
+        let (draw_width, draw_height) = if aspect >= 1.0 {
+            (sticker_size, sticker_size / aspect)
+        } else {
+            (sticker_size * aspect, sticker_size)
+        };
+        let x = index as f32 * cell_width + (cell_width - draw_width) / 2.0;
+        let y = (height as f32 - draw_height) / 2.0;
+        Some((x, y, draw_width, draw_height))
     }
 
     fn activate_at(&self, x: f64, y: f64) {
