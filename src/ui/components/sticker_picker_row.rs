@@ -403,6 +403,7 @@ impl StickerPickerRow {
         if self.imp().animate.get() {
             self.load_animations();
         }
+        self.prefetch_full_media();
         self.start_ticking();
     }
 
@@ -807,6 +808,56 @@ impl StickerPickerRow {
                         obj.start_ticking();
                     }
                 });
+            });
+        }
+    }
+
+    /// Warms the full `.webm` files of this row's cells while it is on screen, so
+    /// the first hover animates instantly instead of waiting on the download
+    /// (tdesktop preloads the panel's animated stickers the same way). Tasks hold
+    /// the row weakly, wait for the scroll to settle, and share the preview
+    /// download limiter — so previews keep priority and off-screen rows (unmap
+    /// clears `demand`) start nothing. Removable rows never show the hover
+    /// overlay, so they skip the warm-up.
+    fn prefetch_full_media(&self) {
+        if self.imp().removable.get() {
+            return;
+        }
+        let Some(session) = self.imp().session.upgrade() else {
+            return;
+        };
+        let demand = self.imp().demand.clone();
+        let scrolling = self.imp().scrolling.borrow().clone();
+        for index in 0..self.imp().previews.borrow().len() {
+            if !matches!(
+                self.imp().previews.borrow()[index].sticker.format,
+                tdlib::enums::StickerFormat::Webm
+            ) {
+                continue;
+            }
+            let file = self.imp().previews.borrow()[index].sticker.sticker.clone();
+            let session_weak = session.downgrade();
+            let demand_task = demand.clone();
+            let scrolling_task = scrolling.clone();
+            utils::spawn(async move {
+                while scrolling_task
+                    .as_ref()
+                    .is_some_and(|scrolling| scrolling.get())
+                {
+                    if !demand_task.get() {
+                        return;
+                    }
+                    glib::timeout_future(Duration::from_millis(50)).await;
+                }
+                if !demand_task.get() {
+                    return;
+                }
+                let Some(session) = session_weak.upgrade() else {
+                    return;
+                };
+                // The result only warms TDLib's local cache; the hover overlay
+                // finds the file already downloaded.
+                let _ = super::sticker_cache::download_sticker_path(file, &session).await;
             });
         }
     }
