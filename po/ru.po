@@ -1872,6 +1872,36 @@ msgstr "Создание опросов"
 msgid "Send Stickers and GIFs"
 msgstr "Отправка стикеров и GIF"
 
+msgid "Emoji"
+msgstr "Эмодзи"
+
+msgid "Stickers"
+msgstr "Стикеры"
+
+msgid "GIFs"
+msgstr "GIF"
+
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Saved GIFs"
+msgstr "Сохранённые GIF"
+
+msgid "Sticker packs"
+msgstr "Наборы стикеров"
+
+msgid "Recently Used"
+msgstr "Недавно использованные"
+
+msgid "Search Results"
+msgstr "Результаты поиска"
+
+msgid "Retry"
+msgstr "Повторить"
+
+msgid "Couldn't load this sticker pack"
+msgstr "Не удалось загрузить этот набор стикеров"
+
 msgid "Web Page Previews"
 msgstr "Предпросмотр ссылок"
 

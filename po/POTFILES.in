@@ -96,6 +96,8 @@ src/ui/session/content/chat_history.ui
 src/ui/session/content/chat_history_row.rs
 src/ui/session/content/chat_info_window.blp
 src/ui/session/content/chat_info_window.rs
+src/ui/session/content/content_picker.blp
+src/ui/session/content/content_picker.rs
 src/ui/session/content/event_row.blp
 src/ui/session/content/event_row.rs
 src/ui/session/content/message_delete_dialog.rs
