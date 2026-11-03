@@ -222,6 +222,15 @@ mod imp {
                 }
             }
 
+            // A custom `snapshot` vfunc does not paint child widgets by itself —
+            // draw the hover-animation child explicitly, on top of the static
+            // previews it replaces.
+            if let Some(hover_sticker) = self.hover_sticker.borrow().as_ref()
+                && hover_sticker.is_child_visible()
+            {
+                obj.snapshot_child(hover_sticker, snapshot);
+            }
+
             // A remove badge at the hovered cell's top-right corner on recents/favorites rows.
             if self.removable.get()
                 && let Some(index) = hovered
